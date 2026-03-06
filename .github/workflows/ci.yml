@@ -2,9 +2,9 @@ name: CI - Build, Test & Push
 
 on:
   pull_request:
-    branches: [main, develop, release/*]
+    branches: [main, dev, release/*]
   push:
-    branches: [main, develop, release/*]
+    branches: [main, dev, release/*]
   workflow_dispatch:
     inputs:
       force_build_all:
