@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Loader2, RefreshCw } from "lucide-react";
 import TaskModal from "@/components/Board/Task/TaskModal";
+import TaskScoreModal from "@/components/Board/Task/TaskScoreModal";
 import BoardColumn from "@/components/Board/Column/BoardColumn";
 import { Column, Task, User } from "@/types";
 import { useTasks } from "@/hooks/useTasks";
@@ -28,6 +29,10 @@ const KanbanBoard: React.FC = () => {
     task: Task | null;
     columnId: string | null;
   }>({ isOpen: false, task: null, columnId: null });
+  const [scoreModalState, setScoreModalState] = useState<{
+    isOpen: boolean;
+    task: Task | null;
+  }>({ isOpen: false, task: null });
   const [newColumnName, setNewColumnName] = useState("");
   const [showNewColumn, setShowNewColumn] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number>(1);
@@ -207,6 +212,14 @@ const KanbanBoard: React.FC = () => {
     await fetchTasks();
   };
 
+  const handleOpenScoreModal = (task: Task) => {
+    setScoreModalState({ isOpen: true, task });
+  };
+
+  const handleCloseScoreModal = () => {
+    setScoreModalState({ isOpen: false, task: null });
+  };
+
   if (tasksLoading || eventsLoading) {
     return (
       <div className="min-h-screen bg-transparent p-6 flex items-center justify-center">
@@ -274,6 +287,7 @@ const KanbanBoard: React.FC = () => {
               onDragStart={handleDragStart}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
+              onOpenScore={handleOpenScoreModal}
             />
           ))}
 
@@ -330,6 +344,18 @@ const KanbanBoard: React.FC = () => {
           events={events}
           onSave={handleSaveTask}
           onClose={() => setModalState({ isOpen: false, task: null, columnId: null })}
+        />
+      )}
+
+      {/* Task Score Modal */}
+      {scoreModalState.isOpen && scoreModalState.task && (
+        <TaskScoreModal
+          task={scoreModalState.task}
+          users={users}
+          isOpen={scoreModalState.isOpen}
+          onClose={handleCloseScoreModal}
+          currentUserId={currentUserId}
+          onScoresUpdated={handleRefresh}
         />
       )}
 
