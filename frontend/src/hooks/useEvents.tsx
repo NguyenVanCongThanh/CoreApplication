@@ -56,7 +56,7 @@ export function useEvents() {
         saved = await eventService.create(data as Omit<EventItem, "id">, userId);
         setEvents(prev => sortByDate([saved, ...prev]));
       } else if (modalMode === "edit" && data.id) {
-        saved = await eventService.update(data.id, data);
+        saved = await eventService.update(data.id, data, userId);
         setEvents(prev => sortByDate(
           prev.map(e => (e.id === saved.id ? saved : e))
         ));
