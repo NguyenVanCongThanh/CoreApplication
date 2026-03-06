@@ -210,7 +210,7 @@ const TaskScoreModal: React.FC<TaskScoreModalProps> = ({
           {/* Permissions Warning */}
           {!canManageScores && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-700">
-              You don't have permission to manage scores. Only Admin and Manager can manage scores.
+              You do not have permission to manage scores. Only Admin and Manager can manage scores.
             </div>
           )}
 
