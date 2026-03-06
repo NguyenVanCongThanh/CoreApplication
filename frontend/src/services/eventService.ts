@@ -7,8 +7,8 @@ export const eventService = {
   create: (data: Omit<EventItem, "id">, userId: number) => 
     apiClient.post<EventItem>(`/api/events?userId=${userId}`, data),
   
-  update: (id: number, data: Partial<EventItem>) => 
-    apiClient.put<EventItem>(`/api/events/${id}`, data),
+  update: (id: number, data: Partial<EventItem>, userId: number) => 
+    apiClient.put<EventItem>(`/api/events/${id}?userId=${userId}`, data),
   
   delete: (id: number) => 
     apiClient.delete(`/api/events/${id}`),
