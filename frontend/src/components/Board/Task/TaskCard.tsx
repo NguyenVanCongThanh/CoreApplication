@@ -9,6 +9,7 @@ import {
   Edit2,
   Trash2,
   AlertCircle,
+  Award,
 } from "lucide-react";
 import { Task, User as UserType, EventItem, PRIORITY_COLORS } from "@/types";
 import { formatDate } from "@/utils/utils";
@@ -22,6 +23,7 @@ interface TaskCardProps {
   onEdit: (task: Task) => void;
   onDelete: (taskId: number | string) => void;
   onDragStart: (e: React.DragEvent, task: Task) => void;
+  onOpenScore?: (task: Task) => void;
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({
@@ -31,6 +33,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   onEdit,
   onDelete,
   onDragStart,
+  onOpenScore,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const { canEditTask } = useAuth();
@@ -72,6 +75,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
               <Edit2 size={14} /> Edit
             </button>)
             }
+            {onOpenScore && (
+              <button
+                onClick={() => {
+                  onOpenScore(task);
+                  setShowMenu(false);
+                }}
+                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm w-full text-left text-blue-600"
+              >
+                <Award size={14} /> Manage Scores
+              </button>
+            )}
             <button
               onClick={() => {
                 onDelete(task.id);

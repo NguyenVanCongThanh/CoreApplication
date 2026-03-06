@@ -4,6 +4,23 @@ export type TaskLink = {
   title: string;
 };
 
+export type TaskScore = {
+  id?: number;
+  taskId?: number;
+  taskTitle?: string;
+  userId?: number;
+  userName?: string;
+  userEmail?: string;
+  userCode?: string;
+  score: number;
+  applied?: boolean;
+  scoredById?: number;
+  scoredByName?: string;
+  scoredAt?: string;
+  appliedAt?: string;
+  notes?: string;
+};
+
 export type Task = {
   id: number | string;
   title: string;

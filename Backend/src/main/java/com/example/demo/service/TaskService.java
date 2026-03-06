@@ -23,6 +23,7 @@ public class TaskService {
     private final TaskRepository taskRepo;
     private final UserRepository userRepo;
     private final EventRepository eventRepo;
+    private final TaskScoreRepository taskScoreRepo;
 
     @Transactional
     public TaskResponse createTask(TaskRequest request, Long creatorId) {
@@ -270,14 +271,25 @@ public class TaskService {
         }
 
         builder.assignees(task.getAssignees().stream()
-                .map(ut -> TaskResponse.AssigneeInfo.builder()
-                        .id(ut.getUser().getId())
-                        .name(ut.getUser().getName())
-                        .email(ut.getUser().getEmail())
-                        .code(ut.getUser().getCode())
-                        .team(ut.getUser().getTeam().name())
-                        .type(ut.getUser().getType().name())
-                        .build())
+                .map(ut -> {
+                    TaskResponse.AssigneeInfo.AssigneeInfoBuilder assigneeBuilder = TaskResponse.AssigneeInfo.builder()
+                            .id(ut.getUser().getId())
+                            .name(ut.getUser().getName())
+                            .email(ut.getUser().getEmail())
+                            .code(ut.getUser().getCode())
+                            .team(ut.getUser().getTeam().name())
+                            .type(ut.getUser().getType().name());
+                    
+                    // Lấy score thông tin nếu có
+                    taskScoreRepo.findByTaskIdAndUserId(task.getId(), ut.getUser().getId())
+                            .ifPresent(score -> {
+                                assigneeBuilder.score(score.getScore());
+                                assigneeBuilder.applied(score.getApplied());
+                                assigneeBuilder.appliedAt(score.getAppliedAt());
+                            });
+                    
+                    return assigneeBuilder.build();
+                })
                 .collect(Collectors.toList()));
 
         builder.links(task.getLinks().stream()

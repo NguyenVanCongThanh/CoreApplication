@@ -36,6 +36,9 @@ export interface TaskResponse {
     code: string;
     team: string;
     type: string;
+    score?: number;
+    applied?: boolean;
+    appliedAt?: string;
   }>;
   links: Array<{
     id: number;
