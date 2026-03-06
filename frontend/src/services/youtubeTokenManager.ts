@@ -189,4 +189,5 @@ class YouTubeTokenManager {
   }
 }
 
-export default new YouTubeTokenManager();
+const youtubeTokenManager = new YouTubeTokenManager()
+export default youtubeTokenManager

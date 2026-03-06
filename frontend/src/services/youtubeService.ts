@@ -121,4 +121,5 @@ class YouTubeService {
   }
 }
 
-export default new YouTubeService();
+const youTubeService = new YouTubeService();
+export default youTubeService;
