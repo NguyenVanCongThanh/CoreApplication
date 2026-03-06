@@ -16,6 +16,7 @@ interface BoardColumnProps {
   onDragStart: (e: React.DragEvent, task: Task) => void;
   onDrop: (e: React.DragEvent, columnId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
+  onOpenScore?: (task: Task) => void;
 }
 
 const BoardColumn: React.FC<BoardColumnProps> = ({
@@ -29,6 +30,7 @@ const BoardColumn: React.FC<BoardColumnProps> = ({
   onDragStart,
   onDrop,
   onDragOver,
+  onOpenScore,
 }) => {
   const isDefaultColumn = ["todo", "in-progress", "done", "cancel"].includes(
     column.id.toLowerCase()
@@ -72,6 +74,7 @@ const BoardColumn: React.FC<BoardColumnProps> = ({
               onEdit={onEditTask}
               onDelete={onDeleteTask}
               onDragStart={onDragStart}
+              onOpenScore={onOpenScore}
             />
           ))
         ) : (

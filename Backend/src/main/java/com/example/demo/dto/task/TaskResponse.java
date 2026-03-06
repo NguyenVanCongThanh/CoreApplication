@@ -49,6 +49,9 @@ public class TaskResponse {
         private String code;
         private String team;
         private String type;
+        private Integer score;
+        private Boolean applied;
+        private LocalDateTime appliedAt;
     }
 
     @Getter
