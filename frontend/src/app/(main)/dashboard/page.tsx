@@ -15,8 +15,6 @@ import { useAnnouncements } from "@/hooks/useAnnouncements";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";
 import { usePagination } from "@/hooks/usePagination";
-import TutorialGuide from "@/components/ui/TutorialGuide";
-import { tutorialConfig } from "@/config/tutorials";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -217,12 +215,6 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-
-      {/* Tutorial Guide Component */}
-      <TutorialGuide 
-        steps={tutorialConfig.dashboard}
-        onComplete={() => {}}
-      />
     </div>
   );
 }

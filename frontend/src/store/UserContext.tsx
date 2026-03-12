@@ -1,38 +1,31 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-}
+import { User, UserLogin } from "@/types";
+import { USER_STORAGE_KEY } from "@/constants";
 
 interface UserContextType {
-  user: User | null;
-  setUser: (user: User | null) => void;
+  user: User | UserLogin | null;
+  setUser: (user: User | UserLogin | null) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | UserLogin | null>(null);
 
-  // Load user from localStorage on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
+    const storedUser = localStorage.getItem(USER_STORAGE_KEY);
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
   }, []);
 
-  // Update localStorage when user changes
   useEffect(() => {
     if (user) {
-      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     } else {
-      localStorage.removeItem("user");
+      localStorage.removeItem(USER_STORAGE_KEY);
     }
   }, [user]);
 

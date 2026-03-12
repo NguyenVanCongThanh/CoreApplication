@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 

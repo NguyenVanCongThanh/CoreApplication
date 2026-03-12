@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import type {
-  FillBlankTextSettings,
-  FillBlankTextCorrectAnswer,
   FillBlankTextStudentAnswer,
   FillBlankTextStudentProps,
-} from '@/fillBlankType';
+} from '@/types';
 
 /**
  * Component for students to answer FILL_BLANK_TEXT questions
@@ -156,7 +154,6 @@ export default function FillBlankTextStudent({
           const config = getBlankConfig(blankId);
           const studentAnswer = getBlankAnswer(blankId);
           const isCorrect = isAnswerCorrect(blankId);
-          const correctAnswersList = getCorrectAnswersForBlank(blankId);
 
           return (
             <span key={index} className="inline-block mx-1">

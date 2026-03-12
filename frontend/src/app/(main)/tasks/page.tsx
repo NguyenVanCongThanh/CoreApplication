@@ -11,8 +11,6 @@ import { useTasks } from "@/hooks/useTasks";
 import { useEvents } from "@/hooks/useEvents";
 import { userService } from "@/services/userService";
 import { TaskRequest } from "@/services/taskService";
-import TutorialGuide from '@/components/ui/TutorialGuide';
-import { tutorialConfig } from '@/config/tutorials';
 
 const KanbanBoard: React.FC = () => {
   const [columns, setColumns] = useState<Column[]>([
@@ -358,12 +356,6 @@ const KanbanBoard: React.FC = () => {
           onScoresUpdated={handleRefresh}
         />
       )}
-
-      {/* Tutorial Guide Component */}
-      <TutorialGuide 
-        steps={tutorialConfig.tasks}
-        onComplete={() => {}}
-      />
     </div>
   );
 };

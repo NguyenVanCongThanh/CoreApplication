@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import lmsService from "@/services/lmsService";
 import { FileToUpload } from "@/types";
@@ -179,7 +179,7 @@ export default function BulkUploadModal({
             } else {
               reject(new Error("Invalid response format"));
             }
-          } catch (e) {
+          } catch {
             reject(new Error("Failed to parse response"));
           }
         } else {
@@ -311,7 +311,7 @@ export default function BulkUploadModal({
                 id="bulk-file-input"
               />
 
-              {filesToUpload.map((fileItem, idx) => (
+              {filesToUpload.map((fileItem) => (
                 <div
                   key={fileItem.id}
                   className="p-4 border rounded-lg space-y-3"

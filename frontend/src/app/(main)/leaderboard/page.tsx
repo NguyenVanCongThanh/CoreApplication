@@ -4,8 +4,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Trophy, Medal, Award, TrendingUp } from "lucide-react";
 import { userService } from "@/services/userService";
 import type { UserResponse } from "@/services/userService";
-import TutorialGuide from '@/components/ui/TutorialGuide';
-import { tutorialConfig } from '@/config/tutorials';
 
 const LeaderboardPage = () => {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -97,7 +95,7 @@ const LeaderboardPage = () => {
         <div className="mb-16" id="leaderboard-podium">
           <h2 className="text-2xl font-bold text-center mb-8 text-gray-800">Top 5 Champions</h2>
           <div className="flex items-end justify-center gap-4 px-4">
-            {getPodiumOrder().map((user, idx) => {
+            {getPodiumOrder().map((user) => {
               const actualRank = top5.findIndex(u => u.id === user.id) + 1;
               const trophy = getTrophyIcon(actualRank);
               const Icon = trophy.icon;
@@ -196,12 +194,6 @@ const LeaderboardPage = () => {
           </div>
         )}
       </div>
-
-      {/* Tutorial Guide Component */}
-      <TutorialGuide 
-        steps={tutorialConfig.leaderboard}
-        onComplete={() => {}}
-      />
     </div>
   );
 };

@@ -23,7 +23,7 @@ const TaskScoreModal: React.FC<TaskScoreModalProps> = ({
   currentUserId,
   onScoresUpdated,
 }) => {
-  const { user: currentUser, isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const [scores, setScores] = useState<TaskScoreResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingScore, setEditingScore] = useState<{
@@ -37,11 +37,11 @@ const TaskScoreModal: React.FC<TaskScoreModalProps> = ({
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load scores khi modal mở
   useEffect(() => {
     if (isOpen && task?.id) {
       loadScores();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, task?.id]);
 
   const loadScores = async () => {

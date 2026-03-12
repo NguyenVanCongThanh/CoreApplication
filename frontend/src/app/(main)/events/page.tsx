@@ -18,8 +18,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { Search, Filter, Calendar, ArrowLeft } from "lucide-react";
 import { EVENT_STATUSES } from "@/types";
 import { useRouter } from "next/navigation";
-import TutorialGuide from '@/components/ui/TutorialGuide';
-import { tutorialConfig } from '@/config/tutorials';
 
 export default function EventsPage() {
   const router = useRouter();
@@ -218,12 +216,6 @@ export default function EventsPage() {
           </div>
         )}
       </div>
-
-      {/* Tutorial Guide Component */}
-      <TutorialGuide 
-        steps={tutorialConfig.events}
-        onComplete={() => {}}
-      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInfo } from "@/types";
-import { Youtube, Upload, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { Youtube, CheckCircle, AlertCircle, XCircle } from "lucide-react";
 
 interface YouTubeVideoUploadProps {
   onFileUploaded: (fileInfo: FileInfo) => void;

@@ -21,8 +21,6 @@ import { userService, UserResponse, UpdateProfileRequest } from "@/services/user
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUser } from "@/store/UserContext";
 import Image from "next/image";
-import TutorialGuide from '@/components/ui/TutorialGuide';
-import { tutorialConfig } from '@/config/tutorials';
 
 const MyAccountPage: React.FC = () => {
   const { user: currentUser, saveUser } = useCurrentUser();
@@ -605,12 +603,6 @@ const MyAccountPage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Tutorial Guide Component */}
-      <TutorialGuide 
-        steps={tutorialConfig.myaccount}
-        onComplete={() => {}}
-      />
     </div>
   );
 };

@@ -1,12 +1,23 @@
+// ─── Settings ────────────────────────────────────────────────────────────────
+
 export interface FillBlankTextSettings {
   blank_count: number;
-  
   blanks: Array<{
     blank_id: number;
     placeholder?: string;
     label?: string;
   }>;
 }
+
+export interface FillBlankDropdownSettings {
+  blank_count: number;
+  blanks: Array<{
+    blank_id: number;
+    label?: string;
+  }>;
+}
+
+// ─── Correct Answers & Options ───────────────────────────────────────────────
 
 export interface FillBlankTextCorrectAnswer {
   blank_id: number;
@@ -16,15 +27,6 @@ export interface FillBlankTextCorrectAnswer {
   blank_position?: number;
 }
 
-export interface FillBlankDropdownSettings {
-  blank_count: number;
-  
-  blanks: Array<{
-    blank_id: number;
-    label?: string;
-  }>;
-}
-
 export interface FillBlankDropdownOption {
   id?: number;
   blank_id: number;
@@ -32,6 +34,8 @@ export interface FillBlankDropdownOption {
   is_correct: boolean;
   order_index: number;
 }
+
+// ─── Student Answers ─────────────────────────────────────────────────────────
 
 export interface FillBlankTextStudentAnswer {
   blanks: Array<{
@@ -46,6 +50,8 @@ export interface FillBlankDropdownStudentAnswer {
     selected_option_id: number;
   }>;
 }
+
+// ─── Editor Props ─────────────────────────────────────────────────────────────
 
 export interface FillBlankTextEditorProps {
   questionText: string;
@@ -69,6 +75,8 @@ export interface FillBlankDropdownEditorProps {
   ) => void;
 }
 
+// ─── Student Props ────────────────────────────────────────────────────────────
+
 export interface FillBlankTextStudentProps {
   questionText: string;
   settings: FillBlankTextSettings;
@@ -89,6 +97,8 @@ export interface FillBlankDropdownStudentProps {
   showCorrectAnswers?: boolean;
   studentAnswer?: FillBlankDropdownStudentAnswer;
 }
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 export interface BlankPosition {
   blank_id: number;
