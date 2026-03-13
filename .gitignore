@@ -49,19 +49,19 @@ lerna-debug.log*
 
 youtube-tokens.json
 
-# Backend
-Backend/target/
-Backend/.mvn/
-Backend/mvnw
-Backend/mvnw.cmd
-Backend/.idea/
-Backend/*.iml
-Backend/*.iws
-Backend/*.ipr
-Backend/out/
-Backend/build/
-Backend/.gradle/
-Backend/bin/
+# auth-and-management-service
+auth-and-management-service/target/
+auth-and-management-service/.mvn/
+auth-and-management-service/mvnw
+auth-and-management-service/mvnw.cmd
+auth-and-management-service/.idea/
+auth-and-management-service/*.iml
+auth-and-management-service/*.iws
+auth-and-management-service/*.ipr
+auth-and-management-service/out/
+auth-and-management-service/build/
+auth-and-management-service/.gradle/
+auth-and-management-service/bin/
 
 # Frontend
 frontend/.next/
@@ -74,14 +74,14 @@ frontend/.turbo/
 frontend/.vercel
 frontend/.env*.local
 
-# LMS
-LMS/bin/
-LMS/vendor/
-LMS/*.exe
-LMS/*.dll
-LMS/*.so
-LMS/*.dylib
-LMS/go.work
+# lms-service
+lms-service/bin/
+lms-service/vendor/
+lms-service/*.exe
+lms-service/*.dll
+lms-service/*.so
+lms-service/*.dylib
+lms-service/go.work
 
 # IDEs and Editors
 *.swp

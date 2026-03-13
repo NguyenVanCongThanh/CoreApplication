@@ -15,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,6 +27,8 @@ import java.util.Map;
 public class AuthController {
     private final AuthService authService;
     private final UserService userService;
+    @Value("${jwt.expirationMs}")
+    private long expirationMs;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
@@ -33,11 +36,11 @@ public class AuthController {
 
         String token = authService.generateToken(user);
 
-        ResponseCookie cookie = ResponseCookie.from("token", token)
+        ResponseCookie cookie = ResponseCookie.from("authToken", token)
                 .httpOnly(true)
-                .secure(false) // false if testing on HTTP
+                .secure(false)
                 .path("/")
-                .maxAge(24 * 60 * 60) // 1 day
+                .maxAge(expirationMs)
                 .sameSite("Strict")
                 .build();
 
@@ -60,7 +63,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout() {
-        ResponseCookie cookie = ResponseCookie.from("token", "")
+        ResponseCookie cookie = ResponseCookie.from("authToken", "")
                 .httpOnly(true)
                 .secure(true)
                 .path("/")

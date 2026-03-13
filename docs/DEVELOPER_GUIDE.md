@@ -93,7 +93,7 @@ CoreApplication/
 │   ├── next.config.ts               # Cấu hình Next.js + proxy rewrites ← QUAN TRỌNG
 │   └── Dockerfile
 │
-├── 📁 Backend/                      # Spring Boot (Auth Service)
+├── 📁 auth-and-management-service/                      # Spring Boot (Auth Service)
 │   ├── src/main/java/com/example/demo/
 │   │   ├── controller/              # REST Controllers
 │   │   ├── service/                 # Business logic
@@ -106,7 +106,7 @@ CoreApplication/
 │   ├── pom.xml
 │   └── Dockerfile
 │
-├── 📁 LMS/                          # Go (LMS Service)
+├── 📁 lms-service/                          # Go (LMS Service)
 │   ├── cmd/server/main.go           # Entry point
 │   ├── internal/
 │   │   ├── handler/                 # HTTP handlers (Gin)
@@ -313,7 +313,7 @@ go run cmd/server/main.go
 
 LMS Service chạy tại **http://localhost:8081**
 
-Các biến môi trường cần thiết khi chạy local (tạo file `.env` trong thư mục `LMS/` hoặc export):
+Các biến môi trường cần thiết khi chạy local (tạo file `.env` trong thư mục `lms-service/` hoặc export):
 
 ```bash
 export DB_HOST=localhost
@@ -730,7 +730,7 @@ Dùng bất kỳ PostgreSQL client nào (DBeaver, TablePlus, pgAdmin...):
 
 **Q: Làm sao để thêm database migration?**
 
-Với **Backend (Spring Boot):** Hiện tại `JPA_DDL_AUTO=update` nên Hibernate tự tạo/sửa bảng theo Entity. Để migration có kiểm soát hơn, thêm Flyway vào `pom.xml`. Với **LMS (Go):** Thêm file `.sql` vào `LMS/migrations/` và dùng `golang-migrate`.
+Với **Backend (Spring Boot):** Hiện tại `JPA_DDL_AUTO=update` nên Hibernate tự tạo/sửa bảng theo Entity. Để migration có kiểm soát hơn, thêm Flyway vào `pom.xml`. Với **LMS (Go):** Thêm file `.sql` vào `lms-service/migrations/` và dùng `golang-migrate`.
 
 **Q: Làm sao debug Spring Boot trong IntelliJ IDEA?**
 

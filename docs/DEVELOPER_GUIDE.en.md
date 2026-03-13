@@ -93,7 +93,7 @@ CoreApplication/
 │   ├── next.config.ts               # Next.js config + proxy rewrites ← IMPORTANT
 │   └── Dockerfile
 │
-├── 📁 Backend/                      # Spring Boot (Auth Service)
+├── 📁 auth-and-management-service/                      # Spring Boot (Auth Service)
 │   ├── src/main/java/com/example/demo/
 │   │   ├── controller/              # REST Controllers
 │   │   ├── service/                 # Business logic
@@ -106,7 +106,7 @@ CoreApplication/
 │   ├── pom.xml
 │   └── Dockerfile
 │
-├── 📁 LMS/                          # Go (LMS Service)
+├── 📁 lms-service/                          # Go (LMS Service)
 │   ├── cmd/server/main.go           # Entry point
 │   ├── internal/
 │   │   ├── handler/                 # HTTP handlers (Gin)
@@ -313,7 +313,7 @@ go run cmd/server/main.go
 
 LMS Service runs at **http://localhost:8081**
 
-Required environment variables when running locally (create a `.env` file in `LMS/` or export):
+Required environment variables when running locally (create a `.env` file in `lms-service/` or export):
 
 ```bash
 export DB_HOST=localhost
@@ -730,7 +730,7 @@ Use any PostgreSQL client (DBeaver, TablePlus, pgAdmin...):
 
 **Q: How do I add a database migration?**
 
-For **Backend (Spring Boot):** Currently `JPA_DDL_AUTO=update` so Hibernate auto-manages schema. For controlled migrations, add Flyway to `pom.xml`. For **LMS (Go):** Add `.sql` files to `LMS/migrations/` and use `golang-migrate`.
+For **Backend (Spring Boot):** Currently `JPA_DDL_AUTO=update` so Hibernate auto-manages schema. For controlled migrations, add Flyway to `pom.xml`. For **LMS (Go):** Add `.sql` files to `lms-service/migrations/` and use `golang-migrate`.
 
 **Q: How do I debug Spring Boot in IntelliJ IDEA?**
 

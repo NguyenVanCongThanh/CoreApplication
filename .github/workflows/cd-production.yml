@@ -95,8 +95,8 @@ jobs:
           }
 
           _check "http://localhost:3000/api/health"      "Frontend"
-          _check "http://localhost:8080/actuator/health" "Backend"
-          _check "http://localhost:8081/health"          "LMS"
+          _check "http://localhost:8080/actuator/health" "auth-and-management-service"
+          _check "http://localhost:8081/health"          "lms-service"
 
           if [[ $FAILED -eq 1 ]]; then
             echo ""

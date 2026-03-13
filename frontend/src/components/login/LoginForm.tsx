@@ -28,7 +28,7 @@ export default function LoginForm() {
     setLoading(true);
     try {
       const { token, name, email: userEmail, role, userId, maxAge } = await userService.login(email, password);
-      document.cookie = `authToken=${token}; path=/; max-age=${maxAge}; SameSite=Strict;`;
+      document.cookie = `authToken=${token}; path=/; max-age=${maxAge / 1000}; SameSite=Strict;`;
       setUser({ id: userId, name, email: userEmail, role });
       router.push("/dashboard");
     } catch (err: any) {
