@@ -13,7 +13,7 @@ import type {
   FillBlankTextCorrectAnswer,
   FillBlankDropdownSettings,
   FillBlankDropdownOption,
-} from "@/fillBlankType";
+} from "@/types";
 
 interface Quiz {
   id: number;
