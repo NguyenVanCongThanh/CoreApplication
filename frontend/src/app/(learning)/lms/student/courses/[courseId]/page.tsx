@@ -6,7 +6,7 @@ import lmsService from "@/services/lmsService";
 import { Button } from "@/components/ui/button";
 import ContentViewer from "@/components/lms/student/ContentViewer";
 import { Content, Course, Section } from "@/types";
-import { ArrowLeft, Loader } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default function StudentCourseDetailPage() {
   const params = useParams();
