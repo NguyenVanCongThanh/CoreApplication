@@ -11,7 +11,6 @@ interface SectionHeaderProps {
   showAddButton?: boolean;
   onAdd?: () => void;
   addButtonText?: string;
-  addButtonGradient?: string;
 }
 
 export function SectionHeader({
@@ -21,22 +20,25 @@ export function SectionHeader({
   showAddButton = false,
   onAdd,
   addButtonText = "Thêm",
-  addButtonGradient = "from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
 }: SectionHeaderProps) {
   return (
-    <div className="flex justify-between items-center mb-6">
+    <div className="flex items-start justify-between mb-6">
       <div>
-        <h2 className="text-3xl font-bold text-gray-900">
-          {icon} {title}
-        </h2>
-        <p className="text-gray-600 text-sm mt-1">{description}</p>
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-xl" aria-hidden="true">{icon}</span>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">{title}</h2>
+        </div>
+        <p className="text-sm text-slate-500 dark:text-slate-400 ml-8">{description}</p>
       </div>
+
       {showAddButton && onAdd && (
-        <Button 
+        <Button
           onClick={onAdd}
-          className={`bg-gradient-to-r ${addButtonGradient} text-white font-semibold px-6 rounded-xl shadow-lg hover:shadow-xl transition-all`}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                     px-5 py-2.5 rounded-xl shadow-sm transition-all duration-200
+                     active:scale-95 flex-shrink-0"
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-1.5" />
           {addButtonText}
         </Button>
       )}

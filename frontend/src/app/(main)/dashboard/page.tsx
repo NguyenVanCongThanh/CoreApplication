@@ -10,7 +10,7 @@ import { EventList } from "@/components/dashboard/event/EventList";
 import { ShowMoreButton } from "@/components/dashboard/ShowMoreButton";
 import { AnnouncementModal } from "@/components/dashboard/modals/AnnouncementModal";
 import { EventModal } from "@/components/dashboard/modals/EventModal";
-import { ModernCalendar as ViewCalendar } from "@/components/dashboard/Calendar";
+import { ModernCalendar as ViewCalendar } from "@/components/dashboard/calendar/Calendar";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,16 +21,11 @@ export default function DashboardPage() {
   const { user, isAdmin, checkAdminAccess } = useAuth();
 
   const {
-    announcements,
-    loading: loadingAnnouncements,
-    modalOpen: announcementModalOpen,
-    modalMode: announcementModalMode,
-    currentItem: currentAnnouncement,
-    setCurrentItem: setCurrentAnnouncement,
-    openModal: openAnnouncementModal,
-    closeModal: closeAnnouncementModal,
-    saveAnnouncement,
-    deleteAnnouncement,
+    announcements, loading: loadingAnnouncements,
+    modalOpen: announcementModalOpen, modalMode: announcementModalMode,
+    currentItem: currentAnnouncement, setCurrentItem: setCurrentAnnouncement,
+    openModal: openAnnouncementModal, closeModal: closeAnnouncementModal,
+    saveAnnouncement, deleteAnnouncement,
   } = useAnnouncements();
 
   const {
@@ -41,83 +36,55 @@ export default function DashboardPage() {
   } = usePagination(announcements, 4);
 
   const {
-    events,
-    loading: loadingEvents,
-    modalOpen: eventModalOpen,
-    modalMode: eventModalMode,
-    currentItem: currentEvent,
-    setCurrentItem: setCurrentEvent,
-    openModal: openEventModal,
-    closeModal: closeEventModal,
-    saveEvent,
-    deleteEvent,
+    events, loading: loadingEvents,
+    modalOpen: eventModalOpen, modalMode: eventModalMode,
+    currentItem: currentEvent, setCurrentItem: setCurrentEvent,
+    openModal: openEventModal, closeModal: closeEventModal,
+    saveEvent, deleteEvent,
   } = useEvents();
 
   const {
     visibleItems: visibleEvents,
     hasMore: hasMoreEvents,
     remaining: remainingEvents,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    showMore: _showMoreEvents,
   } = usePagination(events, 4);
 
   const handleOpenAnnouncementModal = (mode: "add" | "edit" | "view", item?: any) => {
-    if (mode === "add" || mode === "edit") {
-      if (!checkAdminAccess()) return;
-    }
+    if ((mode === "add" || mode === "edit") && !checkAdminAccess()) return;
     openAnnouncementModal(mode, item);
   };
 
   const handleSaveAnnouncement = async () => {
     if (!checkAdminAccess()) return;
-    try {
-      await saveAnnouncement(currentAnnouncement);
-    } catch (error: any) {
-      alert("Lỗi: " + error.message);
-    }
+    try { await saveAnnouncement(currentAnnouncement); }
+    catch (e: any) { alert("Lỗi: " + e.message); }
   };
 
   const handleDeleteAnnouncement = async (id: number) => {
     if (!checkAdminAccess("xóa")) return;
-    try {
-      await deleteAnnouncement(id);
-    } catch (error: any) {
-      alert("Lỗi: " + error.message);
-    }
+    try { await deleteAnnouncement(id); }
+    catch (e: any) { alert("Lỗi: " + e.message); }
   };
 
   const handleOpenEventModal = (mode: "add" | "edit" | "view", item?: any) => {
-    if (mode === "add" || mode === "edit") {
-      if (!checkAdminAccess()) return;
-    }
+    if ((mode === "add" || mode === "edit") && !checkAdminAccess()) return;
     openEventModal(mode, item);
   };
 
   const handleSaveEvent = async () => {
     if (!checkAdminAccess() || !user) return;
-    try {
-      await saveEvent(currentEvent, user.id);
-    } catch (error: any) {
-      alert("Lỗi: " + error.message);
-    }
+    try { await saveEvent(currentEvent, user.id); }
+    catch (e: any) { alert("Lỗi: " + e.message); }
   };
 
   const handleDeleteEvent = async (id: number) => {
     if (!checkAdminAccess("xóa")) return;
-    try {
-      await deleteEvent(id);
-    } catch (error: any) {
-      alert("Lỗi: " + error.message);
-    }
-  };
-
-  const handleViewAllEvents = () => {
-    router.push("/events");
+    try { await deleteEvent(id); }
+    catch (e: any) { alert("Lỗi: " + e.message); }
   };
 
   return (
-    <div className="bg-transparent min-h-screen p-4 sm:p-6 lg:p-8">
-      {/* Modals */}
+    <>
       <AnnouncementModal
         open={announcementModalOpen}
         mode={announcementModalMode}
@@ -126,7 +93,6 @@ export default function DashboardPage() {
         onChange={setCurrentAnnouncement}
         onSave={handleSaveAnnouncement}
       />
-      
       <EventModal
         open={eventModalOpen}
         mode={eventModalMode}
@@ -137,33 +103,26 @@ export default function DashboardPage() {
       />
 
       <div className="space-y-10">
-        {/* Header */}
-        <div id="dashboard-header">
-          <DashboardHeader />
-        </div>
+        <DashboardHeader />
 
-        {/* Stats + Calendar Row */}
-        <div className="flex flex-row gap-6 w-full">
-          <div id="stats-cards">
-            <StatsCards eventsCount={events.length} />
-          </div>
-          <div className="flex w-full">
+        {/* Stats + Calendar */}
+        <div className="flex flex-col sm:flex-row gap-6 w-full">
+          <StatsCards eventsCount={events.length} />
+          <div className="flex-1 min-w-0">
             <ViewCalendar />
           </div>
         </div>
 
-        {/* Announcements Section */}
-        <div id="announcements-section">
+        {/* Announcements */}
+        <section>
           <SectionHeader
             icon="📢"
             title="Thông Báo"
             description="Các thông báo quan trọng và cập nhật mới nhất"
             showAddButton={isAdmin}
             onAdd={() => handleOpenAnnouncementModal("add")}
-            addButtonText="Thêm Thông Báo"
-            addButtonGradient="from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            addButtonText="Thêm thông báo"
           />
-
           <AnnouncementList
             announcements={visibleAnnouncements}
             loading={loadingAnnouncements}
@@ -172,7 +131,6 @@ export default function DashboardPage() {
             onEdit={(item) => handleOpenAnnouncementModal("edit", item)}
             onDelete={handleDeleteAnnouncement}
           />
-
           {hasMoreAnnouncements && (
             <ShowMoreButton
               onClick={showMoreAnnouncements}
@@ -180,20 +138,18 @@ export default function DashboardPage() {
               variant="announcement"
             />
           )}
-        </div>
+        </section>
 
-        {/* Events Section */}
-        <div id="events-section">
+        {/* Events */}
+        <section>
           <SectionHeader
             icon="🎉"
             title="Sự Kiện"
             description="Các sự kiện sắp diễn ra và đang diễn ra"
             showAddButton={isAdmin}
             onAdd={() => handleOpenEventModal("add")}
-            addButtonText="Thêm Sự Kiện"
-            addButtonGradient="from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            addButtonText="Thêm sự kiện"
           />
-
           <EventList
             events={visibleEvents}
             loading={loadingEvents}
@@ -202,19 +158,16 @@ export default function DashboardPage() {
             onEdit={(item) => handleOpenEventModal("edit", item)}
             onDelete={handleDeleteEvent}
           />
-
           {hasMoreEvents && (
-            <div className="mt-6 flex justify-center">
-              <ShowMoreButton
-                onClick={handleViewAllEvents}
-                remaining={remainingEvents}
-                variant="event"
-                customText="Xem Tất Cả Sự Kiện"
-              />
-            </div>
+            <ShowMoreButton
+              onClick={() => router.push("/events")}
+              remaining={remainingEvents}
+              variant="event"
+              customText="Xem tất cả sự kiện"
+            />
           )}
-        </div>
+        </section>
       </div>
-    </div>
+    </>
   );
 }

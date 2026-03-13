@@ -3,18 +3,15 @@
 import React from "react";
 
 interface LoadingStateProps {
-  color?: string;
   message?: string;
 }
 
-export function LoadingState({ 
-  color = "border-blue-600", 
-  message = "Đang tải..." 
-}: LoadingStateProps) {
+export function LoadingState({ message = "Đang tải..." }: LoadingStateProps) {
   return (
-    <div className="col-span-4 text-center py-12">
-      <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${color} mx-auto`}></div>
-      <p className="text-gray-600 mt-4">{message}</p>
+    <div className="col-span-4 flex flex-col items-center justify-center py-16 text-center">
+      <div className="h-10 w-10 rounded-full border-2 border-slate-200 dark:border-slate-700
+                      border-t-blue-600 dark:border-t-blue-500 animate-spin" />
+      <p className="text-sm text-slate-500 dark:text-slate-400 mt-4">{message}</p>
     </div>
   );
 }

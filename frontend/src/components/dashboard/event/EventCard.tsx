@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, Eye, Edit, Trash2 } from "lucide-react";
+import { Calendar, Clock, Users, Eye, Edit, Trash2 } from "lucide-react";
 import { EventItem, STATUS_COLORS } from "@/types";
 import { getCountdown } from "@/utils/dateUtils";
 
@@ -15,85 +14,111 @@ interface EventCardProps {
   onDelete: () => void;
 }
 
-export function EventCard({
-  event,
-  isAdmin,
-  onView,
-  onEdit,
-  onDelete,
-}: EventCardProps) {
+export function EventCard({ event, isAdmin, onView, onEdit, onDelete }: EventCardProps) {
   const countdown = getCountdown(event.startTime, event.endTime);
 
+  const formattedDate = event.startTime
+    ? new Date(event.startTime).toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : "Chưa xác định";
+
   return (
-    <Card className="overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all group bg-white border-2 border-gray-100 hover:border-purple-300 transform hover:-translate-y-1">
-      <div className="relative w-full h-48 bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center">
-        <Calendar className="h-16 w-16 text-white/40" />
-        <div className="absolute top-3 right-3">
-          <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${STATUS_COLORS[event.statusEvent]} border-2`}>
-            {event.statusEvent}
-          </span>
+    <div className="bg-white dark:bg-slate-900
+                    rounded-2xl border border-slate-200 dark:border-slate-800
+                    shadow-sm hover:shadow-md hover:-translate-y-0.5
+                    transition-all duration-300 overflow-hidden group flex flex-col">
+      {/* Thumbnail */}
+      <div className="relative w-full h-44 flex-shrink-0
+                      bg-slate-100 dark:bg-slate-800
+                      flex items-center justify-center overflow-hidden">
+        <Calendar className="h-12 w-12 text-slate-300 dark:text-slate-600
+                             group-hover:scale-110 transition-transform duration-500" />
+
+        <span className={`absolute top-3 right-3 px-2.5 py-1 rounded-lg text-xs font-semibold
+                          ${STATUS_COLORS[event.statusEvent]}`}>
+          {event.statusEvent}
+        </span>
+
+        <div className="absolute bottom-3 left-3 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg
+                        flex items-center gap-1.5 shadow-sm border border-slate-100 dark:border-slate-700">
+          <Clock className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{formattedDate}</span>
         </div>
-        <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-lg flex items-center gap-2">
-          <Clock className="h-3 w-3 text-purple-600" />
-          <span className="text-xs font-semibold text-purple-900">
-            {event.startTime ? new Date(event.startTime).toLocaleDateString('vi-VN') : 'Chưa xác định'}
-          </span>
-        </div>
+
         {event.capacity && (
-          <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-lg flex items-center gap-2">
-            <MapPin className="h-3 w-3 text-purple-600" />
-            <span className="text-xs font-semibold text-purple-900">
-              {event.capacity} người
-            </span>
+          <div className="absolute bottom-3 right-3 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg
+                          flex items-center gap-1.5 shadow-sm border border-slate-100 dark:border-slate-700">
+            <Users className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{event.capacity}</span>
           </div>
         )}
       </div>
-      
-      <CardContent className="p-5">
-        <h3 className="font-bold text-lg text-gray-800 mb-2 line-clamp-2 group-hover:text-purple-600 transition-colors">
+
+      {/* Content */}
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1.5 line-clamp-2
+                       group-hover:text-blue-600 dark:group-hover:text-blue-400
+                       transition-colors duration-200">
           {event.title}
         </h3>
-        <p className="text-sm text-gray-600 line-clamp-3 mb-2">
+        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed flex-1">
           {event.description}
         </p>
+
         {countdown && (
-          <p className="text-sm text-purple-600 font-semibold mb-2">
+          <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-2
+                        bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg w-fit">
             {countdown}
           </p>
         )}
-        
-        <div className="flex gap-2 pt-3 border-t border-gray-100">
-          <Button 
-            size="sm" 
-            variant="ghost" 
+
+        {/* Actions */}
+        <div className="flex gap-1.5 pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+          <Button
+            size="sm"
+            variant="ghost"
             onClick={onView}
-            className="flex-1 hover:bg-purple-50 rounded-lg transition-all"
+            className="flex-1 h-8 text-slate-600 dark:text-slate-400
+                       hover:text-blue-600 dark:hover:text-blue-400
+                       hover:bg-blue-50 dark:hover:bg-blue-950/40
+                       rounded-lg text-xs font-medium transition-all duration-200"
           >
-            <Eye className="h-4 w-4 mr-1" />
+            <Eye className="h-3.5 w-3.5 mr-1" />
             Xem
           </Button>
           {isAdmin && (
             <>
-              <Button 
-                size="sm" 
-                variant="ghost" 
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={onEdit}
-                className="hover:bg-blue-50 rounded-lg transition-all"
+                aria-label="Chỉnh sửa"
+                className="h-8 w-8 p-0 text-slate-400 dark:text-slate-500
+                           hover:text-blue-600 dark:hover:text-blue-400
+                           hover:bg-blue-50 dark:hover:bg-blue-950/40
+                           rounded-lg transition-all duration-200"
               >
-                <Edit className="h-4 w-4" />
+                <Edit className="h-3.5 w-3.5" />
               </Button>
-              <Button 
-                size="sm" 
-                variant="ghost" 
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={onDelete}
-                className="hover:bg-red-50 text-red-600 rounded-lg transition-all"
+                aria-label="Xóa"
+                className="h-8 w-8 p-0 text-slate-400 dark:text-slate-500
+                           hover:text-red-600 dark:hover:text-red-400
+                           hover:bg-red-50 dark:hover:bg-red-950/40
+                           rounded-lg transition-all duration-200"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

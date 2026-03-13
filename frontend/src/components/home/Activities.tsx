@@ -1,8 +1,8 @@
 "use client";
-import Image from "next/image";
 import { Activity } from "lucide-react";
 import clubData from "@/data/clubData.json";
 import { useScrollAnimation } from "@/hooks/animation/useScrollAnimation";
+import SafeImage from "../common/SafeImage";
 
 export default function Activities() {
   const [ref, isVisible] = useScrollAnimation();
@@ -21,7 +21,7 @@ export default function Activities() {
           {clubData.activities.map((activity) => (
             <div key={activity.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group">
               <div className="h-48 bg-slate-200 relative overflow-hidden">
-                <Image src={activity.imageUrl} alt={activity.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                <SafeImage src={activity.imageUrl} alt={activity.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
               </div>
               <div className="p-6">
                 <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 block">{activity.type}</span>

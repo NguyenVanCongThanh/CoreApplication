@@ -14,14 +14,14 @@
 
 ## 2. Hệ thống màu sắc (Color System)
 
-Sử dụng palette mặc định của Tailwind CSS — dưới đây là quy chuẩn và cách áp dụng. (Mẫu màu kèm swatch để dễ tham khảo.)
+Sử dụng palette mặc định của Tailwind CSS.
 
-| Mục đích           |  Tailwind class |       Hex |                                                                                   Swatch                                                                                  |
-| ------------------ | --------------: | --------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-| Primary background |   `bg-blue-600` | `#2563eb` | <span style="display:inline-block;width:1.2em;height:1.2em;background:#2563eb;border-radius:4px;border:1px solid #0000001a;vertical-align:middle;margin-left:6px"></span> |
-| Primary hover      |   `bg-blue-700` | `#1d4ed8` | <span style="display:inline-block;width:1.2em;height:1.2em;background:#1d4ed8;border-radius:4px;border:1px solid #0000001a;vertical-align:middle;margin-left:6px"></span> |
-| Accent text / link | `text-blue-600` | `#2563eb` | <span style="display:inline-block;width:1.2em;height:1.2em;background:#2563eb;border-radius:4px;border:1px solid #0000001a;vertical-align:middle;margin-left:6px"></span> |
-| Light primary bg   |    `bg-blue-50` | `#eff6ff` | <span style="display:inline-block;width:1.2em;height:1.2em;background:#eff6ff;border-radius:4px;border:1px solid #0000001a;vertical-align:middle;margin-left:6px"></span> |
+| Mục đích           |  Tailwind class |       Hex |
+| ------------------ | --------------: | --------: |
+| Primary background |   `bg-blue-600` | `#2563eb` |
+| Primary hover      |   `bg-blue-700` | `#1d4ed8` |
+| Accent text / link | `text-blue-600` | `#2563eb` |
+| Light primary bg   |    `bg-blue-50` | `#eff6ff` |
 
 **Neutral (Slate)** — ưu tiên Slate để tạo cảm giác công nghệ, hiện đại:
 
@@ -36,127 +36,153 @@ Sử dụng palette mặc định của Tailwind CSS — dưới đây là quy c
 | Caption / subtext |   `text-slate-500` | `#64748b` |
 | Placeholder       |   `text-slate-400` | `#94a3b8` |
 
-**Semantic colors** (áp dụng cho trạng thái):
+**Semantic colors:**
 
-* Danger / Error: `text-red-500`, `bg-red-50`, `border-red-500`.
-* Success: `text-green-600`, `bg-green-50`.
-* Warning: `text-yellow-600`, `bg-yellow-50`.
-
----
-
-## 3. Typography (Phân cấp & class chuẩn)
-
-Đặt các class cố định để người dùng dễ scan thông tin.
-
-* **H1 — Page Title**
-  `class="text-3xl md:text-4xl font-extrabold text-slate-900 leading-tight"`
-
-* **H2 — Section Title**
-  `class="text-2xl font-bold text-slate-900"`
-
-* **H3 — Card / Item Title**
-  `class="text-lg font-bold text-slate-800"`
-
-* **Body Text**
-  `class="text-base text-slate-600 leading-relaxed"`
-
-* **Subtext / Caption**
-  `class="text-sm text-slate-500"`
-
-* **Tag / Label**
-  `class="text-xs font-semibold text-blue-600 uppercase tracking-wider"`
-
-**Nguyên tắc:** luôn dùng kích thước, trọng số, màu cố định cho từng vai trò; tránh đặt style tùy tiện trong từng component.
+* Danger / Error: `text-red-500`, `bg-red-50`, `border-red-500`
+* Success: `text-green-600`, `bg-green-50`
+* Warning: `text-yellow-600`, `bg-yellow-50`
 
 ---
 
-## 4. UI Components — Mẫu code tái sử dụng
+## 3. Dark Mode
 
-### 4.1 Cards & Containers
+Dark mode dùng class strategy (`dark:`) của Tailwind. Toggle qua `next-themes` với `attribute="class"`.
 
-Giữ viền mảnh, bo góc lớn, shadow nhẹ.
+**Nguyên tắc dark mode:**
+- Không đảo màu hoàn toàn — giữ tỷ lệ tương phản tương tự light mode
+- Background tối nhất ở cấp layout; sáng dần lên card → input
+- Blue-600 giữ nguyên cho primary action — đủ contrast trên nền tối
+- Không dùng white text thuần trên nền quá tối; dùng `slate-100` / `slate-200`
+
+### Dark Mode Token Mapping
+
+| Role              | Light                  | Dark                        |
+| ----------------- | ---------------------- | --------------------------- |
+| Page background   | `bg-slate-50`          | `dark:bg-slate-950`         |
+| Layout / Sidebar  | `bg-white`             | `dark:bg-slate-900`         |
+| Card background   | `bg-white`             | `dark:bg-slate-900`         |
+| Card border       | `border-slate-200`     | `dark:border-slate-800`     |
+| Input background  | `bg-slate-50`          | `dark:bg-slate-800`         |
+| Input border      | `border-slate-300`     | `dark:border-slate-700`     |
+| Heading text      | `text-slate-900`       | `dark:text-slate-50`        |
+| Body text         | `text-slate-600`       | `dark:text-slate-400`       |
+| Caption / subtext | `text-slate-500`       | `dark:text-slate-500`       |
+| Placeholder       | `text-slate-400`       | `dark:text-slate-600`       |
+| Divider / border  | `border-slate-200`     | `dark:border-slate-800`     |
+| Active nav item   | `bg-blue-600 text-white` | `dark:bg-blue-600 dark:text-white` (giữ nguyên) |
+| Hover state       | `hover:bg-slate-100`   | `dark:hover:bg-slate-800`   |
+| Ghost button text | `text-slate-600`       | `dark:text-slate-400`       |
+| Danger            | `text-red-500 bg-red-50` | `dark:text-red-400 dark:bg-red-950/40` |
+
+### Cách áp dụng chuẩn
 
 ```jsx
-<div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300">
-  <h3 className="text-lg font-bold text-slate-900 mb-2">Tiêu đề Card</h3>
-  <p className="text-slate-600">Nội dung của thẻ nằm ở đây.</p>
+<aside className="bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
+  <h3 className="text-slate-900 dark:text-slate-50">Title</h3>
+  <p className="text-slate-500 dark:text-slate-400">Subtext</p>
+  <div className="border-t border-slate-200 dark:border-slate-800" />
+</aside>
+```
+
+### Theme Toggle
+
+Dùng `useTheme()` từ `next-themes`. Chỉ render icon sau mount để tránh hydration mismatch:
+
+```tsx
+const { theme, setTheme } = useTheme();
+const [mounted, setMounted] = useState(false);
+useEffect(() => setMounted(true), []);
+
+const toggleTheme = () => setTheme(theme === "light" ? "dark" : "light");
+
+// Render:
+{mounted && (theme === "dark" ? <Sun /> : <Moon />)}
+```
+
+---
+
+## 4. Typography
+
+* **H1 — Page Title:** `text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight`
+* **H2 — Section Title:** `text-2xl font-bold text-slate-900 dark:text-slate-50`
+* **H3 — Card Title:** `text-lg font-bold text-slate-800 dark:text-slate-100`
+* **Body Text:** `text-base text-slate-600 dark:text-slate-400 leading-relaxed`
+* **Subtext / Caption:** `text-sm text-slate-500 dark:text-slate-500`
+* **Tag / Label:** `text-xs font-semibold text-blue-600 uppercase tracking-wider`
+
+---
+
+## 5. UI Components
+
+### Cards & Containers
+
+```jsx
+<div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow duration-300">
+  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 mb-2">Tiêu đề</h3>
+  <p className="text-slate-600 dark:text-slate-400">Nội dung</p>
 </div>
 ```
 
-### 4.2 Inputs & Forms
-
-Focus: viền blue + ring nhẹ. Lỗi: viền đỏ + nền đỏ nhạt.
+### Inputs & Forms
 
 ```jsx
-{/* Input chuẩn */}
-<input 
-  className="w-full border border-slate-300 rounded-xl p-3.5 text-slate-900 placeholder:text-slate-400 bg-slate-50
-             focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-  placeholder="Nhập dữ liệu..."
-/>
-
-{/* Input lỗi */}
-<input 
-  className="w-full border border-red-500 rounded-xl p-3.5 text-slate-900 placeholder:text-red-300 bg-red-50
-             focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all"
-  placeholder="Dữ liệu không hợp lệ..."
+<input
+  className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-3.5
+             text-slate-900 dark:text-slate-100 placeholder:text-slate-400
+             bg-slate-50 dark:bg-slate-800
+             focus:bg-white dark:focus:bg-slate-900
+             focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+             transition-all"
 />
 ```
 
-**Nguyên tắc form:**
-
-* Luôn show trạng thái (focus, error, disabled) rõ ràng.
-* Validation messages nhỏ, đặt sát input, dùng `text-sm text-red-500`.
-
-### 4.3 Buttons
-
-Padding nhất quán; transition; active scale nhỏ.
+### Buttons
 
 ```jsx
 {/* Primary */}
-<button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-3 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-  Hoàn tất gửi
+<button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-3 shadow-sm transition-all active:scale-95">
+  Hoàn tất
 </button>
 
 {/* Secondary */}
-<button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 rounded-xl px-6 py-3 font-medium shadow-sm transition-all active:scale-95">
+<button className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-6 py-3 font-medium transition-all active:scale-95">
   Quay lại
 </button>
 
 {/* Ghost */}
-<button className="bg-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl px-4 py-2 font-medium transition-all">
-  Hủy bỏ
+<button className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl px-4 py-2 font-medium transition-all">
+  Hủy
 </button>
 ```
 
 ---
 
-## 5. Spacing, Layout & Animation
+## 6. Spacing & Layout
 
-* **Wrapper (toàn trang):** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` (hoặc `max-w-4xl` cho form/bài viết).
-* **Section spacing:** `py-20` hoặc `py-24` để tạo breathing space.
-* **Grid / Flex gaps:** `gap-4`, `gap-6`, `gap-8`.
-* **Transitions:** `transition-all duration-200` hoặc `duration-300`.
-* **Entrance animation (scroll):** từ `opacity-0 translate-y-8` → `opacity-100 translate-y-0` với `duration-700`. (Dùng chỉ cho các element trọng yếu để tránh chi phí reflow.)
-
----
-
-## 6. Anti-Patterns — Tuyệt đối tránh
-
-1. **Glassmorphism diện rộng:** tránh `backdrop-blur` + nền trong suốt cho layout chính.
-2. **Viền kép / bo góc gắt:** không dùng `border-double`, `border-black` dày; ưu tiên `rounded-xl` / `rounded-2xl` và `border-slate-200`.
-3. **Căn giữa đoạn văn dài:** chỉ tiêu đề được phép `text-center`; đoạn mô tả ≥3 dòng phải `text-left`.
-4. **Gradient rực rỡ:** không dùng gradient nhiều màu (ví dụ: hồng→tím→vàng) cho viền hoặc progress. Chỉ dùng solid hoặc cùng dải (nhạt→đậm).
-5. **Hardcode data:** nội dung cấu trúc, câu hỏi form, danh sách phải nằm trong `.json` hoặc API; UI chỉ render.
+* **Wrapper:** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`
+* **Section spacing:** `py-20` / `py-24`
+* **Gaps:** `gap-4`, `gap-6`, `gap-8`
+* **Transitions:** `transition-all duration-200` / `duration-300`
 
 ---
 
-## 7. Checklist triển khai nhanh (Developer)
+## 7. Anti-Patterns — Tuyệt đối tránh
 
-* [ ] Dùng palette Tailwind đã chuẩn hóa; không thêm màu mới nếu không có approval.
-* [ ] Áp dụng typography classes cố định cho mọi page/component.
-* [ ] Inputs: focus → `ring-blue-500/20`; error → `border-red-500` + `bg-red-50`.
-* [ ] Buttons: padding `px-6 py-3` cho primary; `transition-all` + `active:scale-95`.
-* [ ] Cards: `rounded-2xl`, `border-slate-200`, `shadow-sm`.
-* [ ] Không hardcode data; tách data ra `.json`/API.
-* [ ] Review accessibility: đủ contrast, keyboard focus visible, aria labels với form controls.
+1. **Glassmorphism:** không dùng `backdrop-blur` + nền trong suốt cho layout/sidebar/navbar
+2. **Viền kép / đậm:** ưu tiên `rounded-xl` / `rounded-2xl` với `border-slate-200 dark:border-slate-800`
+3. **Căn giữa đoạn văn dài:** chỉ tiêu đề dùng `text-center`; mô tả ≥3 dòng phải `text-left`
+4. **Gradient rực rỡ:** không dùng gradient nhiều màu; chỉ solid hoặc cùng dải (nhạt→đậm)
+5. **Hardcode data:** data phải từ `.json` / API; UI chỉ render
+6. **Icon thừa:** mỗi action chỉ dùng icon khi collapsed; khi expanded ưu tiên text label rõ nghĩa
+
+---
+
+## 8. Checklist triển khai (Developer)
+
+* [ ] Palette Tailwind chuẩn hóa — không thêm màu nếu chưa có approval
+* [ ] Typography classes cố định cho mọi vai trò heading/body/caption
+* [ ] Dark mode: thêm `dark:` variant cho mọi màu nền, chữ, border
+* [ ] Input: `focus:ring-blue-500/20` + `dark:bg-slate-800`
+* [ ] Button: `active:scale-95` + `transition-all`
+* [ ] Card: `rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm`
+* [ ] Accessibility: contrast đủ, keyboard focus, aria labels

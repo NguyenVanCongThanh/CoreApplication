@@ -1,18 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, LogOut, Sun, Moon } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { sidebarSections, LogoIcon } from "@/constants";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState } from "react";
 import { useUser } from "@/store/UserContext";
 import { useTheme } from "next-themes";
 import { userService } from "@/services/userService";
+import SafeImage from "../common/SafeImage";
 
 const MobileNav = () => {
   const pathname = usePathname();
@@ -22,143 +21,123 @@ const MobileNav = () => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = async () => {
-      try {
-        userService.logout()
-        document.cookie = "authToken=; path=/; max-age=0";
-        setUser(null);
-        router.push("/login");
-      } catch (err) {
-        console.error("Logout error:", err);
-        document.cookie = "authToken=; path=/; max-age=0";
-        setUser(null);
-        router.push("/login");
-      }
-    setIsOpen(false);
-  };
-
-  const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
+    try { userService.logout(); } catch { /* silent */ }
+    document.cookie = "authToken=; path=/; max-age=0";
+    setUser(null);
+    router.push("/login");
     setIsOpen(false);
   };
 
   return (
-    <header className="flex md:hidden items-center h-14 sm:h-16 px-3 sm:px-4 bg-white/95 dark:bg-slate-700/95 sticky top-0 z-50 shadow-sm border-b border-gray-100 dark:border-slate-600">
+    <header className="flex md:hidden items-center h-14 px-3 sticky top-0 z-50
+                       bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-600">
-            <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
+          <button className="p-2 rounded-xl text-slate-600 dark:text-slate-400
+                             hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <Menu className="h-5 w-5" />
             <span className="sr-only">Open menu</span>
-          </Button>
+          </button>
         </SheetTrigger>
-        <SheetContent side="left" className="flex flex-col p-0 w-64 bg-white/95 dark:bg-slate-700/95">
-          <div className="flex-1 flex flex-col gap-y-4 py-4 px-4 overflow-y-auto">
-            <div className="flex items-center gap-3 px-2">
-              <span className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-                <Image
-                  src={LogoIcon}
-                  alt="Big Data Club"
-                  width={80}
-                  height={80}
-                  priority
-                />
-              </span>
-              <span className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                <p>Think Big <br/> Speak Data</p>
-              </span>
+
+        <SheetContent side="left" className="flex flex-col p-0 w-64
+                                              bg-white dark:bg-slate-900
+                                              border-r border-slate-200 dark:border-slate-800">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 px-4 py-5 border-b border-slate-200 dark:border-slate-800">
+            <SafeImage src={LogoIcon} alt="BDC" width={28} height={28} priority />
+            <div>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Think Big</p>
+              <p className="text-xs text-blue-600 font-semibold tracking-wide">Speak Data</p>
             </div>
-
-            <div className="mt-4 px-2">
-              <Link
-                href="/myaccount"
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600"
-                onClick={() => setIsOpen(false)}
-              >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${user?.name || "User"}`} alt="User" />
-                  <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-sm text-gray-800 dark:text-gray-100">{user?.name || "Guest"}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role.replace("ROLE_", "") || "Member"}</p>
-                </div>
-              </Link>
-            </div>
-
-            <nav className="flex flex-col gap-4 mt-6">
-              {sidebarSections.map((section) => (
-                <div key={section.title}>
-                  <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-400 uppercase mb-2 px-4">
-                    {section.title}
-                  </h3>
-                  <ul className="flex flex-col gap-1">
-                    {section.links.map((link) => {
-                      const isActive = pathname === link.route;
-                      const LinkIcon = link.icon;
-
-                      return (
-                        <li key={link.route}>
-                          <Link
-                            href={link.route}
-                            className={cn(
-                              "flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                              isActive
-                                ? "bg-blue-600 text-white"
-                                : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-600 hover:text-gray-900 dark:hover:text-gray-100"
-                            )}
-                            onClick={() => setIsOpen(false)}
-                          >
-                            <LinkIcon className={cn("h-5 w-5", link.iconColor)} />
-                            {link.label}
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </nav>
           </div>
 
-          <div className="p-4 border-t border-gray-100 dark:border-slate-600 flex flex-col gap-2">
-            <Button
-              onClick={toggleTheme}
-              variant="ghost"
-              className="w-full justify-start text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-slate-600"
+          {/* User */}
+          <div className="px-3 py-3 border-b border-slate-200 dark:border-slate-800">
+            <Link
+              href="/myaccount"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <div className="flex items-center gap-3">
-                {theme === "light" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                <span>{theme === "light" ? "Dark Mode" : "Light Mode"}</span>
+              <Avatar className="h-8 w-8 flex-shrink-0">
+                <AvatarImage src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(user?.name || "User")}`} alt={user?.name || "User"} />
+                <AvatarFallback className="text-xs bg-blue-50 dark:bg-slate-800 text-blue-600 font-semibold">
+                  {user?.name?.charAt(0) || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{user?.name || "Guest"}</p>
+                <p className="text-xs text-slate-500">{user?.role?.replace("ROLE_", "") || "Member"}</p>
               </div>
-              <span className="sr-only">Toggle theme</span>
-            </Button>
-            <Button
+            </Link>
+          </div>
+
+          {/* Nav */}
+          <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+            {sidebarSections.map((section, i) => (
+              <div key={section.title}>
+                {i > 0 && <div className="border-t border-slate-200 dark:border-slate-800 mb-3" />}
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider px-3 mb-1.5">
+                  {section.title}
+                </p>
+                <ul className="space-y-0.5">
+                  {section.links.map((link) => {
+                    const isActive = pathname === link.route;
+                    const Icon = link.icon;
+                    return (
+                      <li key={link.route}>
+                        <Link
+                          href={link.route}
+                          onClick={() => setIsOpen(false)}
+                          className={cn(
+                            "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-200",
+                            isActive
+                              ? "bg-blue-600 text-white"
+                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          )}
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          {link.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          {/* Footer */}
+          <div className="border-t border-slate-200 dark:border-slate-800 p-2 space-y-0.5">
+            <button
+              onClick={() => { setTheme(theme === "light" ? "dark" : "light"); setIsOpen(false); }}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+                         text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+            <button
               onClick={handleLogout}
-              variant="ghost"
-              className="w-full justify-start text-red-600 hover:text-red-700 dark:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+                         text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
             >
-              <div className="flex items-center gap-3">
-                <LogOut className="h-5 w-5" />
-                <span>Logout</span>
-              </div>
-              <span className="sr-only">Logout</span>
-            </Button>
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
         </SheetContent>
       </Sheet>
 
+      {/* Center logo */}
       <div className="flex-1 flex justify-center">
         <Link href="/" className="flex items-center gap-2">
-          <span className="font-semibold">
-            <Image
-              src={LogoIcon}
-              alt="Big Data Club"
-              width={40}
-              height={40}
-              priority
-            />
-          </span>
+          <SafeImage src={LogoIcon} alt="BDC" width={28} height={28} priority />
         </Link>
       </div>
+
+      {/* Spacer to balance menu button */}
+      <div className="w-9" />
     </header>
   );
 };

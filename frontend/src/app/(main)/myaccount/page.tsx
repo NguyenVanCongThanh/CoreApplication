@@ -20,7 +20,7 @@ import {
 import { userService, UserResponse, UpdateProfileRequest } from "@/services/userService";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUser } from "@/store/UserContext";
-import Image from "next/image";
+import SafeImage from "@/components/common/SafeImage";
 
 const MyAccountPage: React.FC = () => {
   const { user: currentUser, saveUser } = useCurrentUser();
@@ -300,7 +300,7 @@ const MyAccountPage: React.FC = () => {
                 <div className="relative">
                   <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden">
                     {previewUrl ? (
-                      <Image
+                      <SafeImage
                         src={previewUrl}
                         alt="Profile"
                         className="w-full h-full object-cover"

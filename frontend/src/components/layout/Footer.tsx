@@ -1,9 +1,9 @@
 "use client"
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { FaFacebook, FaTwitter, FaInstagram, FaLinkedin } from 'react-icons/fa';
 import bdc from "@/assets/bdclogo.png"
+import SafeImage from '../common/SafeImage';
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -18,7 +18,7 @@ const Footer: React.FC = () => {
             className="flex items-center gap-3 group order-1"
           >
             <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-100 shadow-sm group-hover:shadow transition-shadow">
-              <Image
+              <SafeImage
                 src={bdc}
                 alt="Big Data Club Logo"
                 fill

@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Users } from "lucide-react";
 import clubData from "@/data/clubData.json";
 import { useScrollAnimation } from "@/hooks/animation/useScrollAnimation";
+import SafeImage from "../common/SafeImage";
 
 export default function Members() {
   const [ref, isVisible] = useScrollAnimation();
@@ -32,7 +33,7 @@ export default function Members() {
                   {teamData.map((member) => (
                     <div key={member.id} className="text-center group">
                       <div className="relative w-24 h-24 mx-auto mb-3 rounded-full overflow-hidden bg-slate-200 border-2 border-transparent group-hover:border-blue-500 transition-colors">
-                        <Image src={member.imageUrl} alt={member.name} fill className="object-cover" />
+                        <SafeImage src={member.imageUrl} alt={member.name} fill className="object-cover" />
                       </div>
                       <h4 className="font-semibold text-slate-900 text-sm truncate px-2">{member.name}</h4>
                       <p className="text-xs text-slate-500">{member.desc}</p>
