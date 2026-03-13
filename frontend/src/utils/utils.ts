@@ -7,6 +7,13 @@ export const validatePassword = (email:string, password:string) => {
     return null;
 };
 
+export function validateOnlyPassword(password: string): string | null {
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password))
+    return "Password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number";
+  return null;
+}
+
 export const formatDate = (dateStr?: string) => {
     if (!dateStr) return "";
     try {

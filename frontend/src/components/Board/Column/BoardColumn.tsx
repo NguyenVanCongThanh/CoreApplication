@@ -19,6 +19,8 @@ interface BoardColumnProps {
   onOpenScore?: (task: Task) => void;
 }
 
+const DEFAULT_COLUMNS = new Set(["todo", "in-progress", "done", "cancel"]);
+
 const BoardColumn: React.FC<BoardColumnProps> = ({
   column,
   users,
@@ -32,38 +34,39 @@ const BoardColumn: React.FC<BoardColumnProps> = ({
   onDragOver,
   onOpenScore,
 }) => {
-  const isDefaultColumn = ["todo", "in-progress", "done", "cancel"].includes(
-    column.id.toLowerCase()
-  );
+  const isDefault = DEFAULT_COLUMNS.has(column.id.toLowerCase());
 
   return (
     <div
       onDragOver={onDragOver}
       onDrop={(e) => onDrop(e, column.id)}
-      className="bg-gray-50 rounded-xl p-4 min-w-[320px] max-w-[320px] flex flex-col"
+      className="bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800
+                 p-4 min-w-[300px] max-w-[300px] flex flex-col"
     >
-      {/* Column Header */}
+      {/* Column header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${column.color}`}></div>
-          <h3 className="font-bold text-gray-800">{column.title}</h3>
-          <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">
+          <div className={`w-2.5 h-2.5 rounded-full ${column.color}`} />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+            {column.title}
+          </h3>
+          <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 text-xs px-2 py-0.5 rounded-full font-medium">
             {column.tasks.length}
           </span>
         </div>
-        {!isDefaultColumn && (
+        {!isDefault && (
           <button
             onClick={() => onDeleteColumn(column.id)}
-            className="text-gray-400 hover:text-red-500 p-1"
+            className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Delete column"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         )}
       </div>
 
-      {/* Tasks List */}
-      <div className="flex-1 overflow-y-auto mb-3 min-h-[200px]">
+      {/* Tasks */}
+      <div className="flex-1 overflow-y-auto mb-3 min-h-[160px] space-y-0">
         {column.tasks.length > 0 ? (
           column.tasks.map((task) => (
             <TaskCard
@@ -79,18 +82,21 @@ const BoardColumn: React.FC<BoardColumnProps> = ({
           ))
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-gray-400 text-sm">No tasks yet</p>
+            <p className="text-slate-400 dark:text-slate-600 text-xs">No tasks yet</p>
           </div>
         )}
       </div>
 
-      {/* Add Task Button */}
+      {/* Add task */}
       <button
         onClick={() => onAddTask(column.id)}
-        className="flex items-center justify-center gap-2 w-full py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors"
+        className="flex items-center justify-center gap-1.5 w-full py-2 text-slate-500 dark:text-slate-400
+                   hover:text-slate-800 dark:hover:text-slate-100
+                   hover:bg-slate-200 dark:hover:bg-slate-800
+                   rounded-xl transition-all text-sm font-medium"
       >
-        <Plus size={16} />
-        <span className="text-sm font-medium">Add Task</span>
+        <Plus size={15} />
+        Add Task
       </button>
     </div>
   );

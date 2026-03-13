@@ -1,16 +1,105 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Trophy, Medal, Award, TrendingUp } from "lucide-react";
+import { Trophy, Medal, Award, TrendingUp, Loader2 } from "lucide-react";
 import { userService } from "@/services/userService";
 import type { UserResponse } from "@/services/userService";
+
+const RANK_CONFIG: Record<
+  number,
+  { icon: typeof Trophy; colorClass: string; badgeBg: string; podiumFrom: string; podiumTo: string }
+> = {
+  1: {
+    icon: Trophy,
+    colorClass: "text-yellow-500",
+    badgeBg: "bg-yellow-50 dark:bg-yellow-950/40",
+    podiumFrom: "from-yellow-400",
+    podiumTo: "to-yellow-600",
+  },
+  2: {
+    icon: Medal,
+    colorClass: "text-slate-400",
+    badgeBg: "bg-slate-100 dark:bg-slate-800",
+    podiumFrom: "from-slate-300",
+    podiumTo: "to-slate-500",
+  },
+  3: {
+    icon: Medal,
+    colorClass: "text-slate-400",
+    badgeBg: "bg-slate-100 dark:bg-slate-800",
+    podiumFrom: "from-slate-300",
+    podiumTo: "to-slate-500",
+  },
+  4: {
+    icon: Award,
+    colorClass: "text-orange-500",
+    badgeBg: "bg-orange-50 dark:bg-orange-950/40",
+    podiumFrom: "from-orange-400",
+    podiumTo: "to-orange-600",
+  },
+  5: {
+    icon: Award,
+    colorClass: "text-orange-500",
+    badgeBg: "bg-orange-50 dark:bg-orange-950/40",
+    podiumFrom: "from-orange-400",
+    podiumTo: "to-orange-600",
+  },
+};
+
+const PODIUM_HEIGHT: Record<number, string> = {
+  1: "h-44",
+  2: "h-36",
+  3: "h-32",
+  4: "h-28",
+  5: "h-24",
+};
+
+function getPodiumOrder(top5: UserResponse[]) {
+  if (top5.length < 5) return top5;
+  return [top5[1], top5[0], top5[2], top5[3], top5[4]];
+}
+
+function PodiumCard({ user, rank }: { user: UserResponse; rank: number }) {
+  const cfg = RANK_CONFIG[rank] ?? RANK_CONFIG[5];
+  const Icon = cfg.icon;
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Avatar + info */}
+      <div className="mb-3 text-center">
+        <div
+          className={`w-16 h-16 rounded-full ${cfg.badgeBg} ${cfg.colorClass} flex items-center justify-center mx-auto mb-2 ring-4 ring-white dark:ring-slate-900 shadow-sm`}
+        >
+          <Icon className="h-8 w-8" />
+        </div>
+        <div className={`text-2xl font-extrabold mb-0.5 ${cfg.colorClass}`}>#{rank}</div>
+        <div className="font-semibold text-slate-800 dark:text-slate-100 max-w-[110px] truncate text-sm">
+          {user.name}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{user.team}</div>
+        <div className="text-xs text-slate-400 dark:text-slate-600">{user.code}</div>
+      </div>
+
+      {/* Podium bar */}
+      <div
+        className={`w-28 ${PODIUM_HEIGHT[rank]} bg-gradient-to-b ${cfg.podiumFrom} ${cfg.podiumTo} rounded-t-2xl flex flex-col items-center justify-center text-white relative overflow-hidden shadow-sm`}
+      >
+        <div className="absolute inset-0 bg-white/10" />
+        <div className="relative z-10 text-center">
+          <div className="text-2xl font-extrabold">{user.totalScore ?? 0}</div>
+          <div className="text-xs opacity-80">pts</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const LeaderboardPage = () => {
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    (async () => {
       try {
         setLoading(true);
         const data = await userService.getAll();
@@ -20,58 +109,26 @@ const LeaderboardPage = () => {
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchUsers();
+    })();
   }, []);
 
-  // Sort users by score
-  const sortedUsers = useMemo(() => {
-    return [...users]
-      .filter(u => u.active)
-      .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
-  }, [users]);
+  const sortedUsers = useMemo(
+    () =>
+      [...users]
+        .filter((u) => u.active)
+        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0)),
+    [users]
+  );
 
   const top5 = sortedUsers.slice(0, 5);
   const remaining = sortedUsers.slice(5);
 
-  const getTrophyIcon = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return { icon: Trophy, color: "text-yellow-500", bg: "bg-yellow-500/10" };
-      case 2:
-      case 3:
-        return { icon: Medal, color: "text-gray-400", bg: "bg-gray-400/10" };
-      case 4:
-      case 5:
-        return { icon: Award, color: "text-orange-600", bg: "bg-orange-600/10" };
-      default:
-        return { icon: Trophy, color: "text-gray-300", bg: "bg-gray-300/10" };
-    }
-  };
-
-  const getPodiumHeight = (rank: number) => {
-    switch (rank) {
-      case 1: return "h-48";
-      case 2: return "h-40";
-      case 3: return "h-38";
-      case 4: return "h-32";
-      case 5: return "h-30";
-      default: return "h-24";
-    }
-  };
-
-  const getPodiumOrder = () => {
-    if (top5.length < 5) return top5;
-    return [top5[1], top5[0], top5[2], top5[3], top5[4]];
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading leaderboard...</p>
+          <Loader2 className="h-10 w-10 animate-spin text-blue-600 mx-auto mb-3" />
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Loading leaderboard...</p>
         </div>
       </div>
     );
@@ -79,104 +136,71 @@ const LeaderboardPage = () => {
 
   return (
     <div className="min-h-screen bg-transparent p-4 sm:p-6 lg:p-8" id="leaderboard-page">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-5xl mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-8 sm:mb-12" id="leaderboard-header">
-          <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2 sm:mb-4 flex-wrap">
-            <TrendingUp className="h-8 w-8 sm:h-10 sm:w-10 lg:h-12 lg:w-12 text-purple-600" />
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+        <div className="text-center mb-10 sm:mb-14" id="leaderboard-header">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="bg-blue-600 p-3 rounded-2xl">
+              <TrendingUp className="h-6 w-6 text-white" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight">
               Leaderboard
             </h1>
           </div>
-          <p className="text-sm sm:text-base lg:text-lg text-gray-600">Top performers and rankings</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Top performers and rankings
+          </p>
         </div>
 
         {/* Top 5 Podium */}
-        <div className="mb-16" id="leaderboard-podium">
-          <h2 className="text-2xl font-bold text-center mb-8 text-gray-800">Top 5 Champions</h2>
-          <div className="flex items-end justify-center gap-4 px-4">
-            {getPodiumOrder().map((user) => {
-              const actualRank = top5.findIndex(u => u.id === user.id) + 1;
-              const trophy = getTrophyIcon(actualRank);
-              const Icon = trophy.icon;
-
-              return (
-                <div
-                  key={user.id}
-                  className={`flex flex-col items-center ${
-                    actualRank === 1 ? "order-2" : actualRank === 2 ? "order-1" : actualRank === 3 ? "order-3" : actualRank === 4 ? "order-4" : "order-5"
-                  }`}
-                >
-                  {/* User Info */}
-                  <div className="mb-4 text-center">
-                    <div className={`w-20 h-20 rounded-full ${trophy.bg} ${trophy.color} flex items-center justify-center mb-3 mx-auto border-4 border-white shadow-lg`}>
-                      <Icon className="h-10 w-10" />
-                    </div>
-                    <div className={`text-3xl font-bold mb-1 ${
-                      actualRank === 1 ? "text-yellow-600" : 
-                      actualRank === 2 || actualRank === 3 ? "text-gray-500" : 
-                      "text-orange-600"
-                    }`}>
-                      #{actualRank}
-                    </div>
-                    <div className="font-semibold text-gray-800 mb-1 max-w-[120px] truncate">
-                      {user.name}
-                    </div>
-                    <div className="text-sm text-gray-600 mb-1">{user.team}</div>
-                    <div className="text-xs text-gray-500">{user.code}</div>
-                  </div>
-
-                  {/* Podium */}
-                  <div
-                    className={`w-32 ${getPodiumHeight(actualRank)} ${
-                      actualRank === 1
-                        ? "bg-gradient-to-b from-yellow-400 to-yellow-600"
-                        : actualRank === 2 || actualRank === 3
-                        ? "bg-gradient-to-b from-gray-300 to-gray-500"
-                        : "bg-gradient-to-b from-orange-400 to-orange-600"
-                    } rounded-t-2xl shadow-2xl flex flex-col items-center justify-center text-white relative overflow-hidden`}
-                  >
-                    <div className="absolute inset-0 bg-white/10"></div>
-                    <div className="relative z-10">
-                      <div className="text-3xl font-bold mb-1">{user.totalScore}</div>
-                      <div className="text-sm opacity-90">points</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {top5.length > 0 && (
+          <div className="mb-14" id="leaderboard-podium">
+            <h2 className="text-xl font-bold text-center mb-8 text-slate-800 dark:text-slate-100">
+              Top 5 Champions
+            </h2>
+            <div className="flex items-end justify-center gap-3 sm:gap-6 px-4 overflow-x-auto pb-2">
+              {getPodiumOrder(top5).map((user) => {
+                const rank = top5.findIndex((u) => u.id === user.id) + 1;
+                return <PodiumCard key={user.id} user={user} rank={rank} />;
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Remaining Rankings */}
+        {/* Remaining */}
         {remaining.length > 0 && (
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-center mb-6 text-gray-800">Other Rankings</h2>
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-              <div className="divide-y divide-gray-100">
+          <div className="max-w-3xl mx-auto">
+            <h2 className="text-xl font-bold text-center mb-5 text-slate-800 dark:text-slate-100">
+              Other Rankings
+            </h2>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {remaining.map((user, idx) => {
                   const rank = idx + 6;
                   return (
                     <div
                       key={user.id}
-                      className="flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center font-bold text-gray-700 text-lg">
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 text-sm flex-shrink-0">
                           #{rank}
                         </div>
-                        <div className="flex-1">
-                          <div className="font-semibold text-gray-800">{user.name}</div>
-                          <div className="text-sm text-gray-500">
-                            {user.code} • {user.team} • {user.type}
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                            {user.name}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-500 truncate">
+                            {user.code} · {user.team} · {user.type}
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {user.totalScore}
+                      <div className="text-right ml-4 flex-shrink-0">
+                        <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
+                          {user.totalScore ?? 0}
                         </div>
-                        <div className="text-xs text-gray-500">points</div>
+                        <div className="text-xs text-slate-400 dark:text-slate-600">pts</div>
                       </div>
                     </div>
                   );
@@ -186,11 +210,11 @@ const LeaderboardPage = () => {
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Empty state */}
         {sortedUsers.length === 0 && (
-          <div className="text-center py-12">
-            <Trophy className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">No rankings available yet</p>
+          <div className="text-center py-16">
+            <Trophy className="h-12 w-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
+            <p className="text-slate-500 dark:text-slate-400">No rankings available yet</p>
           </div>
         )}
       </div>

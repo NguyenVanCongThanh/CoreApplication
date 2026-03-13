@@ -60,7 +60,7 @@ const MobileNav = () => {
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <Avatar className="h-8 w-8 flex-shrink-0">
-                <AvatarImage src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(user?.name || "User")}`} alt={user?.name || "User"} />
+                <AvatarImage src={`https://api.dicebear.com/9.x/adventurer/png?seed=${encodeURIComponent(user?.name || "User")}`} alt={user?.name || "User"} />
                 <AvatarFallback className="text-xs bg-blue-50 dark:bg-slate-800 text-blue-600 font-semibold">
                   {user?.name?.charAt(0) || "U"}
                 </AvatarFallback>

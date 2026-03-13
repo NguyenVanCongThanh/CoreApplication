@@ -13,7 +13,7 @@ import { CalendarLegend } from "./CalendarLegend";
 
 const ModernCalendar = () => {
   const [date, setDate]             = useState(new Date());
-  const [viewMode, setViewMode]     = useState<ViewMode>("month");
+  const [viewMode, setViewMode]     = useState<ViewMode>("week");
   const [selected, setSelected]     = useState<TaskWithColor | null>(null);
 
   const { tasks, loading, error, refreshTasks } = useCalendarTasks();

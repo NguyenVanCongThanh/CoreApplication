@@ -7,12 +7,39 @@ import { userService, UserResponse, UpdateProfileRequest } from "@/services/user
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUser } from "@/store/UserContext";
 
-import MessageAlert from "@/components/user/manage/MessageAlert";
-import ProfileTab from "@/components/user/manage/ProfileTab";
-import PasswordTab from "@/components/user/manage/PasswordTab";
-import AccountStats from "@/components/user/manage/AccountStats";
-import { ActiveTab, MessageState, PasswordForm, ShowPasswords } from '@/types'
-import { validateOnlyPassword } from '@/utils/utils'
+import MessageAlert from "./_components/MessageAlert";
+import ProfileTab from "./_components/ProfileTab";
+import PasswordTab from "./_components/PasswordTab";
+import AccountStats from "./_components/AccountStats";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type ActiveTab = "profile" | "password";
+
+type MessageState = { type: "success" | "error"; text: string } | null;
+
+type PasswordForm = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+type ShowPasswords = {
+  current: boolean;
+  new: boolean;
+  confirm: boolean;
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function validatePassword(password: string): string | null {
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password))
+    return "Password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number";
+  return null;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 const MyAccountPage: React.FC = () => {
   const { user: currentUser, saveUser } = useCurrentUser();
@@ -23,6 +50,7 @@ const MyAccountPage: React.FC = () => {
   const [fetchingUser, setFetchingUser] = useState(true);
   const [message, setMessage] = useState<MessageState>(null);
 
+  // Profile
   const [profile, setProfile] = useState<UpdateProfileRequest>({
     name: "",
     email: "",
@@ -33,6 +61,7 @@ const MyAccountPage: React.FC = () => {
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
 
+  // Password
   const [passwordForm, setPasswordForm] = useState<PasswordForm>({
     currentPassword: "",
     newPassword: "",
@@ -43,6 +72,8 @@ const MyAccountPage: React.FC = () => {
     new: false,
     confirm: false,
   });
+
+  // ── Fetch user ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -73,11 +104,14 @@ const MyAccountPage: React.FC = () => {
     fetchUserData();
   }, [currentUser?.id, user?.id]);
 
+  // Auto-dismiss message after 10s
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(() => setMessage(null), 10_000);
     return () => clearTimeout(timer);
   }, [message]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,7 +170,7 @@ const MyAccountPage: React.FC = () => {
       setMessage({ type: "error", text: "New passwords do not match" });
       return;
     }
-    const passwordError = validateOnlyPassword(passwordForm.newPassword);
+    const passwordError = validatePassword(passwordForm.newPassword);
     if (passwordError) {
       setMessage({ type: "error", text: passwordError });
       return;
@@ -173,6 +207,8 @@ const MyAccountPage: React.FC = () => {
     setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }));
   };
 
+  // ── Loading state ───────────────────────────────────────────────────────────
+
   if (fetchingUser) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
@@ -183,6 +219,8 @@ const MyAccountPage: React.FC = () => {
       </div>
     );
   }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   const tabs: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: "Profile", icon: <User className="w-4 h-4" /> },

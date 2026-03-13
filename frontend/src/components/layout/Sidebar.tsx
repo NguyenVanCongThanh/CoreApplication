@@ -117,7 +117,7 @@ const Sidebar: React.FC = () => {
             <Avatar className="h-8 w-8 flex-shrink-0">
               {mounted && (
                 <AvatarImage
-                  src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(user?.name || "User")}`}
+                  src={`https://api.dicebear.com/9.x/adventurer/png?seed=${encodeURIComponent(user?.name || "User")}`}
                   alt={user?.name || "User"}
                 />
               )}
