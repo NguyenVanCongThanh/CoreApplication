@@ -13,7 +13,7 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("http://localhost:3000", "http://localhost:8080", "https://bdc.hpcc.vn", "http://frontend:3000")
+                        .allowedOrigins("http://localhost:3000", "http://localhost:8080", "https://bdc.hpcc.vn", "http://frontend:3000", "https://bdcweb.vercel.app")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                         .allowedHeaders("*")
                         .allowCredentials(true);
