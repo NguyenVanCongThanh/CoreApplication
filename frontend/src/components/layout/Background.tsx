@@ -223,12 +223,14 @@ const Background: React.FC = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(animate);
 
+    const current = pointerRef.current;
+
     // cleanup
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerdown', () => (pointerRef.current.down = true));
-      window.removeEventListener('pointerup', () => (pointerRef.current.down = false));
+      window.removeEventListener('pointerdown', () => (current.down = true));
+      window.removeEventListener('pointerup', () => (current.down = false));
       window.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('resize', onResize);
       if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current);

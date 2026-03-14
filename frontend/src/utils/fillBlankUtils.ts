@@ -9,7 +9,7 @@ import {
   FillBlankDropdownOption,
   FillBlankValidationError,
   BlankPosition,
-} from '@/fillBlankType';
+} from '@/types';
 
 // ============================================
 // BLANK DETECTION & PARSING

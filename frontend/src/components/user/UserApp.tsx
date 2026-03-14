@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { User } from "@/types";
@@ -111,65 +110,158 @@ export default function UserApp() {
   }, [users, query, teamFilter, typeFilter, sortKey, sortDir]);
 
   return (
-    <div className="bg-transparent min-h-screen bg-[#eef2ff] p-4 sm:p-6 lg:p-8">
-      <div className="max-w-[1200px] mx-auto px-2 sm:px-0">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-[1200px] mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">Users</h1>
-            <div className="text-sm text-gray-500">{users.length} Users</div>
-            {error && <div className="text-sm text-red-500 mt-1">Error: {error}</div>}
+        <div className="mb-8">
+          <div className="mb-6">
+            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight mb-2">
+              Users
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400">
+              {users.length} total users
+            </p>
+            {error && (
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {error}
+                </p>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search anything ..." className="pl-10 pr-4 py-2 rounded-full w-80 border" />
+          {/* Controls */}
+          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center lg:justify-between">
+            {/* Search */}
+            <div className="w-full lg:w-auto relative">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, email, or code..."
+                className="w-full lg:w-80 px-4 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-slate-900 dark:text-slate-50 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              />
             </div>
 
-            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="rounded border px-3 py-2">
-              <option value="">All teams</option>
-              <option value="Research">Research</option>
-              <option value="Engineer">Engineer</option>
-              <option value="Event">Event</option>
-              <option value="Media">Media</option>
-            </select>
+            {/* Filters & Actions */}
+            <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+              {/* Team Filter */}
+              <select
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                className="px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <option value="">All teams</option>
+                <option value="Research">Research</option>
+                <option value="Engineer">Engineer</option>
+                <option value="Event">Event</option>
+                <option value="Media">Media</option>
+              </select>
 
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded border px-3 py-2">
-              <option value="">All types</option>
-              <option value="CLC">CLC</option>
-              <option value="DT">DT</option>
-              <option value="TN">TN</option>
-            </select>
+              {/* Type Filter */}
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-slate-900 dark:text-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+              >
+                <option value="">All types</option>
+                <option value="CLC">CLC</option>
+                <option value="DT">DT</option>
+                <option value="TN">TN</option>
+              </select>
 
-            <input id="user-file-input" type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); }} />
-            <button onClick={() => document.getElementById("user-file-input")?.click()} className="px-3 py-2 rounded border">Bulk upload</button>
+              {/* Bulk Upload */}
+              <input
+                id="user-file-input"
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFilePicked(f);
+                }}
+              />
+              <button
+                onClick={() => document.getElementById("user-file-input")?.click()}
+                className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-all duration-200 active:scale-95"
+              >
+                Bulk upload
+              </button>
 
-            <button onClick={load} className="px-3 py-2 rounded border ml-2">Refresh</button>
+              {/* Refresh */}
+              <button
+                onClick={load}
+                className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-all duration-200 active:scale-95"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* table header */}
-        <div className="bg-white rounded-t-lg shadow-sm overflow-x-auto">
-          <div className="grid grid-cols-12 gap-2 sm:gap-4 items-center px-3 sm:px-6 py-3 text-xs sm:text-sm font-medium text-gray-600 min-w-max">
-            <button onClick={() => toggleSort("name")} className="col-span-5 text-left flex items-center gap-2">
+        {/* Table Header */}
+        <div className="bg-white dark:bg-slate-900 rounded-t-xl border border-b-0 border-slate-200 dark:border-slate-800 overflow-x-auto">
+          <div className="grid grid-cols-12 gap-2 sm:gap-4 items-center px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 min-w-max sm:min-w-full">
+            <button
+              onClick={() => toggleSort("name")}
+              className="col-span-5 text-left flex items-center gap-2 hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
               <span>Username</span>
-              <small className="text-xs text-gray-400">{sortKey === "name" ? (sortDir === "asc" ? "▲" : "▼") : null}</small>
+              {sortKey === "name" && (
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {sortDir === "asc" ? "▲" : "▼"}
+                </span>
+              )}
             </button>
-            <button onClick={() => toggleSort("role")} className="col-span-1 text-center">Role</button>
-            <button onClick={() => toggleSort("team")} className="col-span-1 text-center">Team</button>
-            <button onClick={() => toggleSort("score")} className="col-span-1 text-center">Scores</button>
-            <button onClick={() => toggleSort("dateAdded")} className="col-span-2 text-center">Date added</button>
-            <button onClick={() => toggleSort("status")} className="col-span-2 text-center">Status</button>
+            <button
+              onClick={() => toggleSort("role")}
+              className="col-span-1 text-center hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
+              Role {sortKey === "role" && (sortDir === "asc" ? "▲" : "▼")}
+            </button>
+            <button
+              onClick={() => toggleSort("team")}
+              className="col-span-1 text-center hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
+              Team {sortKey === "team" && (sortDir === "asc" ? "▲" : "▼")}
+            </button>
+            <button
+              onClick={() => toggleSort("score")}
+              className="col-span-1 text-center hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
+              Score {sortKey === "score" && (sortDir === "asc" ? "▲" : "▼")}
+            </button>
+            <button
+              onClick={() => toggleSort("dateAdded")}
+              className="col-span-2 text-center hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
+              Date added {sortKey === "dateAdded" && (sortDir === "asc" ? "▲" : "▼")}
+            </button>
+            <button
+              onClick={() => toggleSort("status")}
+              className="col-span-2 text-center hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-200"
+            >
+              Status {sortKey === "status" && (sortDir === "asc" ? "▲" : "▼")}
+            </button>
           </div>
         </div>
 
-        {/* list */}
-        <div className="space-y-3 mt-2">
-          {loading && <div className="text-center py-8 bg-white rounded-lg shadow-sm">Loading users...</div>}
-          {!loading && filteredAndSorted.map(u => (
-            <UserRow key={u.id} user={u} onClick={(user)=>setDetail(user)} onToggleStatus={toggleStatusLocal} />
+        {/* List */}
+        <div className="space-y-2 rounded-b-xl bg-white dark:bg-slate-900 border border-t-0 border-slate-200 dark:border-slate-800 p-2">
+          {loading && (
+            <div className="py-12 px-4 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="mt-4 text-slate-600 dark:text-slate-400 font-medium">Loading users...</p>
+            </div>
+          )}
+          {!loading && filteredAndSorted.length > 0 && filteredAndSorted.map((u) => (
+            <UserRow key={u.id} user={u} onClick={(user) => setDetail(user)} onToggleStatus={toggleStatusLocal} />
           ))}
-          {!loading && filteredAndSorted.length === 0 && <div className="text-center text-gray-500 py-8 bg-white rounded-lg shadow-sm">No users found</div>}
+          {!loading && filteredAndSorted.length === 0 && (
+            <div className="py-12 px-4 text-center">
+              <p className="text-slate-500 dark:text-slate-400 font-medium">No users found</p>
+            </div>
+          )}
         </div>
       </div>
 

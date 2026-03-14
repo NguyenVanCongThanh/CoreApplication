@@ -7,7 +7,7 @@ import type {
   FillBlankTextSettings,
   FillBlankTextCorrectAnswer,
   FillBlankTextEditorProps,
-} from '@/fillBlankType';
+} from '@/types';
 
 /**
  * Component để teacher tạo câu hỏi FILL_BLANK_TEXT

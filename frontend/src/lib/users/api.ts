@@ -17,15 +17,12 @@ function authHeaders() {
 export async function fetchUsers(): Promise<User[]> {
   const res = await fetch(`${BASE}/api/users`, {
     method: "GET",
-    headers: {
-      Accept: "*/*",
-      ...(getCookie("authToken") ? { Authorization: `Bearer ${getCookie("authToken")}` } : {}),
-    },
+    headers: authHeaders(),
   });
 
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`Fetch users failed: ${res.status} ${res.statusText} ${txt ? "- " + txt : ""}`);
+    throw new Error(`Fetch users failed: ${res.status} ${res.statusText}${txt ? " - " + txt : ""}`);
   }
 
   const data = await res.json();
@@ -33,8 +30,16 @@ export async function fetchUsers(): Promise<User[]> {
   return data.map(mapServerUserToClient);
 }
 
-/** Bulk register: POST /api/auth/register/bulk  with body { users: [...] } */
-export async function postBulkRegister(payload: Array<{ name: string; email: string; role: string; team: string, code: string | undefined, type: string }>) {
+export async function postBulkRegister(
+  payload: Array<{
+    name: string;
+    email: string;
+    role: string;
+    team: string;
+    code?: string;
+    type: string;
+  }>
+) {
   const res = await fetch(`${BASE}/api/auth/register/bulk`, {
     method: "POST",
     headers: authHeaders(),
@@ -42,13 +47,18 @@ export async function postBulkRegister(payload: Array<{ name: string; email: str
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`Bulk register failed: ${res.status} ${res.statusText} ${txt ? "- " + txt : ""}`);
+    throw new Error(`Bulk register failed: ${res.status} ${res.statusText}${txt ? " - " + txt : ""}`);
   }
-  // server may return created users; attempt parse
   return res.json();
 }
 
-/** Convenience for single user create (calls bulk with one item) */
-export async function postCreateUserSingle(user: { name: string; email: string; role: string; team: string; code: string; type: string }) {
+export async function postCreateUserSingle(user: {
+  name: string;
+  email: string;
+  role: string;
+  team: string;
+  code: string;
+  type: string;
+}) {
   return postBulkRegister([user]);
 }

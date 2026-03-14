@@ -22,21 +22,19 @@ export function AnnouncementList({
   onEdit,
   onDelete,
 }: AnnouncementListProps) {
-  if (loading) {
-    return <LoadingState color="border-blue-600" />;
-  }
+  if (loading) return <LoadingState message="Đang tải thông báo..." />;
 
   if (announcements.length === 0) {
     return (
-      <div className="col-span-4 text-center py-12">
-        <p className="text-gray-500">Chưa có thông báo nào</p>
+      <div className="col-span-4 flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-slate-400 dark:text-slate-500">Chưa có thông báo nào</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {announcements.map(announcement => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {announcements.map((announcement) => (
         <AnnouncementCard
           key={announcement.id}
           announcement={announcement}

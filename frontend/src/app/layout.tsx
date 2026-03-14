@@ -21,14 +21,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased m-0 p-0 w-screen h-screen`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden no-scrollbar`}>
         <Providers>
           {children}
         </Providers>

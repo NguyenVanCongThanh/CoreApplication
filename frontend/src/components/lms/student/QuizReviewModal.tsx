@@ -23,7 +23,7 @@ import type {
   FillBlankDropdownSettings,
   FillBlankDropdownOption,
   FillBlankDropdownStudentAnswer,
-} from "@/fillBlankType";
+} from "@/types";
 
 interface AnswerOption {
   id: number;

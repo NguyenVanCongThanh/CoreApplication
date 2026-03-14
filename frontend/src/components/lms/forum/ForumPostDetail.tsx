@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   Pin,
   Lock,
-  Edit,
   Trash2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";

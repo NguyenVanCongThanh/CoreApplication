@@ -235,7 +235,7 @@ export default function QuizHistoryModal({
             </div>
           ) : (
             <div className="space-y-3">
-              {attempts.map((attempt, index) => (
+              {attempts.map((attempt) => (
                 <div
                   key={attempt.id}
                   className={`border-2 rounded-xl p-5 transition-all hover:shadow-lg ${

@@ -1,11 +1,10 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bell, Eye, Edit, Trash2 } from "lucide-react";
 import { Announcement, STATUS_COLORS } from "@/types";
+import SafeImage from "@/components/common/SafeImage";
 
 interface AnnouncementCardProps {
   announcement: Announcement;
@@ -23,73 +22,88 @@ export function AnnouncementCard({
   onDelete,
 }: AnnouncementCardProps) {
   return (
-    <Card className="overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all group bg-white border-2 border-gray-100 hover:border-blue-300 transform hover:-translate-y-1">
-      {announcement.images?.[0] ? (
-        <div className="relative w-full h-48 overflow-hidden">
-          <Image 
-            src={announcement.images[0]} 
-            alt={announcement.title} 
-            fill 
-            style={{ objectFit: "cover" }} 
-            className="group-hover:scale-110 transition-transform duration-300"
+    <div className="bg-white dark:bg-slate-900
+                    rounded-2xl border border-slate-200 dark:border-slate-800
+                    shadow-sm hover:shadow-md hover:-translate-y-0.5
+                    transition-all duration-300 overflow-hidden group flex flex-col">
+      {/* Thumbnail */}
+      <div className="relative w-full h-44 flex-shrink-0 overflow-hidden
+                      bg-slate-100 dark:bg-slate-800">
+        {announcement.images?.[0] ? (
+          <SafeImage
+            src={announcement.images[0]}
+            alt={announcement.title}
+            fill
+            style={{ objectFit: "cover" }}
+            className="group-hover:scale-105 transition-transform duration-500"
           />
-          <div className="absolute top-3 right-3">
-            <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${STATUS_COLORS[announcement.status]} border-2`}>
-              {announcement.status}
-            </span>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Bell className="h-12 w-12 text-slate-300 dark:text-slate-600" />
           </div>
-        </div>
-      ) : (
-        <div className="relative w-full h-48 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-          <Bell className="h-16 w-16 text-white/40" />
-          <div className="absolute top-3 right-3">
-            <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${STATUS_COLORS[announcement.status]} border-2`}>
-              {announcement.status}
-            </span>
-          </div>
-        </div>
-      )}
-      
-      <CardContent className="p-5">
-        <h3 className="font-bold text-lg text-gray-800 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+        )}
+
+        <span className={`absolute top-3 right-3 px-2.5 py-1 rounded-lg text-xs font-semibold
+                          ${STATUS_COLORS[announcement.status]}`}>
+          {announcement.status}
+        </span>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1.5 line-clamp-2
+                       group-hover:text-blue-600 dark:group-hover:text-blue-400
+                       transition-colors duration-200">
           {announcement.title}
         </h3>
-        <p className="text-sm text-gray-600 line-clamp-3 mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed flex-1">
           {announcement.content}
         </p>
 
-        <div className="flex gap-2 pt-3 border-t border-gray-100">
-          <Button 
-            size="sm" 
-            variant="ghost" 
+        {/* Actions */}
+        <div className="flex gap-1.5 pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+          <Button
+            size="sm"
+            variant="ghost"
             onClick={onView}
-            className="flex-1 hover:bg-blue-50 rounded-lg transition-all"
+            className="flex-1 h-8 text-slate-600 dark:text-slate-400
+                       hover:text-blue-600 dark:hover:text-blue-400
+                       hover:bg-blue-50 dark:hover:bg-blue-950/40
+                       rounded-lg text-xs font-medium transition-all duration-200"
           >
-            <Eye className="h-4 w-4 mr-1" />
+            <Eye className="h-3.5 w-3.5 mr-1" />
             Xem
           </Button>
           {isAdmin && (
             <>
-              <Button 
-                size="sm" 
-                variant="ghost" 
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={onEdit}
-                className="hover:bg-purple-50 rounded-lg transition-all"
+                aria-label="Chỉnh sửa"
+                className="h-8 w-8 p-0 text-slate-400 dark:text-slate-500
+                           hover:text-blue-600 dark:hover:text-blue-400
+                           hover:bg-blue-50 dark:hover:bg-blue-950/40
+                           rounded-lg transition-all duration-200"
               >
-                <Edit className="h-4 w-4" />
+                <Edit className="h-3.5 w-3.5" />
               </Button>
-              <Button 
-                size="sm" 
-                variant="ghost" 
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={onDelete}
-                className="hover:bg-red-50 text-red-600 rounded-lg transition-all"
+                aria-label="Xóa"
+                className="h-8 w-8 p-0 text-slate-400 dark:text-slate-500
+                           hover:text-red-600 dark:hover:text-red-400
+                           hover:bg-red-50 dark:hover:bg-red-950/40
+                           rounded-lg transition-all duration-200"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

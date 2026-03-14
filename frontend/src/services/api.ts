@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { API_BASE_URL } from "@/utils/constants";
+import { API_BASE_URL } from "@/constants";
 import { getCookie } from "@/utils/cookies";
 
 export class ApiClient {
-  private baseURL: string;
+  readonly baseURL: string;
 
   constructor(baseURL: string) {
     this.baseURL = baseURL;
@@ -72,6 +71,21 @@ export class ApiClient {
       headers: this.getHeaders(),
     });
     if (!response.ok) throw new Error(`DELETE ${endpoint} failed`);
+  }
+
+  async uploadFile<T>(endpoint: string, formData: FormData): Promise<T> {
+    const token = getCookie("authToken");
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        Accept: "*/*",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // NOTE: Không set Content-Type — browser tự set multipart/form-data + boundary
+      },
+      body: formData,
+    });
+    if (!response.ok) throw new Error(`Upload ${endpoint} failed`);
+    return response.json();
   }
 }
 

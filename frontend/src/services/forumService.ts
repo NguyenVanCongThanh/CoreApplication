@@ -1,6 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
-
-const LMS_API_URL = process.env.NEXT_PUBLIC_LMS_API_URL || 'http://localhost:8081/api/v1';
+import { lmsApiClient } from "./lmsApiClient";
 
 export interface ForumPost {
   id: number;
@@ -18,7 +16,7 @@ export interface ForumPost {
   view_count: number;
   is_pinned: boolean;
   is_locked: boolean;
-  current_user_vote?: 'upvote' | 'downvote';
+  current_user_vote?: "upvote" | "downvote";
   created_at: string;
   updated_at: string;
 }
@@ -36,7 +34,7 @@ export interface ForumComment {
   score: number;
   is_accepted: boolean;
   depth: number;
-  current_user_vote?: 'upvote' | 'downvote';
+  current_user_vote?: "upvote" | "downvote";
   replies?: ForumComment[];
   created_at: string;
   updated_at: string;
@@ -62,124 +60,108 @@ export interface VoteResponse {
 }
 
 class ForumService {
-  private api: AxiosInstance;
-
-  constructor() {
-    this.api = axios.create({
-      baseURL: LMS_API_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // Add auth token interceptor
-    this.api.interceptors.request.use((config) => {
-      const token = this.getAuthToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
-    });
-
-    // Handle errors globally
-    this.api.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
-      }
-    );
-  }
-
-  private getAuthToken(): string | null {
-    const cookies = document.cookie.split(';');
-    const authCookie = cookies.find(c => c.trim().startsWith('authToken='));
-    return authCookie ? authCookie.split('=')[1] : null;
-  }
-
-  // ============================================
-  // POST OPERATIONS
-  // ============================================
+  // ─── Posts ────────────────────────────────────────────────────────────────
 
   async createPost(contentId: number, data: CreatePostRequest) {
-    const response = await this.api.post(`/content/${contentId}/forum/posts`, data);
+    const response = await lmsApiClient.post(
+      `/content/${contentId}/forum/posts`,
+      data
+    );
     return response.data;
   }
 
-  async listPosts(contentId: number, params?: {
-    sort_by?: 'votes' | 'newest' | 'oldest' | 'views';
-    search?: string;
-    tags?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const response = await this.api.get(`/content/${contentId}/forum/posts`, { params });
+  async listPosts(
+    contentId: number,
+    params?: {
+      sort_by?: "votes" | "newest" | "oldest" | "views";
+      search?: string;
+      tags?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    const response = await lmsApiClient.get(
+      `/content/${contentId}/forum/posts`,
+      { params }
+    );
     return response.data;
   }
 
   async getPost(postId: number) {
-    const response = await this.api.get(`/forum/posts/${postId}`);
+    const response = await lmsApiClient.get(`/forum/posts/${postId}`);
     return response.data;
   }
 
   async updatePost(postId: number, data: Partial<CreatePostRequest>) {
-    const response = await this.api.put(`/forum/posts/${postId}`, data);
+    const response = await lmsApiClient.put(`/forum/posts/${postId}`, data);
     return response.data;
   }
 
   async deletePost(postId: number) {
-    const response = await this.api.delete(`/forum/posts/${postId}`);
+    const response = await lmsApiClient.delete(`/forum/posts/${postId}`);
     return response.data;
   }
 
   async pinPost(postId: number, isPinned: boolean) {
-    const response = await this.api.post(`/forum/posts/${postId}/pin`, { is_pinned: isPinned });
+    const response = await lmsApiClient.post(`/forum/posts/${postId}/pin`, {
+      is_pinned: isPinned,
+    });
     return response.data;
   }
 
   async lockPost(postId: number, isLocked: boolean) {
-    const response = await this.api.post(`/forum/posts/${postId}/lock`, { is_locked: isLocked });
+    const response = await lmsApiClient.post(`/forum/posts/${postId}/lock`, {
+      is_locked: isLocked,
+    });
     return response.data;
   }
 
-  async votePost(postId: number, voteType: 'upvote' | 'downvote') {
-    const response = await this.api.post(`/forum/posts/${postId}/vote`, { vote_type: voteType });
+  async votePost(postId: number, voteType: "upvote" | "downvote") {
+    const response = await lmsApiClient.post(`/forum/posts/${postId}/vote`, {
+      vote_type: voteType,
+    });
     return response.data;
   }
 
-  // ============================================
-  // COMMENT OPERATIONS
-  // ============================================
+  // ─── Comments ─────────────────────────────────────────────────────────────
 
   async createComment(postId: number, data: CreateCommentRequest) {
-    const response = await this.api.post(`/forum/posts/${postId}/comments`, data);
+    const response = await lmsApiClient.post(
+      `/forum/posts/${postId}/comments`,
+      data
+    );
     return response.data;
   }
 
   async listComments(postId: number) {
-    const response = await this.api.get(`/forum/posts/${postId}/comments`);
+    const response = await lmsApiClient.get(`/forum/posts/${postId}/comments`);
     return response.data;
   }
 
   async updateComment(commentId: number, body: string) {
-    const response = await this.api.put(`/forum/comments/${commentId}`, { body });
+    const response = await lmsApiClient.put(`/forum/comments/${commentId}`, {
+      body,
+    });
     return response.data;
   }
 
   async deleteComment(commentId: number) {
-    const response = await this.api.delete(`/forum/comments/${commentId}`);
+    const response = await lmsApiClient.delete(`/forum/comments/${commentId}`);
     return response.data;
   }
 
   async acceptComment(commentId: number) {
-    const response = await this.api.post(`/forum/comments/${commentId}/accept`);
+    const response = await lmsApiClient.post(
+      `/forum/comments/${commentId}/accept`
+    );
     return response.data;
   }
 
-  async voteComment(commentId: number, voteType: 'upvote' | 'downvote') {
-    const response = await this.api.post(`/forum/comments/${commentId}/vote`, { vote_type: voteType });
+  async voteComment(commentId: number, voteType: "upvote" | "downvote") {
+    const response = await lmsApiClient.post(
+      `/forum/comments/${commentId}/vote`,
+      { vote_type: voteType }
+    );
     return response.data;
   }
 }

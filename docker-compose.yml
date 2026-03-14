@@ -107,7 +107,7 @@ services:
     
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./Backend/init-scripts:/docker-entrypoint-initdb.d:ro
+      - ./auth-and-management-service/init-scripts:/docker-entrypoint-initdb.d:ro
     
     networks:
       - app-network
@@ -134,10 +134,10 @@ services:
       - "service.type=database"
       - "service.name=postgres-auth"
 
-  # Backend Service: Spring Boot
+  # auth-and-management-service: Spring Boot
   backend:
     build:
-      context: ./Backend
+      context: ./auth-and-management-service
       dockerfile: Dockerfile
       args:
         - BUILD_DATE=${BUILD_DATE:-unknown}
@@ -210,7 +210,7 @@ services:
     
     volumes:
       - upload_data:/app/uploads
-      - ./Backend/logs:/app/logs
+      - ./auth-and-management-service/logs:/app/logs
     
     depends_on:
       postgres:
@@ -260,7 +260,7 @@ services:
       - "${LMS_POSTGRES_PORT:-5434}:5432"
     volumes:
       - postgres_lms_data:/var/lib/postgresql/data
-      - ./LMS/init-scripts:/docker-entrypoint-initdb.d:ro
+      - ./lms-service/init-scripts:/docker-entrypoint-initdb.d:ro
     networks:
       - app-network
     healthcheck:
@@ -326,7 +326,7 @@ services:
   # LMS Backend Service: Go
   lms-backend:
     build:
-      context: ./LMS
+      context: ./lms-service
       dockerfile: Dockerfile
       args:
         - BUILD_DATE=${BUILD_DATE:-unknown}
@@ -393,7 +393,7 @@ services:
       - "${LMS_PORT:-8081}:8081"
     volumes:
       - lms_upload_data:/app/uploads
-      - ./LMS/logs:/app/logs
+      - ./lms-service/logs:/app/logs
     depends_on:
       postgres-lms:
         condition: service_healthy

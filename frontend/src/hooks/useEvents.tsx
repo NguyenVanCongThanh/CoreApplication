@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -48,7 +47,7 @@ export function useEvents() {
     setCurrentItem({});
   }
 
-  async function saveEvent(data: Partial<EventItem>, userId: number) {
+  async function saveEvent(data: Partial<EventItem>, userId: number | string) {
     try {
       let saved: EventItem;
       

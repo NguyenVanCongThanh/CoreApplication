@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import type {
-  FillBlankDropdownSettings,
   FillBlankDropdownOption,
   FillBlankDropdownStudentAnswer,
   FillBlankDropdownStudentProps,
-} from '@/fillBlankType';
+} from '@/types';
 
 /**
  * Component for students to answer FILL_BLANK_DROPDOWN questions
@@ -139,7 +138,6 @@ export default function FillBlankDropdownStudent({
 
           // Render blank dropdown
           const blankId = part.blankId!;
-          const config = getBlankConfig(blankId);
           const blankOptions = getOptionsForBlank(blankId);
           const selectedOptionId = getBlankSelection(blankId);
           const isCorrect = isSelectionCorrect(blankId);

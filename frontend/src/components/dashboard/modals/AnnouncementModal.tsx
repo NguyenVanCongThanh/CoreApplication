@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React from "react";
@@ -10,9 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -21,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Announcement, ModalMode, ANNOUNCEMENT_STATUSES, STATUS_COLORS } from "@/types";
+import { INPUT_BASE, LABEL_BASE } from "./modalStyles";
 
 interface AnnouncementModalProps {
   open: boolean;
@@ -31,6 +29,12 @@ interface AnnouncementModalProps {
   onSave: () => void;
 }
 
+const TITLE_MAP = {
+  add: "Tạo thông báo mới",
+  edit: "Chỉnh sửa thông báo",
+  view: "Chi tiết thông báo",
+};
+
 export function AnnouncementModal({
   open,
   mode,
@@ -40,113 +44,121 @@ export function AnnouncementModal({
   onSave,
 }: AnnouncementModalProps) {
   const isViewMode = mode === "view";
-  
-  const titleText = {
-    add: "✨ Tạo Thông Báo Mới",
-    edit: "✏️ Chỉnh Sửa Thông Báo",
-    view: "👁️ Xem Thông Báo",
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-50 to-blue-50 border-2 border-blue-200/50 shadow-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {titleText[mode]}
+      <DialogContent className="max-w-xl
+                                bg-white dark:bg-slate-900
+                                border border-slate-200 dark:border-slate-800
+                                shadow-xl rounded-2xl">
+        <DialogHeader className="pb-4 border-b border-slate-100 dark:border-slate-800">
+          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
+            Thông báo
+          </p>
+          <DialogTitle className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+            {TITLE_MAP[mode]}
           </DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-sm font-semibold text-gray-700">
-              Tiêu Đề
-            </Label>
-            <Input
-              id="title"
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className={LABEL_BASE}>Tiêu đề</Label>
+            <input
               value={announcement.title || ""}
               onChange={(e) => onChange({ ...announcement, title: e.target.value })}
               disabled={isViewMode}
-              className="border-2 border-gray-200 focus:border-blue-400 rounded-xl transition-all"
               placeholder="Nhập tiêu đề thông báo..."
-              autoFocus={false}
+              className={INPUT_BASE}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="content" className="text-sm font-semibold text-gray-700">
-              Nội Dung
-            </Label>
-            <Textarea
-              id="content"
+          <div className="space-y-1.5">
+            <Label className={LABEL_BASE}>Nội dung</Label>
+            <textarea
               value={announcement.content || ""}
               onChange={(e) => onChange({ ...announcement, content: e.target.value })}
               disabled={isViewMode}
-              className="border-2 border-gray-200 focus:border-blue-400 rounded-xl min-h-[120px] transition-all"
               placeholder="Nhập nội dung chi tiết..."
-              autoFocus={false}
+              rows={4}
+              className={`${INPUT_BASE} resize-none`}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="images" className="text-sm font-semibold text-gray-700">
-              Hình Ảnh URL (phân cách bởi dấu phẩy)
+          <div className="space-y-1.5">
+            <Label className={LABEL_BASE}>
+              Hình ảnh URL
+              <span className="text-slate-400 dark:text-slate-600 font-normal ml-1">
+                (phân cách bởi dấu phẩy)
+              </span>
             </Label>
-            <Input
-              id="images"
+            <input
               value={(announcement.images || []).join(", ")}
-              onChange={(e) => 
-                onChange({ 
-                  ...announcement, 
-                  images: e.target.value.split(",").map(s => s.trim()).filter(Boolean) 
+              onChange={(e) =>
+                onChange({
+                  ...announcement,
+                  images: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
                 })
               }
               disabled={isViewMode}
-              className="border-2 border-gray-200 focus:border-blue-400 rounded-xl transition-all"
-              placeholder="https://example.com/image1.jpg, https://..."
-              autoFocus={false}
+              placeholder="https://example.com/image.jpg"
+              className={INPUT_BASE}
             />
           </div>
 
-          {!isViewMode ? (
-            <div className="space-y-2">
-              <Label htmlFor="status" className="text-sm font-semibold text-gray-700">
-                Trạng Thái
-              </Label>
+          <div className="space-y-1.5">
+            <Label className={LABEL_BASE}>Trạng thái</Label>
+            {!isViewMode ? (
               <Select
                 value={announcement.status || "PENDING"}
-                onValueChange={(value) => onChange({ ...announcement, status: value as any })}
+                onValueChange={(v) => onChange({ ...announcement, status: v as any })}
               >
-                <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 rounded-xl">
+                <SelectTrigger className="rounded-xl
+                                          border border-slate-300 dark:border-slate-700
+                                          bg-slate-50 dark:bg-slate-800
+                                          text-slate-900 dark:text-slate-100
+                                          focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  {ANNOUNCEMENT_STATUSES.map(status => (
-                    <SelectItem key={status} value={status}>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}>
+                <SelectContent className="bg-white dark:bg-slate-900
+                                          border border-slate-200 dark:border-slate-800 rounded-xl">
+                  {ANNOUNCEMENT_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}
+                                className="focus:bg-slate-100 dark:focus:bg-slate-800">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium
+                                        ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}>
                         {status}
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Trạng Thái</Label>
-              <div className={`inline-block px-4 py-2 rounded-xl text-sm font-semibold ${STATUS_COLORS[announcement.status as keyof typeof STATUS_COLORS]}`}>
+            ) : (
+              <span className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold
+                                ${STATUS_COLORS[announcement.status as keyof typeof STATUS_COLORS]}`}>
                 {announcement.status}
-              </div>
-            </div>
-          )}
+              </span>
+            )}
+          </div>
         </div>
 
         {!isViewMode && (
-          <DialogFooter>
-            <Button 
-              onClick={onSave}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold px-6 rounded-xl shadow-lg hover:shadow-xl transition-all"
+          <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="border border-slate-300 dark:border-slate-700
+                         text-slate-700 dark:text-slate-300
+                         hover:bg-slate-50 dark:hover:bg-slate-800
+                         rounded-xl px-5 font-medium transition-all duration-200 active:scale-95"
             >
-              💾 Lưu Thông Báo
+              Hủy
+            </Button>
+            <Button
+              onClick={onSave}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                         px-6 rounded-xl shadow-sm transition-all duration-200 active:scale-95"
+            >
+              Lưu thông báo
             </Button>
           </DialogFooter>
         )}

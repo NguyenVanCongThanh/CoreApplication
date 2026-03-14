@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,7 +10,6 @@ import {
   CheckCircle,
   XCircle,
   Award,
-  TrendingUp,
   Target,
   BarChart3,
   Timer,

@@ -1,10 +1,4 @@
-export function getCookie(name: string) {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-  return match ? decodeURIComponent(match[2]) : null;
-}
-
-export function mapFrontendRoleToBackend(role: string) {
+export function mapFrontendRoleToBackend(role: string): string {
   if (!role) return "ROLE_USER";
   const r = role.toLowerCase();
   if (r.includes("admin")) return "ROLE_ADMIN";
@@ -12,12 +6,12 @@ export function mapFrontendRoleToBackend(role: string) {
   return "ROLE_USER";
 }
 
-export function mapFrontendTeamToBackend(team: string) {
+export function mapFrontendTeamToBackend(team: string): string {
   if (!team) return "RESEARCH";
   return team.toUpperCase();
 }
 
-export function mapFrontendTypeToBackend(type: string) {
+export function mapFrontendTypeToBackend(type: string): string {
   if (!type) return "CLC";
   return type.toUpperCase();
 }

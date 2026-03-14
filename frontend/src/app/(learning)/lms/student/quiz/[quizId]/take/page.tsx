@@ -14,7 +14,7 @@ import type {
   FillBlankDropdownSettings,
   FillBlankDropdownOption,
   FillBlankDropdownStudentAnswer,
-} from "@/fillBlankType";
+} from "@/types";
 
 interface QuestionImage {
   id: string;

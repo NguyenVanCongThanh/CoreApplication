@@ -1,18 +1,9 @@
-import { redirect } from "next/navigation";
 import Background from "@/components/layout/Background";
 import Footer from "@/components/layout/Footer";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileNav from "@/components/layout/MobileNav";
-import { cookies } from "next/headers";
 
 export default async function LMSLayout({ children }: { children: React.ReactNode }) {
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get("authToken")?.value;
-  // if (!token) {
-  //   redirect("/");
-  // }
-
   return (
     <div className="relative flex flex-col h-screen w-screen bg-transparent">
       <Background />

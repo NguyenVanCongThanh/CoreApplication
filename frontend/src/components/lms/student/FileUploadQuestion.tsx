@@ -31,7 +31,6 @@ export default function FileUploadQuestion({
   const [uploadedFile, setUploadedFile] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load existing file from value
   useEffect(() => {
     if (value?.file_name) {
       setUploadedFile({

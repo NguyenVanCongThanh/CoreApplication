@@ -6,10 +6,9 @@ import { Upload, X, Image as ImageIcon, Loader2, ZoomIn, AlertCircle } from "luc
 import { Button } from "@/components/ui/button";
 import quizService from "@/services/quizService";
 
-// Interface khớp với Backend (quiz_dto.go)
 export interface QuestionImage {
-  id: string;              // Backend trả về UUID string
-  url: string;             // Backend trả về key 'url'
+  id: string;
+  url: string;
   file_path: string;
   file_name: string;
   file_size: number;
@@ -45,7 +44,7 @@ export default function QuestionImageUploader({
 
     const validFiles = Array.from(files).filter((file) => {
       const isImage = file.type.startsWith("image/");
-      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
+      const isValidSize = file.size <= 5 * 1024 * 1024;
       
       if (!isImage) {
         alert(`${file.name} không phải là file ảnh hợp lệ`);

@@ -55,7 +55,6 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 
 # Copy necessary files from builder
-COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 

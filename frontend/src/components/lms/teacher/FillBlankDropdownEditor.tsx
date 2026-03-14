@@ -7,7 +7,7 @@ import type {
   FillBlankDropdownSettings,
   FillBlankDropdownOption,
   FillBlankDropdownEditorProps,
-} from '@/fillBlankType';
+} from '@/types';
 
 /**
  * Component để teacher tạo câu hỏi FILL_BLANK_DROPDOWN

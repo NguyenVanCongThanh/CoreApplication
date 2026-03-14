@@ -340,7 +340,7 @@ volumes:
   - lms_upload_data:/app/uploads   # Volume Docker persistent
 ```
 
-Khi dev local chạy Go trực tiếp (không qua Docker), `STORAGE_LOCAL_PATH` mặc định là `./uploads` trong thư mục `LMS/`.
+Khi dev local chạy Go trực tiếp (không qua Docker), `STORAGE_LOCAL_PATH` mặc định là `./uploads` trong thư mục `lms-service/`.
 
 ### Lưu ý khi dùng MinIO
 

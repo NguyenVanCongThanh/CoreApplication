@@ -14,29 +14,20 @@ interface EventListProps {
   onDelete: (id: number) => void;
 }
 
-export function EventList({
-  events,
-  loading,
-  isAdmin,
-  onView,
-  onEdit,
-  onDelete,
-}: EventListProps) {
-  if (loading) {
-    return <LoadingState color="border-purple-600" />;
-  }
+export function EventList({ events, loading, isAdmin, onView, onEdit, onDelete }: EventListProps) {
+  if (loading) return <LoadingState message="Đang tải sự kiện..." />;
 
   if (events.length === 0) {
     return (
-      <div className="col-span-4 text-center py-12">
-        <p className="text-gray-500">Chưa có sự kiện nào</p>
+      <div className="col-span-4 flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-slate-400 dark:text-slate-500">Chưa có sự kiện nào</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {events.map(event => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {events.map((event) => (
         <EventCard
           key={event.id}
           event={event}

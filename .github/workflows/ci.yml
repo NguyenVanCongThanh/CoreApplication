@@ -55,14 +55,14 @@ jobs:
         with:
           filters: |
             backend:
-              - 'Backend/**'
-              - 'Backend/Dockerfile'
+              - 'auth-and-management-service/**'
+              - 'auth-and-management-service/Dockerfile'
             frontend:
               - 'frontend/**'
               - 'frontend/Dockerfile'
             lms:
-              - 'LMS/**'
-              - 'LMS/Dockerfile'
+              - 'lms-service/**'
+              - 'lms-service/Dockerfile'
             docker:
               - 'docker-compose.yml'
               - '.github/workflows/**'
@@ -115,8 +115,8 @@ jobs:
       matrix:
         include:
           - service: backend
-            context: ./Backend
-            dockerfile: ./Backend/Dockerfile
+            context: ./auth-and-management-service
+            dockerfile: ./auth-and-management-service/Dockerfile
             image: bdc-backend
             should_build: ${{ needs.detect-changes.outputs.backend == 'true' || github.event.inputs.force_build_all == 'true' }}
             setup: 'java'
@@ -133,8 +133,8 @@ jobs:
             build_cmd: 'npm ci && npm run build'
             
           - service: lms
-            context: ./LMS
-            dockerfile: ./LMS/Dockerfile
+            context: ./lms-service
+            dockerfile: ./lms-service/Dockerfile
             image: bdc-lms
             should_build: ${{ needs.detect-changes.outputs.lms == 'true' || github.event.inputs.force_build_all == 'true' }}
             setup: 'go'
@@ -174,7 +174,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-          cache-dependency-path: 'LMS/go.sum'
+          cache-dependency-path: 'lms-service/go.sum'
 
       # Install dependencies
       - name: Install dependencies (Node)
@@ -328,9 +328,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Changed | Build Status | Security Scan |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|---------|--------------|---------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend | ${{ needs.detect-changes.outputs.backend }} | ${{ needs.build-and-test.result }} | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| auth-and-management-service | ${{ needs.detect-changes.outputs.backend }} | ${{ needs.build-and-test.result }} | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend | ${{ needs.detect-changes.outputs.frontend }} | ${{ needs.build-and-test.result }} | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| LMS | ${{ needs.detect-changes.outputs.lms }} | ${{ needs.build-and-test.result }} | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| lms-service | ${{ needs.detect-changes.outputs.lms }} | ${{ needs.build-and-test.result }} | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ needs.build-and-test.result }}" == "failure" ]; then
@@ -356,9 +356,9 @@ jobs:
             **Security Scan:** ${{ needs.security-scan.result }}
             
             ### Changes Detected
-            - Backend: ${{ needs.detect-changes.outputs.backend }}
+            - auth-and-management-service: ${{ needs.detect-changes.outputs.backend }}
             - Frontend: ${{ needs.detect-changes.outputs.frontend }}
-            - LMS: ${{ needs.detect-changes.outputs.lms }}
+            - lms-service: ${{ needs.detect-changes.outputs.lms }}
             
             All checks passed. Ready to merge! 🚀`;
             
