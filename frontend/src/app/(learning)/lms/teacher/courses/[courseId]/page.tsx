@@ -1,491 +1,416 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
-import { Button } from "@/components/ui/button";
-import ContentModal from "@/components/lms/teacher/ContentModal";
 import ContentViewer from "@/components/lms/student/ContentViewer";
-import BulkUploadModal from "@/components/lms/teacher/BulkUploadModal";
+import ContentModal from "@/components/lms/teacher/ContentModal";
 import EditContentModal from "@/components/lms/teacher/EditContentModal";
+import BulkUploadModal from "@/components/lms/teacher/BulkUploadModal";
 import { EditCourseModal } from "@/components/lms/teacher/EditCourseModal";
 import { SectionModal } from "@/components/lms/teacher/SectionModal";
-import { Course, Section } from "@/types";
 import { OverviewTab } from "@/components/lms/teacher/OverviewTab";
+import {
+  ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
+  Trash2, Eye, CheckCircle2, XCircle,
+  Edit3, Upload, Play, FileText, HelpCircle, File,
+  MessageSquare, Megaphone, Image as ImageIcon
+} from "lucide-react";
+import {
+  Card, TabBar, Badge, ContentTypeBadge,
+  StatCard, PrimaryBtn, SecondaryBtn, GhostBtn,
+  EmptyState, PageLoader, Alert, Spinner
+} from "@/components/lms/shared";
+import { Course, Section, Content } from "@/types";
 
-interface Content {
+type Tab = "overview" | "content" | "learners" | "quizzes";
+
+// ─── Learner list tab ─────────────────────────────────────────────────────────
+
+interface Learner {
   id: number;
-  section_id: number;
-  type: string;
-  title: string;
-  description: string;
-  order_index: number;
-  is_published: boolean;
-  is_mandatory: boolean;
-  metadata?: Record<string, any>;
-  file_path?: string;
-  file_size?: number;
-  file_type?: string;
-  updated_at?: any;
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  status: "WAITING" | "ACCEPTED" | "REJECTED";
+  enrolled_at: string;
 }
 
-export default function CourseDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const courseId = parseInt(params.courseId as string);
-  
-  const [course, setCourse] = useState<Course | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
+function LearnersTab({ courseId }: { courseId: number }) {
+  const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "sections">("overview");
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showSectionModal, setShowSectionModal] = useState(false);
-  const [editingSection, setEditingSection] = useState<Section | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
-  const [showContentModal, setShowContentModal] = useState(false);
-  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
-  const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
-  const [showContentViewer, setShowContentViewer] = useState(false);
-  const [selectedContent, setSelectedContent] = useState<Content | null>(null);
-  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
-  const [bulkUploadSectionId, setBulkUploadSectionId] = useState<number | null>(null);
-  const [showEditContentModal, setShowEditContentModal] = useState(false);
-  const [editingContent, setEditingContent] = useState<Content | null>(null);
+  const [filter, setFilter] = useState<"ALL"|"WAITING"|"ACCEPTED"|"REJECTED">("ALL");
+  const [processing, setProcessing] = useState<number | null>(null);
 
-  useEffect(() => {
-    loadCourse();
-    loadSections();
-  }, [courseId]);
-
-  const loadCourse = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await lmsService.getCourse(courseId);
-      setCourse(data?.data);
-    } catch (error) {
-      console.error("Error loading course:", error);
-      alert("Không tìm thấy khóa học");
-      router.push("/lms/teacher/courses");
-    }
-  };
+      const f = filter === "ALL" ? undefined : filter as any;
+      const data = await lmsService.getCourseLearners(courseId, f);
+      setLearners(data ?? []);
+    } finally { setLoading(false); }
+  }, [courseId, filter]);
 
-  const loadSections = async () => {
+  useEffect(() => { load(); }, [filter]);
+
+  const accept = async (enrollmentId: number) => {
+    setProcessing(enrollmentId);
     try {
-      const data = await lmsService.listSections(courseId);
-      setSections(data?.data || []);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error loading sections:", error);
-      setLoading(false);
-    }
+      await lmsService.acceptEnrollment(enrollmentId, courseId);
+      setLearners(prev => prev.map(l => l.id === enrollmentId ? { ...l, status: "ACCEPTED" } : l));
+    } finally { setProcessing(null); }
   };
 
-  const loadSectionContent = async (sectionId: number) => {
+  const reject = async (enrollmentId: number) => {
+    if (!confirm("Từ chối yêu cầu này?")) return;
+    setProcessing(enrollmentId);
     try {
-      const data = await lmsService.listContent(sectionId);
-      setSectionContents(prev => ({
-        ...prev,
-        [sectionId]: data?.data || []
-      }));
-    } catch (error) {
-      console.error("Error loading content:", error);
-    }
+      await lmsService.rejectEnrollment(enrollmentId, courseId);
+      setLearners(prev => prev.map(l => l.id === enrollmentId ? { ...l, status: "REJECTED" } : l));
+    } finally { setProcessing(null); }
   };
 
-  const handlePublish = async () => {
-    if (!confirm("Bạn có chắc muốn xuất bản khóa học này?")) return;
-    
-    try {
-      await lmsService.publishCourse(courseId);
-      alert("Xuất bản khóa học thành công!");
-      loadCourse();
-    } catch (error: any) {
-      alert(error.response?.data?.error || "Lỗi khi xuất bản");
-    }
+  const counts = {
+    waiting:  learners.filter(l => l.status === "WAITING").length,
+    accepted: learners.filter(l => l.status === "ACCEPTED").length,
+    rejected: learners.filter(l => l.status === "REJECTED").length,
   };
 
-  const toggleSection = (sectionId: number) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(sectionId)) {
-      newExpanded.delete(sectionId);
-    } else {
-      newExpanded.add(sectionId);
-      if (!sectionContents[sectionId]) {
-        loadSectionContent(sectionId);
-      }
-    }
-    setExpandedSections(newExpanded);
-  };
-
-  const handleDeleteSection = async (sectionId: number) => {
-    if (!confirm("Bạn có chắc muốn xóa chương này?")) return;
-    
-    try {
-      await lmsService.deleteSection(sectionId);
-      alert("Xóa chương thành công!");
-      loadSections();
-    } catch (error: any) {
-      alert(error.response?.data?.error || "Lỗi khi xóa chương");
-    }
-  };
-
-  const handleDeleteContent = async (contentId: number, sectionId: number) => {
-    if (!confirm("Bạn có chắc muốn xóa nội dung này?")) return;
-    
-    try {
-      await lmsService.deleteContent(contentId);
-      alert("Xóa nội dung thành công!");
-      loadSectionContent(sectionId);
-    } catch (error: any) {
-      alert(error.response?.data?.error || "Lỗi khi xóa nội dung");
-    }
-  };
-
-  const getContentTypeIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      TEXT: "📝",
-      VIDEO: "🎥",
-      DOCUMENT: "📄",
-      IMAGE: "🖼️",
-      QUIZ: "❓",
-      FORUM: "💬",
-      ANNOUNCEMENT: "📢"
-    };
-    return icons[type] || "📎";
-  };
-
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return "";
-    const mb = bytes / (1024 * 1024);
-    return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB` : `${mb.toFixed(1)} MB`;
-  };
-
-  if (loading || !course) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  const filtered = filter === "ALL" ? learners : learners.filter(l => l.status === filter);
 
   return (
-    <div>
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                course.status === "PUBLISHED" 
-                  ? "bg-green-100 text-green-800"
-                  : "bg-yellow-100 text-yellow-800"
-              }`}>
-                {course.status === "PUBLISHED" ? "Xuất bản" : "Nháp"}
-              </span>
-              {course.level && (
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
-                  {course.level}
-                </span>
-              )}
-              {course.category && (
-                <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">
-                  {course.category}
-                </span>
-              )}
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{course.title}</h1>
-            <p className="text-gray-600">{course.description || "Chưa có mô tả"}</p>
-          </div>
-          
-          <div className="flex gap-2">
-            {course.status === "DRAFT" && (
-              <Button
-                onClick={handlePublish}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
-                Xuất bản
-              </Button>
-            )}
-            <Button
-              onClick={() => setShowEditModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              Chỉnh sửa
-            </Button>
-            <Button
-              onClick={() => router.push(`/lms/teacher/courses/${courseId}/learners`)}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
-            >
-              Quản lý học viên
-            </Button>
-          </div>
-        </div>
+    <div className="space-y-5">
+      {/* Mini stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Đã duyệt"    value={counts.accepted} icon={<CheckCircle2 className="w-4 h-4" />} accent="green" />
+        <StatCard label="Chờ duyệt"   value={counts.waiting}  icon={<HelpCircle className="w-4 h-4" />}   accent="orange" />
+        <StatCard label="Từ chối"     value={counts.rejected} icon={<XCircle className="w-4 h-4" />}      accent="red" />
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border mb-6">
-        <div className="border-b px-6">
-          <nav className="flex gap-4">
-            <Button
-              onClick={() => setActiveTab("overview")}
-              className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                activeTab === "overview"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Tổng quan
-            </Button>
-            <Button
-              onClick={() => setActiveTab("sections")}
-              className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                activeTab === "sections"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Nội dung khóa học
-            </Button>
-          </nav>
-        </div>
+      {/* Filter tabs */}
+      <TabBar
+        tabs={[
+          { id: "ALL",      label: "Tất cả",      badge: learners.length },
+          { id: "WAITING",  label: "Chờ duyệt",   badge: counts.waiting },
+          { id: "ACCEPTED", label: "Đã duyệt",    badge: counts.accepted },
+          { id: "REJECTED", label: "Từ chối" },
+        ]}
+        active={filter}
+        onChange={setFilter as any}
+      />
 
-        <div className="p-6">
-          {activeTab === "overview" && <OverviewTab course={course} sections={sections} />}
-          {activeTab === "sections" && (
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-semibold">Quản lý chương học</h3>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => {
-                      setEditingSection(null);
-                      setShowSectionModal(true);
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Thêm chương mới
-                  </Button>
-                </div>
+      {/* List */}
+      {loading ? <PageLoader /> : filtered.length === 0 ? (
+        <EmptyState icon={<Users className="w-10 h-10" />} title="Không có học viên" />
+      ) : (
+        <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          {filtered.map(l => (
+            <div key={l.id} className="flex items-center gap-4 px-5 py-4 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+              <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-sm text-slate-600 dark:text-slate-400 flex-shrink-0">
+                {l.student_name.charAt(0).toUpperCase()}
               </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900 dark:text-slate-50 truncate text-sm">{l.student_name}</p>
+                <p className="text-xs text-slate-500 truncate">{l.student_email}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Badge variant={l.status === "ACCEPTED" ? "green" : l.status === "WAITING" ? "yellow" : "red"}>
+                  {l.status === "ACCEPTED" ? "Đã duyệt" : l.status === "WAITING" ? "Chờ duyệt" : "Từ chối"}
+                </Badge>
+                {l.status === "WAITING" && (
+                  <>
+                    <button onClick={() => accept(l.id)} disabled={processing === l.id}
+                      className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 flex items-center justify-center transition-colors border border-green-200 dark:border-green-800">
+                      {processing === l.id ? <Spinner className="w-4 h-4 border-2" /> : <CheckCircle2 className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => reject(l.id)} disabled={processing === l.id}
+                      className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors border border-red-200 dark:border-red-800">
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {sections.length === 0 ? (
-                <div className="text-center py-12 bg-gray-50 rounded-lg">
-                  <p className="text-gray-600 mb-4">Chưa có chương nào</p>
-                  <Button
-                    onClick={() => setShowSectionModal(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Tạo chương đầu tiên
-                  </Button>
+// ─── Content tree tab ─────────────────────────────────────────────────────────
+
+const CONTENT_ICON: Record<string, React.ReactNode> = {
+  VIDEO:        <Play className="w-3.5 h-3.5" />,
+  DOCUMENT:     <FileText className="w-3.5 h-3.5" />,
+  IMAGE:        <ImageIcon className="w-3.5 h-3.5" />,
+  TEXT:         <FileText className="w-3.5 h-3.5" />,
+  QUIZ:         <HelpCircle className="w-3.5 h-3.5" />,
+  FORUM:        <MessageSquare className="w-3.5 h-3.5" />,
+  ANNOUNCEMENT: <Megaphone className="w-3.5 h-3.5" />,
+};
+
+interface ContentTabProps {
+  courseId: number;
+  sections: Section[];
+  onSectionsChange: () => void;
+}
+
+function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set(sections.slice(0,1).map(s=>s.id)));
+  const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
+  const [loadingContent, setLoadingContent] = useState<Record<number, boolean>>({});
+
+  const [showSectionModal, setShowSectionModal] = useState(false);
+  const [editingSection, setEditingSection] = useState<Section | null>(null);
+  const [showContentModal, setShowContentModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showEditContentModal, setShowEditContentModal] = useState(false);
+  const [showContentViewer, setShowContentViewer] = useState(false);
+  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [editingContent, setEditingContent] = useState<Content | null>(null);
+  const [viewingContent, setViewingContent] = useState<Content | null>(null);
+  const [deletingSection, setDeletingSection] = useState<number | null>(null);
+  const [deletingContent, setDeletingContent] = useState<number | null>(null);
+
+  const loadContents = useCallback(async (sectionId: number) => {
+    if (sectionContents[sectionId]) return;
+    setLoadingContent(prev => ({ ...prev, [sectionId]: true }));
+    try {
+      const res = await lmsService.listContent(sectionId);
+      setSectionContents(prev => ({ ...prev, [sectionId]: res?.data ?? [] }));
+    } finally {
+      setLoadingContent(prev => ({ ...prev, [sectionId]: false }));
+    }
+  }, [sectionContents]);
+
+  // Auto-load expanded sections
+  useEffect(() => {
+    expanded.forEach(id => loadContents(id));
+  }, [expanded]);
+
+  const toggle = (id: number) => {
+    setExpanded(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const deleteSection = async (id: number) => {
+    if (!confirm("Xóa chương này?")) return;
+    setDeletingSection(id);
+    try { await lmsService.deleteSection(id); onSectionsChange(); }
+    finally { setDeletingSection(null); }
+  };
+
+  const deleteContent = async (contentId: number, sectionId: number) => {
+    if (!confirm("Xóa nội dung này?")) return;
+    setDeletingContent(contentId);
+    try {
+      await lmsService.deleteContent(contentId);
+      setSectionContents(prev => ({
+        ...prev,
+        [sectionId]: (prev[sectionId] ?? []).filter(c => c.id !== contentId)
+      }));
+    } finally { setDeletingContent(null); }
+  };
+
+  const reloadSectionContent = async (sectionId: number) => {
+    setLoadingContent(prev => ({ ...prev, [sectionId]: true }));
+    try {
+      const res = await lmsService.listContent(sectionId);
+      setSectionContents(prev => ({ ...prev, [sectionId]: res?.data ?? [] }));
+    } finally { setLoadingContent(prev => ({ ...prev, [sectionId]: false })); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Top action */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500 dark:text-slate-500">{sections.length} chương</p>
+        <PrimaryBtn
+          size="sm"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={() => { setEditingSection(null); setShowSectionModal(true); }}
+        >
+          Thêm chương
+        </PrimaryBtn>
+      </div>
+
+      {sections.length === 0 ? (
+        <EmptyState
+          icon={<FileText className="w-10 h-10" />}
+          title="Chưa có chương nào"
+          description="Tạo chương đầu tiên để bắt đầu thêm nội dung."
+          action={
+            <PrimaryBtn
+              size="sm"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowSectionModal(true)}
+            >
+              Tạo chương đầu tiên
+            </PrimaryBtn>
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {sections.map((sec, i) => {
+            const isExpanded = expanded.has(sec.id);
+            const contents = sectionContents[sec.id] ?? [];
+            const isLoadingC = loadingContent[sec.id];
+
+            return (
+              <div key={sec.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                {/* Section header */}
+                <div
+                  className="flex items-center gap-3 px-5 py-4 bg-slate-50 dark:bg-slate-800/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  onClick={() => toggle(sec.id)}
+                >
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold flex-shrink-0 border border-blue-200 dark:border-blue-800">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-slate-50 truncate">{sec.title}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {isExpanded ? `${contents.length} nội dung` : sec.description || "Nhấn để xem nội dung"}
+                    </p>
+                  </div>
+                  {/* Section actions */}
+                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <button
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      onClick={() => {
+                        setSelectedSectionId(sec.id);
+                        setShowContentModal(true);
+                      }}
+                      title="Thêm nội dung"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      onClick={() => {
+                        setSelectedSectionId(sec.id);
+                        setShowBulkModal(true);
+                      }}
+                      title="Bulk upload"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      onClick={() => { setEditingSection(sec); setShowSectionModal(true); }}
+                      title="Sửa chương"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      disabled={deletingSection === sec.id}
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                      onClick={() => deleteSection(sec.id)}
+                      title="Xóa chương"
+                    >
+                      {deletingSection === sec.id ? <Spinner className="w-4 h-4 border-2" /> : <Trash2 className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {sections.map((section, index) => (
-                    <div key={section.id} className="border rounded-lg overflow-hidden">
-                      <div className="p-4 bg-gray-50 flex justify-between items-center">
-                        <div className="flex-1">
-                          <h4 className="font-semibold">
-                            Chương {index + 1}: {section.title}
-                          </h4>
-                          <p className="text-sm text-gray-600">{section.description || "Chưa có mô tả"}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => toggleSection(section.id)}
-                            className="px-3 py-1 text-sm bg-white border rounded hover:bg-gray-100"
-                          >
-                            {expandedSections.has(section.id) ? "Thu gọn" : "Xem nội dung"}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setSelectedSectionId(section.id);
-                              setShowContentModal(true);
-                            }}
-                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                          >
-                            Thêm nội dung
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setBulkUploadSectionId(section.id);
-                              setShowBulkUploadModal(true);
-                            }}
-                            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
-                          >
-                            Bulk Upload
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setEditingSection(section);
-                              setShowSectionModal(true);
-                            }}
-                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            Sửa
-                          </Button>
-                          <Button
-                            onClick={() => handleDeleteSection(section.id)}
-                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                          >
-                            Xóa
-                          </Button>
+
+                {/* Content list */}
+                {isExpanded && (
+                  <div>
+                    {isLoadingC ? (
+                      <div className="px-5 py-4">
+                        <div className="space-y-2">
+                          {[0,1,2].map(k => <div key={k} className="h-8 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />)}
                         </div>
                       </div>
+                    ) : contents.length === 0 ? (
+                      <div className="px-5 py-6 text-center">
+                        <p className="text-sm text-slate-400">Chưa có nội dung. Nhấn + để thêm.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {contents.map((c, ci) => (
+                          <div key={c.id} className="flex items-center gap-3 px-5 py-3 group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <span className="text-slate-400 dark:text-slate-500 flex-shrink-0 w-4 text-xs text-right">{ci+1}</span>
+                            <span className="text-slate-400 dark:text-slate-500 flex-shrink-0">
+                              {CONTENT_ICON[c.type] ?? <File className="w-3.5 h-3.5" />}
+                            </span>
+                            <p className="flex-1 text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{c.title}</p>
+                            <ContentTypeBadge type={c.type} />
+                            {c.is_mandatory && <Badge variant="yellow">Bắt buộc</Badge>}
 
-                      {expandedSections.has(section.id) && (
-                        <div className="p-4 bg-white border-t">
-                          <h5 className="font-medium mb-3">Nội dung trong chương</h5>
-                          {!sectionContents[section.id] || sectionContents[section.id].length === 0 ? (
-                            <p className="text-gray-600 text-sm">Chưa có nội dung nào</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {sectionContents[section.id].map((content, idx) => (
-                                <div key={content.id} className="p-3 bg-gray-50 rounded">
-                                  <div className="flex justify-between items-start">
-                                    <div className="flex-1">
-                                      <p className="font-medium text-sm flex items-center gap-2">
-                                        <span>{getContentTypeIcon(content.type)}</span>
-                                        <span>{idx + 1}. {content.title}</span>
-                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                                          {content.type}
-                                        </span>
-                                        {content.is_mandatory && (
-                                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">
-                                            Bắt buộc
-                                          </span>
-                                        )}
-                                      </p>
-                                      <p className="text-xs text-gray-600 mt-1">
-                                        {content.description || "Chưa có mô tả"}
-                                      </p>
-                                      {content.metadata?.file_name && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                          📎 {content.metadata.file_name}
-                                          {content.metadata.file_size && ` (${formatFileSize(content.metadata.file_size)})`}
-                                        </p>
-                                      )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        onClick={() => {
-                                          setSelectedContent(content);
-                                          setShowContentViewer(true);
-                                        }}
-                                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                      >
-                                        Xem
-                                      </Button>
-                                      <Button
-                                        onClick={() => {
-                                          setEditingContent(content);
-                                          setShowEditContentModal(true);
-                                        }}
-                                        className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700"
-                                      >
-                                        Sửa
-                                      </Button>
-                                      <Button
-                                        onClick={() => handleDeleteContent(content.id, section.id)}
-                                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                                      >
-                                        Xóa
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
+                            {/* Content actions (hidden until hover) */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500"
+                                onClick={() => { setViewingContent(c); setShowContentViewer(true); }}
+                                title="Xem"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500"
+                                onClick={() => { setEditingContent(c); setShowEditContentModal(true); }}
+                                title="Sửa"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                disabled={deletingContent === c.id}
+                                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
+                                onClick={() => deleteContent(c.id, sec.id)}
+                                title="Xóa"
+                              >
+                                {deletingContent === c.id ? <Spinner className="w-3.5 h-3.5 border-2" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
-
-      {/* Modals */}
-      {showEditModal && (
-        <EditCourseModal
-          course={course}
-          onClose={() => setShowEditModal(false)}
-          onSuccess={() => {
-            setShowEditModal(false);
-            loadCourse();
-          }}
-        />
       )}
 
+      {/* Modals */}
       {showSectionModal && (
         <SectionModal
           courseId={courseId}
           section={editingSection}
-          onClose={() => {
-            setShowSectionModal(false);
-            setEditingSection(null);
-          }}
-          onSuccess={() => {
-            setShowSectionModal(false);
-            setEditingSection(null);
-            loadSections();
-          }}
           existingSections={sections}
+          onClose={() => { setShowSectionModal(false); setEditingSection(null); }}
+          onSuccess={() => { setShowSectionModal(false); setEditingSection(null); onSectionsChange(); }}
         />
       )}
 
       {showContentModal && selectedSectionId && (
         <ContentModal
           sectionId={selectedSectionId}
-          onClose={() => {
-            setShowContentModal(false);
-            setSelectedSectionId(null);
-          }}
+          existingContents={sectionContents[selectedSectionId] ?? []}
+          onClose={() => { setShowContentModal(false); setSelectedSectionId(null); }}
           onSuccess={() => {
             setShowContentModal(false);
-            if (selectedSectionId) {
-              loadSectionContent(selectedSectionId);
-            }
+            if (selectedSectionId) reloadSectionContent(selectedSectionId);
             setSelectedSectionId(null);
           }}
-          existingContents={sectionContents[selectedSectionId] || []}
         />
       )}
 
-      {showContentViewer && selectedContent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
-              <h2 className="text-xl font-bold">{selectedContent.title}</h2>
-              <Button
-                onClick={() => {
-                  setShowContentViewer(false);
-                  setSelectedContent(null);
-                }}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-              >
-                Đóng
-              </Button>
-            </div>
-            <div className="p-6">
-              <ContentViewer content={selectedContent} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showBulkUploadModal && bulkUploadSectionId && (
+      {showBulkModal && selectedSectionId && (
         <BulkUploadModal
-          sectionId={bulkUploadSectionId}
-          onClose={() => {
-            setShowBulkUploadModal(false);
-            setBulkUploadSectionId(null);
-          }}
+          sectionId={selectedSectionId}
+          onClose={() => { setShowBulkModal(false); setSelectedSectionId(null); }}
           onSuccess={() => {
-            setShowBulkUploadModal(false);
-            setBulkUploadSectionId(null);
-            loadSectionContent(bulkUploadSectionId);
+            setShowBulkModal(false);
+            if (selectedSectionId) reloadSectionContent(selectedSectionId);
+            setSelectedSectionId(null);
           }}
         />
       )}
@@ -493,15 +418,184 @@ export default function CourseDetailPage() {
       {showEditContentModal && editingContent && (
         <EditContentModal
           content={editingContent}
-          onClose={() => {
-            setShowEditContentModal(false);
-            setEditingContent(null);
-          }}
+          onClose={() => { setShowEditContentModal(false); setEditingContent(null); }}
           onSuccess={() => {
             setShowEditContentModal(false);
-            loadSectionContent(editingContent.section_id);
+            reloadSectionContent(editingContent.section_id);
             setEditingContent(null);
           }}
+        />
+      )}
+
+      {showContentViewer && viewingContent && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-slate-50">{viewingContent.title}</h3>
+              <button onClick={() => { setShowContentViewer(false); setViewingContent(null); }}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500">
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <ContentViewer content={viewingContent} userRole="TEACHER" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
+
+export default function TeacherCourseDetailPage() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const router = useRouter();
+  const id = Number(courseId);
+
+  const [course, setCourse] = useState<Course | null>(null);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<Tab>("overview");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  const loadCourse = useCallback(async () => {
+    try {
+      const res = await lmsService.getCourse(id);
+      setCourse(res?.data ?? null);
+    } catch { setError("Không thể tải thông tin khóa học."); }
+  }, [id]);
+
+  const loadSections = useCallback(async () => {
+    try {
+      const res = await lmsService.listSections(id);
+      setSections(res?.data ?? []);
+    } catch {}
+  }, [id]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await Promise.all([loadCourse(), loadSections()]);
+      setLoading(false);
+    })();
+  }, [id]);
+
+  const handlePublish = async () => {
+    if (!confirm("Xuất bản khóa học này?")) return;
+    setPublishing(true);
+    try {
+      await lmsService.publishCourse(id);
+      await loadCourse();
+    } catch { setError("Không thể xuất bản."); }
+    finally { setPublishing(false); }
+  };
+
+  if (loading) return <PageLoader message="Đang tải khóa học..." />;
+  if (!course) return <div className="p-8 text-center text-slate-500">Không tìm thấy khóa học.</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+        {/* Breadcrumb + header */}
+        <div>
+          <GhostBtn
+            size="sm"
+            icon={<ArrowLeft className="w-4 h-4" />}
+            onClick={() => router.push("/lms/teacher/courses")}
+            className="mb-4"
+          >
+            Quay lại
+          </GhostBtn>
+
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Badge variant={course.status === "PUBLISHED" ? "green" : "yellow"}>
+                    {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
+                  </Badge>
+                  {course.level && <Badge variant="gray">{course.level}</Badge>}
+                  {course.category && <Badge variant="blue">{course.category}</Badge>}
+                </div>
+                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 mb-1">
+                  {course.title}
+                </h1>
+                <p className="text-slate-600 dark:text-slate-400 text-sm">
+                  {course.description || "Chưa có mô tả."}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {course.status === "DRAFT" && (
+                  <PrimaryBtn
+                    size="sm"
+                    loading={publishing}
+                    icon={<Eye className="w-4 h-4" />}
+                    onClick={handlePublish}
+                  >
+                    Xuất bản
+                  </PrimaryBtn>
+                )}
+                <SecondaryBtn
+                  size="sm"
+                  icon={<Edit3 className="w-4 h-4" />}
+                  onClick={() => setShowEditModal(true)}
+                >
+                  Chỉnh sửa
+                </SecondaryBtn>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {error && <Alert type="error">{error}</Alert>}
+
+        {/* Tabs */}
+        <Card className="overflow-hidden">
+          <div className="px-6 pt-5 border-b border-slate-200 dark:border-slate-800">
+            <div className="pb-4">
+              <TabBar
+                tabs={[
+                  { id: "overview"  as Tab, label: "Tổng quan" },
+                  { id: "content"   as Tab, label: "Nội dung", badge: sections.length },
+                  { id: "learners"  as Tab, label: "Học viên" },
+                ]}
+                active={tab}
+                onChange={setTab}
+              />
+            </div>
+          </div>
+
+          <div className="p-6">
+            {tab === "overview" && (
+              <OverviewTab course={course} sections={sections} />
+            )}
+            {tab === "content" && (
+              <ContentTab
+                courseId={id}
+                sections={sections}
+                onSectionsChange={() => { loadSections(); }}
+              />
+            )}
+            {tab === "learners" && (
+              <LearnersTab courseId={id} />
+            )}
+          </div>
+        </Card>
+
+      </div>
+
+      {/* Edit course modal */}
+      {showEditModal && (
+        <EditCourseModal
+          course={course}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => { setShowEditModal(false); loadCourse(); }}
         />
       )}
     </div>

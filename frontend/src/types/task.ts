@@ -68,8 +68,8 @@ export interface TaskInfo {
 }
 
 export const PRIORITY_COLORS = {
-  LOW: "bg-gray-100 text-gray-800 border-gray-300",
-  MEDIUM: "bg-blue-100 text-blue-800 border-blue-300",
-  HIGH: "bg-orange-100 text-orange-800 border-orange-300",
-  CRITICAL: "bg-red-100 text-red-800 border-red-300",
+  LOW: "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
+  MEDIUM: "bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
+  HIGH: "bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800",
+  CRITICAL: "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
 };

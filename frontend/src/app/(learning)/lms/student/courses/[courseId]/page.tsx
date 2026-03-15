@@ -1,257 +1,432 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * Student Course Detail — Split Layout
+ *
+ * UX priority: content is visible immediately.
+ *
+ * Layout (desktop):
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │ Header (course title + breadcrumb)                   │
+ *   ├─────────────────────┬────────────────────────────────┤
+ *   │ Left sidebar        │ Right: content viewer          │
+ *   │ ─────────────       │ ─────────────────────────      │
+ *   │ Section 1  [▼]      │ <ContentViewer />              │
+ *   │   · Item 1 [active] │                                │
+ *   │   · Item 2          │                                │
+ *   │ Section 2  [▶]      │                                │
+ *   └─────────────────────┴────────────────────────────────┘
+ *
+ * Mobile: sidebar collapses into a drawer.
+ */
+
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
-import { Button } from "@/components/ui/button";
 import ContentViewer from "@/components/lms/student/ContentViewer";
+import {
+  ArrowLeft, ChevronDown, ChevronRight, Menu, X,
+  Play, FileText, Image as ImageIcon, HelpCircle,
+  MessageSquare, Megaphone, File as FileIcon, BookOpen
+} from "lucide-react";
+import {
+  Badge, ContentTypeBadge, PageLoader,
+  GhostBtn, ProgressBar
+} from "@/components/lms/shared";
 import { Content, Course, Section } from "@/types";
-import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export default function StudentCourseDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const courseId = parseInt(params.courseId as string);
-  
-  const [course, setCourse] = useState<Course | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
-  const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
-  const [showContentViewer, setShowContentViewer] = useState(false);
-  const [selectedContent, setSelectedContent] = useState<Content | null>(null);
+// ─── Content type icon (compact) ──────────────────────────────────────────────
 
-  useEffect(() => {
-    loadCourse();
-    loadSections();
-  }, [courseId]);
+const CONTENT_ICON: Record<string, React.ReactNode> = {
+  VIDEO:        <Play         className="w-3.5 h-3.5" />,
+  DOCUMENT:     <FileText     className="w-3.5 h-3.5" />,
+  IMAGE:        <ImageIcon    className="w-3.5 h-3.5" />,
+  TEXT:         <FileText     className="w-3.5 h-3.5" />,
+  QUIZ:         <HelpCircle   className="w-3.5 h-3.5" />,
+  FORUM:        <MessageSquare className="w-3.5 h-3.5"/>,
+  ANNOUNCEMENT: <Megaphone    className="w-3.5 h-3.5" />,
+};
 
-  const loadCourse = async () => {
-    try {
-      const data = await lmsService.getCourse(courseId);
-      setCourse(data?.data);
-    } catch (error) {
-      console.error("Error loading course:", error);
-      alert("Không tìm thấy khóa học");
-      router.push("/lms/student");
-    }
-  };
+// ─── Sidebar section item ─────────────────────────────────────────────────────
 
-  const loadSections = async () => {
-    try {
-      const data = await lmsService.listSections(courseId);
-      setSections(data?.data || []);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error loading sections:", error);
-      setLoading(false);
-    }
-  };
+interface SidebarSectionProps {
+  section: Section;
+  index: number;
+  contents: Content[];
+  loadingContents: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  activeContentId: number | null;
+  onSelectContent: (c: Content) => void;
+}
 
-  const loadSectionContent = async (sectionId: number) => {
-    try {
-      const data = await lmsService.listContent(sectionId);
-      setSectionContents(prev => ({
-        ...prev,
-        [sectionId]: data?.data || []
-      }));
-    } catch (error) {
-      console.error("Error loading content:", error);
-    }
-  };
-
-  const toggleSection = (sectionId: number) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(sectionId)) {
-      newExpanded.delete(sectionId);
-    } else {
-      newExpanded.add(sectionId);
-      if (!sectionContents[sectionId]) {
-        loadSectionContent(sectionId);
-      }
-    }
-    setExpandedSections(newExpanded);
-  };
-
-  const getContentTypeIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      TEXT: "📝",
-      VIDEO: "🎥",
-      DOCUMENT: "📄",
-      IMAGE: "🖼️",
-      QUIZ: "❓",
-      FORUM: "💬",
-      ANNOUNCEMENT: "📢"
-    };
-    return icons[type] || "📎";
-  };
-
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return "";
-    const mb = bytes / (1024 * 1024);
-    return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB` : `${mb.toFixed(1)} MB`;
-  };
-
-  if (loading || !course) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
+function SidebarSection({
+  section, index, contents, loadingContents,
+  isExpanded, onToggle, activeContentId, onSelectContent
+}: SidebarSectionProps) {
   return (
-    <div>
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <div className="mb-4">
-          <Button
-            onClick={() => router.push("/lms/student")}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Quay lại
-          </Button>
+    <div className="border-b border-slate-100 dark:border-slate-800 last:border-b-0">
+      {/* Section header */}
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+        onClick={onToggle}
+      >
+        <div className="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold flex-shrink-0 border border-blue-200 dark:border-blue-800">
+          {index + 1}
         </div>
-        
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              course.status === "PUBLISHED" 
-                ? "bg-green-100 text-green-800"
-                : "bg-yellow-100 text-yellow-800"
-            }`}>
-              {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
-            </span>
-            {course.level && (
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
-                {course.level}
-              </span>
-            )}
-            {course.category && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">
-                {course.category}
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{course.title}</h1>
-          <p className="text-gray-600">{course.description || "Chưa có mô tả"}</p>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="bg-white rounded-xl shadow-sm border">
-        <div className="p-6 border-b">
-          <h3 className="text-lg font-semibold">Nội dung khóa học</h3>
-        </div>
-
-        <div className="p-6">
-          {sections.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <p>Khóa học chưa có nội dung nào</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {sections.map((section, index) => (
-                <div key={section.id} className="border rounded-lg overflow-hidden">
-                  <div className="p-4 bg-gray-50 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => toggleSection(section.id)}>
-                    <div className="flex-1">
-                      <h4 className="font-semibold">
-                        Chương {index + 1}: {section.title}
-                      </h4>
-                      <p className="text-sm text-gray-600">{section.description || "Chưa có mô tả"}</p>
-                    </div>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSection(section.id);
-                      }}
-                      className="px-3 py-1 text-sm bg-white border rounded hover:bg-gray-100"
-                    >
-                      {expandedSections.has(section.id) ? "Thu gọn" : "Xem nội dung"}
-                    </Button>
-                  </div>
-
-                  {expandedSections.has(section.id) && (
-                    <div className="p-4 bg-white border-t">
-                      <h5 className="font-medium mb-3">Nội dung trong chương</h5>
-                      {!sectionContents[section.id] || sectionContents[section.id].length === 0 ? (
-                        <p className="text-gray-600 text-sm">Chưa có nội dung nào</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {sectionContents[section.id].map((content, idx) => (
-                            <div key={content.id} className="p-3 bg-gray-50 rounded">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <p className="font-medium text-sm flex items-center gap-2">
-                                    <span>{getContentTypeIcon(content.type)}</span>
-                                    <span>{idx + 1}. {content.title}</span>
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                                      {content.type}
-                                    </span>
-                                    {content.is_mandatory && (
-                                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">
-                                        Bắt buộc
-                                      </span>
-                                    )}
-                                  </p>
-                                  <p className="text-xs text-gray-600 mt-1">
-                                    {content.description || "Chưa có mô tả"}
-                                  </p>
-                                  {content.metadata?.file_name && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      📎 {content.metadata.file_name}
-                                      {content.metadata.file_size && ` (${formatFileSize(content.metadata.file_size)})`}
-                                    </p>
-                                  )}
-                                </div>
-                                <Button
-                                  onClick={() => {
-                                    setSelectedContent(content);
-                                    setShowContentViewer(true);
-                                  }}
-                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap"
-                                >
-                                  Xem
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{section.title}</p>
+          {contents.length > 0 && (
+            <p className="text-xs text-slate-500 mt-0.5">{contents.length} nội dung</p>
           )}
         </div>
-      </div>
+        {isExpanded
+          ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
+      </button>
 
-      {/* Content Viewer Modal */}
-      {showContentViewer && selectedContent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
-              <h2 className="text-xl font-bold">{selectedContent.title}</h2>
-              <Button
-                onClick={() => {
-                  setShowContentViewer(false);
-                  setSelectedContent(null);
-                }}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-              >
-                Đóng
-              </Button>
+      {/* Content items */}
+      {isExpanded && (
+        <div className="pb-1">
+          {loadingContents && !contents.length ? (
+            <div className="px-4 py-3">
+              <div className="space-y-2">
+                {[0,1,2].map(i => (
+                  <div key={i} className="h-8 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
+                ))}
+              </div>
             </div>
-            <div className="p-6">
-              <ContentViewer content={selectedContent} />
-            </div>
-          </div>
+          ) : contents.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-slate-400">Chưa có nội dung</p>
+          ) : (
+            contents.map((c, i) => {
+              const isActive = c.id === activeContentId;
+              return (
+                <button
+                  key={c.id}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors",
+                    isActive
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-r-2 border-blue-600"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  )}
+                  onClick={() => onSelectContent(c)}
+                >
+                  <span className={cn(
+                    "flex-shrink-0",
+                    isActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"
+                  )}>
+                    {CONTENT_ICON[c.type] ?? <FileIcon className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className={cn(
+                    "text-sm truncate flex-1",
+                    isActive ? "font-semibold text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"
+                  )}>
+                    {i + 1}. {c.title}
+                  </span>
+                  {c.is_mandatory && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" title="Bắt buộc" />
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
+
+export default function StudentCourseDetailPage() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const router = useRouter();
+  const id = Number(courseId);
+
+  const [course, setCourse] = useState<Course | null>(null);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
+  const [loadingSection, setLoadingSection] = useState<Record<number, boolean>>({});
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
+  const [activeContent, setActiveContent] = useState<Content | null>(null);
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);   // mobile drawer
+
+  // ── Load course + sections ────────────────────────────────────────────────
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [courseRes, sectionsRes] = await Promise.all([
+          lmsService.getCourse(id),
+          lmsService.listSections(id),
+        ]);
+        setCourse(courseRes?.data ?? null);
+        const secs: Section[] = sectionsRes?.data ?? [];
+        setSections(secs);
+
+        // Auto-expand first section and load its contents immediately
+        if (secs.length > 0) {
+          const first = secs[0];
+          setExpandedSections(new Set([first.id]));
+          await loadSectionContents(first.id, true); // load & auto-select first item
+        }
+      } catch {
+        router.back();
+      } finally {
+        setLoadingPage(false);
+      }
+    })();
+  }, [id]);
+
+  const loadSectionContents = useCallback(async (sectionId: number, autoSelect = false) => {
+    if (sectionContents[sectionId]) {
+      if (autoSelect && !activeContent) {
+        const first = sectionContents[sectionId][0];
+        if (first) setActiveContent(first);
+      }
+      return;
+    }
+    setLoadingSection(prev => ({ ...prev, [sectionId]: true }));
+    try {
+      const res = await lmsService.listContent(sectionId);
+      const items: Content[] = res?.data ?? [];
+      setSectionContents(prev => ({ ...prev, [sectionId]: items }));
+      if (autoSelect && !activeContent && items.length > 0) {
+        setActiveContent(items[0]);
+      }
+    } finally {
+      setLoadingSection(prev => ({ ...prev, [sectionId]: false }));
+    }
+  }, [sectionContents, activeContent]);
+
+  const toggleSection = useCallback((sectionId: number) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) { next.delete(sectionId); }
+      else {
+        next.add(sectionId);
+        loadSectionContents(sectionId);
+      }
+      return next;
+    });
+  }, [loadSectionContents]);
+
+  // Total contents count
+  const totalContents = Object.values(sectionContents).reduce((s, arr) => s + arr.length, 0);
+  const completedCount = 0; // TODO: track progress via API
+
+  if (loadingPage) return <PageLoader message="Đang tải khóa học..." />;
+
+  // ── Sidebar JSX ───────────────────────────────────────────────────────────
+
+  const SidebarContent = (
+    <div className="h-full flex flex-col">
+      {/* Sidebar header */}
+      <div className="px-4 pt-5 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-500 uppercase tracking-wider mb-2">
+          Nội dung khóa học
+        </p>
+        {totalContents > 0 && (
+          <>
+            <ProgressBar
+              value={completedCount}
+              max={totalContents}
+              color="blue"
+              showPercent={false}
+              className="mb-1"
+            />
+            <p className="text-xs text-slate-500">
+              {completedCount}/{totalContents} bài đã hoàn thành
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Sections */}
+      <div className="flex-1 overflow-y-auto">
+        {sections.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+            <p className="text-sm text-slate-400">Khóa học chưa có nội dung</p>
+          </div>
+        ) : (
+          sections.map((sec, i) => (
+            <SidebarSection
+              key={sec.id}
+              section={sec}
+              index={i}
+              contents={sectionContents[sec.id] ?? []}
+              loadingContents={!!loadingSection[sec.id]}
+              isExpanded={expandedSections.has(sec.id)}
+              onToggle={() => toggleSection(sec.id)}
+              activeContentId={activeContent?.id ?? null}
+              onSelectContent={c => { setActiveContent(c); setSidebarOpen(false); }}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+      {/* ── Top bar ── */}
+      <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center gap-3">
+          <GhostBtn
+            size="sm"
+            icon={<ArrowLeft className="w-4 h-4" />}
+            onClick={() => router.push("/lms/student")}
+          >
+            <span className="hidden sm:inline">Quay lại</span>
+          </GhostBtn>
+          <span className="text-slate-300 dark:text-slate-700 select-none">/</span>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-bold text-slate-900 dark:text-slate-50 truncate">
+              {course?.title ?? "Khóa học"}
+            </h1>
+          </div>
+          {/* Mobile: sidebar toggle */}
+          <button
+            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* ── Body: sidebar + viewer ── */}
+      <div className="flex-1 max-w-screen-2xl mx-auto w-full flex overflow-hidden">
+
+        {/* Desktop sidebar */}
+        <aside className="hidden lg:flex flex-col w-72 xl:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-hidden">
+          {SidebarContent}
+        </aside>
+
+        {/* Mobile sidebar drawer */}
+        {sidebarOpen && (
+          <div className="lg:hidden fixed inset-0 z-40 flex">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+            <aside className="relative w-80 max-w-[85vw] bg-white dark:bg-slate-900 h-full overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <span className="font-bold text-slate-900 dark:text-slate-50">Nội dung khóa học</span>
+                <button onClick={() => setSidebarOpen(false)} className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {SidebarContent}
+            </aside>
+          </div>
+        )}
+
+        {/* Content area */}
+        <main className="flex-1 overflow-y-auto min-w-0">
+          {activeContent ? (
+            <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
+              {/* Content breadcrumb */}
+              <div className="flex items-center gap-2 mb-5">
+                <ContentTypeBadge type={activeContent.type} />
+                {activeContent.is_mandatory && <Badge variant="yellow">Bắt buộc</Badge>}
+              </div>
+
+              {/* Content title */}
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-2">
+                {activeContent.title}
+              </h2>
+              {activeContent.description && (
+                <p className="text-slate-600 dark:text-slate-400 mb-6">{activeContent.description}</p>
+              )}
+
+              {/* Divider */}
+              <div className="border-t border-slate-200 dark:border-slate-800 mb-6" />
+
+              {/* Viewer */}
+              <ContentViewer content={activeContent} userRole="STUDENT" />
+
+              {/* Navigation: prev / next */}
+              <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+                <PrevNextButtons
+                  sections={sections}
+                  sectionContents={sectionContents}
+                  activeContent={activeContent}
+                  onSelect={c => setActiveContent(c)}
+                />
+              </div>
+            </div>
+          ) : (
+            // Welcome screen when no content selected
+            <div className="flex flex-col items-center justify-center h-full py-24 text-center px-8">
+              <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6">
+                <BookOpen className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 mb-2">
+                Chào mừng đến với khóa học
+              </h2>
+              <p className="text-slate-600 dark:text-slate-400 max-w-sm">
+                {course?.description ?? "Chọn một bài học ở bên trái để bắt đầu học."}
+              </p>
+              {sections.length > 0 && (
+                <button
+                  className="mt-6 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+                  onClick={() => {
+                    const first = sections[0];
+                    toggleSection(first.id);
+                  }}
+                >
+                  Bắt đầu học ngay
+                </button>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ─── Prev / Next navigation ───────────────────────────────────────────────────
+
+function PrevNextButtons({
+  sections, sectionContents, activeContent, onSelect
+}: {
+  sections: Section[];
+  sectionContents: Record<number, Content[]>;
+  activeContent: Content;
+  onSelect: (c: Content) => void;
+}) {
+  // Flatten all contents in order
+  const flat: Content[] = sections.flatMap(s => sectionContents[s.id] ?? []);
+  const idx = flat.findIndex(c => c.id === activeContent.id);
+  const prev = idx > 0 ? flat[idx - 1] : null;
+  const next = idx < flat.length - 1 ? flat[idx + 1] : null;
+
+  return (
+    <>
+      {prev ? (
+        <button
+          className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          onClick={() => onSelect(prev)}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="hidden sm:inline">Bài trước:</span>
+          <span className="truncate max-w-[160px]">{prev.title}</span>
+        </button>
+      ) : <div />}
+
+      {next && (
+        <button
+          className="flex items-center gap-2 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+          onClick={() => onSelect(next)}
+        >
+          <span className="truncate max-w-[160px]">{next.title}</span>
+          <span className="hidden sm:inline">:Bài tiếp</span>
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </>
   );
 }

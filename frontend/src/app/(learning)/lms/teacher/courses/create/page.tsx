@@ -101,18 +101,18 @@ export default function CreateCoursePage() {
         >
           ← Quay lại
         </Button>
-        <h1 className="text-3xl font-bold text-gray-900">Tạo khóa học mới</h1>
-        <p className="text-gray-600 mt-2">Nhập thông tin chi tiết để tạo khóa học của bạn</p>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Tạo khóa học mới</h1>
+        <p className="text-slate-600 dark:text-slate-400 mt-2">Nhập thông tin chi tiết để tạo khóa học của bạn</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border p-8">
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-8">
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-4 pb-2 border-b border-slate-200 dark:border-slate-800">
             Thông tin cơ bản
           </h2>
           
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Tên khóa học <span className="text-red-500">*</span>
             </label>
             <input
@@ -120,15 +120,15 @@ export default function CreateCoursePage() {
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="VD: Lập trình Python cơ bản"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                errors.title ? "border-red-500" : ""
+              className={`w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
+                errors.title ? "border-red-500 dark:border-red-500" : "border-slate-300 dark:border-slate-700"
               }`}
             />
-            {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
+            {errors.title && <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.title}</p>}
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Mô tả khóa học
             </label>
             <textarea
@@ -136,28 +136,28 @@ export default function CreateCoursePage() {
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Nhập mô tả chi tiết về khóa học, mục tiêu học tập, đối tượng học viên..."
               rows={5}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                errors.description ? "border-red-500" : ""
+              className={`w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
+                errors.description ? "border-red-500 dark:border-red-500" : "border-slate-300 dark:border-slate-700"
               }`}
             />
-            {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+            {errors.description && <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.description}</p>}
           </div>
         </div>
 
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-4 pb-2 border-b border-slate-200 dark:border-slate-800">
             Chi tiết khóa học
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Danh mục
               </label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               >
                 <option value="">Chọn danh mục</option>
                 {COURSE_CATEGORIES.map((cat) => (
@@ -169,13 +169,13 @@ export default function CreateCoursePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Mức độ khó
               </label>
               <select
                 value={formData.level}
                 onChange={(e) => setFormData({ ...formData, level: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               >
                 {COURSE_LEVELS.map((level) => (
                   <option key={level.value} value={level.value}>
@@ -187,7 +187,7 @@ export default function CreateCoursePage() {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               URL ảnh đại diện
             </label>
             <input
@@ -195,33 +195,33 @@ export default function CreateCoursePage() {
               value={formData.thumbnail_url}
               onChange={(e) => setFormData({ ...formData, thumbnail_url: e.target.value })}
               placeholder="https://example.com/image.jpg"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                errors.thumbnail_url ? "border-red-500" : ""
+              className={`w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
+                errors.thumbnail_url ? "border-red-500 dark:border-red-500" : "border-slate-300 dark:border-slate-700"
               }`}
             />
-            {errors.thumbnail_url && <p className="text-red-500 text-sm mt-1">{errors.thumbnail_url}</p>}
+            {errors.thumbnail_url && <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.thumbnail_url}</p>}
           </div>
         </div>
 
-        <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-700">
+        <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+          <p className="text-sm text-blue-700 dark:text-blue-400">
             <strong>Mẹo:</strong> Bạn có thể chỉnh sửa thông tin này sau khi tạo khóa học. 
             Khóa học sẽ được tạo ở trạng thái Nháp và bạn cần xuất bản để học viên có thể xem.
           </p>
         </div>
 
-        <div className="flex gap-3 border-t pt-6">
+        <div className="flex gap-3 border-t border-slate-200 dark:border-slate-800 pt-6">
           <Button
             type="submit"
             disabled={loading}
-            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Đang tạo khóa học..." : "Tạo khóa học"}
           </Button>
           <Button
             type="button"
             onClick={() => router.back()}
-            className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            className="px-4 py-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-medium"
           >
             Hủy
           </Button>

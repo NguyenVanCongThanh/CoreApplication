@@ -25,33 +25,49 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         System.out.println("📥 Incoming Request: " + request.getMethod() + " " + request.getRequestURI());
 
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            chain.doFilter(request, response);
+        String token = null;
 
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } 
+
+        else if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("authToken".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                    break;
+                }
+            }
+        }
+
+        if (token == null) {
+            chain.doFilter(request, response);
             System.out.println("📤 Response Status: " + response.getStatus());
             return;
         }
 
-        String token = authHeader.substring(7);
-        String email = jwtService.extractEmail(token);
-        String role = jwtService.extractRole(token);
+        try {
+            String email = jwtService.extractEmail(token);
+            String role = jwtService.extractRole(token);
 
-        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            if (jwtService.validateToken(token)) {
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                                email,
-                                null,
-                                List.of(new SimpleGrantedAuthority(role))
-                        );
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(auth);
+            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (jwtService.validateToken(token)) {
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(
+                                    email,
+                                    null,
+                                    List.of(new SimpleGrantedAuthority(role))
+                            );
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
             }
+        } catch (Exception e) {
+            System.out.println("Lỗi parse JWT Token: " + e.getMessage());
         }
 
         chain.doFilter(request, response);
-
         System.out.println("📤 Response Status: " + response.getStatus());
     }
 }

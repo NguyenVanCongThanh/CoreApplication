@@ -150,17 +150,17 @@ export default function FillBlankDropdownStudent({
                 onChange={(e) => updateBlankSelection(blankId, parseInt(e.target.value))}
                 disabled={disabled}
                 className={`
-                  inline-block px-3 py-1 border-2 rounded-lg
+                  inline-block px-3 py-1 border-2 rounded-xl
                   transition-all duration-200
                   min-w-[150px] max-w-[300px]
                   cursor-pointer
-                  ${disabled ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}
+                  ${disabled ? 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed' : 'bg-white dark:bg-slate-900'}
                   ${
                     isCorrect === null
-                      ? 'border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                      ? 'border-blue-300 dark:border-blue-700 focus:border-blue-500 dark:focus:border-blue-600 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900/50'
                       : isCorrect
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-red-500 bg-red-50'
+                      ? 'border-green-500 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
+                      : 'border-red-500 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
                   }
                 `}
               >
@@ -190,7 +190,7 @@ export default function FillBlankDropdownStudent({
       {/* Review Mode: Show detailed feedback */}
       {showCorrectAnswers && settings.blanks.length > 0 && (
         <div className="mt-6 space-y-3">
-          <h4 className="font-semibold text-gray-800 text-sm">Đáp án:</h4>
+          <h4 className="font-semibold text-slate-900 dark:text-slate-50 text-sm">Đáp án:</h4>
           
           {settings.blanks.map((blank) => {
             const selectedOptionId = getBlankSelection(blank.blank_id);
@@ -201,10 +201,10 @@ export default function FillBlankDropdownStudent({
             return (
               <div
                 key={blank.blank_id}
-                className={`p-3 rounded-lg border-2 ${
+                className={`p-3 rounded-xl border-2 ${
                   isCorrect
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-red-50 border-red-200'
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -217,14 +217,14 @@ export default function FillBlankDropdownStudent({
                   <div className="flex-1 space-y-2">
                     {/* Student Selection */}
                     <div>
-                      <p className="text-xs text-gray-600 font-medium mb-1">Lựa chọn của bạn:</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mb-1">Lựa chọn của bạn:</p>
                       <p className={`font-medium ${
                         isCorrect ? 'text-green-700' : 'text-red-700'
                       }`}>
                         {selectedOption ? (
                           selectedOption.option_text
                         ) : (
-                          <span className="italic text-gray-400">Chưa chọn</span>
+                          <span className="italic text-slate-400 dark:text-slate-600">Chưa chọn</span>
                         )}
                       </p>
                     </div>
@@ -232,7 +232,7 @@ export default function FillBlankDropdownStudent({
                     {/* Correct Answer */}
                     {!isCorrect && correctOption && (
                       <div>
-                        <p className="text-xs text-gray-600 font-medium mb-1">Đáp án đúng:</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mb-1">Đáp án đúng:</p>
                         <p className="text-green-700 font-medium">
                           • {correctOption.option_text}
                         </p>
@@ -241,7 +241,7 @@ export default function FillBlankDropdownStudent({
 
                     {/* Label */}
                     {blank.label && (
-                      <p className="text-xs text-gray-500 italic mt-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-500 italic mt-1">
                         {blank.label}
                       </p>
                     )}
@@ -267,8 +267,8 @@ export default function FillBlankDropdownStudent({
 
       {/* Quiz Taking Mode: Show all available options */}
       {!disabled && !showCorrectAnswers && (
-        <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-3">
-          <p className="text-sm text-purple-800">
+        <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
             <strong>💡 Gợi ý:</strong> Chọn đáp án phù hợp từ các dropdown trên câu
           </p>
           {settings.blanks.length > 0 && (
@@ -277,9 +277,9 @@ export default function FillBlankDropdownStudent({
                 const blankOptions = getOptionsForBlank(blank.blank_id);
                 return (
                   <div key={blank.blank_id} className="text-xs">
-                    <strong className="text-purple-700">BLANK_{blank.blank_id}</strong>
-                    {blank.label && <span className="text-gray-600"> ({blank.label})</span>}
-                    <span className="text-gray-600"> - {blankOptions.length} lựa chọn</span>
+                    <strong className="text-blue-700 dark:text-blue-300">BLANK_</strong>
+                    {blank.label && <span className="text-slate-600 dark:text-slate-400"> ({blank.label})</span>}
+                    <span className="text-slate-600 dark:text-slate-400"> - </span>
                   </div>
                 );
               })}

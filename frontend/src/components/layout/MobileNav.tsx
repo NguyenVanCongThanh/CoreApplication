@@ -22,9 +22,9 @@ const MobileNav = () => {
 
   const handleLogout = async () => {
     try { userService.logout(); } catch { /* silent */ }
-    document.cookie = "authToken=; path=/; max-age=0";
     setUser(null);
     router.push("/login");
+    router.refresh();
     setIsOpen(false);
   };
 

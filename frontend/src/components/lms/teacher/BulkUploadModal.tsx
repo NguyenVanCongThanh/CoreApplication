@@ -237,9 +237,9 @@ export default function BulkUploadModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-bold">Tải lên nhiều file</h2>
-          <p className="text-sm text-gray-600 mt-1">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">Tải lên nhiều file</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Chọn hoặc kéo thả nhiều file để tải lên cùng lúc
           </p>
         </div>
@@ -252,17 +252,17 @@ export default function BulkUploadModal({
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${
                 dragOver
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-300 bg-gray-50"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                  : "border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50"
               }`}
             >
               <div className="text-4xl mb-3">📁</div>
-              <p className="text-gray-700 font-medium mb-2">
+              <p className="text-slate-700 dark:text-slate-300 font-medium mb-2">
                 Kéo thả file vào đây hoặc nhấp để chọn
               </p>
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="text-sm text-slate-500 dark:text-slate-500 mb-4">
                 Hỗ trợ: Video, Hình ảnh, Tài liệu (Max 100MB mỗi file)
               </p>
               <input
@@ -278,7 +278,7 @@ export default function BulkUploadModal({
                   onClick={() =>
                     document.getElementById("bulk-file-input")?.click()
                   }
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors"
                 >
                   Chọn file
                 </Button>
@@ -298,7 +298,7 @@ export default function BulkUploadModal({
                   onClick={() =>
                     document.getElementById("bulk-file-input")?.click()
                   }
-                  className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+                  className="px-3 py-1 text-sm bg-slate-600 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 font-medium transition-colors"
                 >
                   Thêm file
                 </Button>
@@ -314,7 +314,7 @@ export default function BulkUploadModal({
               {filesToUpload.map((fileItem) => (
                 <div
                   key={fileItem.id}
-                  className="p-4 border rounded-lg space-y-3"
+                  className="p-4 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-3 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -326,7 +326,7 @@ export default function BulkUploadModal({
                           <p className="font-medium text-sm">
                             {fileItem.file.name}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             {formatFileSize(fileItem.file.size)}
                           </p>
                         </div>
@@ -335,22 +335,22 @@ export default function BulkUploadModal({
 
                     {/* Status Icon */}
                     {fileItem.uploadStatus === "pending" && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                      <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs rounded-lg font-medium">
                         Chờ
                       </span>
                     )}
                     {fileItem.uploadStatus === "uploading" && (
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                      <span className="px-2 py-1 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 text-xs rounded-lg font-medium">
                         ⏳ Đang tải
                       </span>
                     )}
                     {fileItem.uploadStatus === "success" && (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                      <span className="px-2 py-1 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 text-xs rounded-lg font-medium">
                         ✓ Thành công
                       </span>
                     )}
                     {fileItem.uploadStatus === "error" && (
-                      <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                      <span className="px-2 py-1 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 text-xs rounded-lg font-medium">
                         ✕ Lỗi
                       </span>
                     )}
@@ -358,7 +358,7 @@ export default function BulkUploadModal({
 
                   {/* Title Input */}
                   <div>
-                    <label className="text-sm font-medium mb-1 block">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                       Tiêu đề *
                     </label>
                     <input
@@ -367,7 +367,7 @@ export default function BulkUploadModal({
                       onChange={(e) =>
                         updateFile(fileItem.id, { title: e.target.value })
                       }
-                      className="w-full px-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                       placeholder="Nhập tiêu đề nội dung..."
                       disabled={isUploading}
                     />
@@ -375,7 +375,7 @@ export default function BulkUploadModal({
 
                   {/* Description Input */}
                   <div>
-                    <label className="text-sm font-medium mb-1 block">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                       Mô tả
                     </label>
                     <textarea
@@ -383,7 +383,7 @@ export default function BulkUploadModal({
                       onChange={(e) =>
                         updateFile(fileItem.id, { description: e.target.value })
                       }
-                      className="w-full px-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                       placeholder="Nhập mô tả..."
                       rows={2}
                       disabled={isUploading}
@@ -399,12 +399,12 @@ export default function BulkUploadModal({
                       onChange={(e) =>
                         updateFile(fileItem.id, { isMandatory: e.target.checked })
                       }
-                      className="w-4 h-4 text-blue-600 rounded"
+                      className="w-4 h-4 text-blue-600 border-slate-300 dark:border-slate-600 rounded"
                       disabled={isUploading}
                     />
                     <label
                       htmlFor={`mandatory-${fileItem.id}`}
-                      className="ml-2 text-sm font-medium"
+                      className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-300"
                     >
                       Nội dung bắt buộc
                     </label>
@@ -412,7 +412,7 @@ export default function BulkUploadModal({
 
                   {/* Error Message */}
                   {fileItem.uploadError && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                    <div className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-xs">
                       {fileItem.uploadError}
                     </div>
                   )}
@@ -435,7 +435,7 @@ export default function BulkUploadModal({
 
           {/* Summary */}
           {filesToUpload.length > 0 && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-400">
               💡 Đã chọn <strong>{filesToUpload.length}</strong> file.{" "}
               {filesToUpload.filter((f) => f.uploadStatus === "success").length >
                 0 && (
@@ -450,12 +450,12 @@ export default function BulkUploadModal({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3 p-6 border-t sticky bottom-0 bg-white">
+        <div className="flex gap-3 p-6 border-t border-slate-200 dark:border-slate-800 sticky bottom-0 bg-white dark:bg-slate-900">
           <Button
             type="button"
             onClick={uploadFiles}
             disabled={isUploading || filesToUpload.length === 0}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-all"
           >
             {isUploading ? "Đang tải lên..." : "✓ Tải lên tất cả"}
           </Button>
@@ -463,7 +463,7 @@ export default function BulkUploadModal({
             type="button"
             onClick={onClose}
             disabled={isUploading}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+            className="px-4 py-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 font-medium transition-colors"
           >
             Đóng
           </Button>

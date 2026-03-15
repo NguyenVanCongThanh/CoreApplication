@@ -147,7 +147,7 @@ export default function QuizReviewModal({
     return (
       <div className="space-y-3 mb-4">
         {filteredImages.map((img: any) => (
-          <div key={img.id} className="border rounded-lg p-3 bg-gray-50">
+          <div key={img.id} className="border rounded-lg p-3 bg-slate-50 dark:bg-slate-800/50">
             <img
               src={buildImageUrl(img.url)}
               alt={img.alt_text || img.file_name}
@@ -159,7 +159,7 @@ export default function QuizReviewModal({
               }`}
             />
             {img.caption && (
-              <p className="text-sm text-gray-600 mt-2 text-center italic">
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 text-center italic">
                 {img.caption}
               </p>
             )}
@@ -207,8 +207,8 @@ export default function QuizReviewModal({
             const isCorrect = option.is_correct;
             
             let bgColor = "bg-white";
-            let borderColor = "border-gray-200";
-            let iconColor = "text-gray-400";
+            let borderColor = "border-slate-200 dark:border-slate-700";
+            let iconColor = "text-slate-400 dark:text-slate-600";
             let icon: ReactNode = null;
 
             if (isStudentChoice && isCorrect) {
@@ -238,7 +238,7 @@ export default function QuizReviewModal({
               >
                 <div className={iconColor}>{icon || <div className="w-5 h-5" />}</div>
                 <div className="flex-1">
-                  <p className="text-gray-800">{option.option_text}</p>
+                  <p className="text-slate-800 dark:text-slate-200">{option.option_text}</p>
                   {isStudentChoice && !isCorrect && review?.show_correct_answers && (
                     <p className="text-xs text-red-600 mt-1">✗ Đáp án bạn đã chọn</p>
                   )}
@@ -260,12 +260,12 @@ export default function QuizReviewModal({
     return (
       <div className="space-y-3">
         {/* Student's answer */}
-        <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">Câu trả lời của bạn:</p>
+        <div className="bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 rounded-lg p-4">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Câu trả lời của bạn:</p>
           {studentAnswerText ? (
-            <p className="text-gray-800 font-medium">{studentAnswerText}</p>
+            <p className="text-slate-800 dark:text-slate-200 font-medium">{studentAnswerText}</p>
           ) : (
-            <p className="text-gray-400 italic">Chưa trả lời</p>
+            <p className="text-slate-400 dark:text-slate-600 italic">Chưa trả lời</p>
           )}
         </div>
 
@@ -312,12 +312,12 @@ export default function QuizReviewModal({
     return (
       <div className="space-y-3">
         {/* Student's essay */}
-        <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">Bài làm của bạn:</p>
+        <div className="bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 rounded-lg p-4">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bài làm của bạn:</p>
           {essayText ? (
-            <p className="text-gray-800 whitespace-pre-wrap">{essayText}</p>
+            <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{essayText}</p>
           ) : (
-            <p className="text-gray-400 italic">Chưa trả lời</p>
+            <p className="text-slate-400 dark:text-slate-600 italic">Chưa trả lời</p>
           )}
         </div>
 
@@ -343,13 +343,13 @@ export default function QuizReviewModal({
     return (
       <div className="space-y-3">
         {/* Student's file */}
-        <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">File bạn đã nộp:</p>
+        <div className="bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-200 dark:border-slate-700 rounded-lg p-4">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">File bạn đã nộp:</p>
           {fileName ? (
             <div className="flex items-center gap-3">
               <Upload className="w-5 h-5 text-blue-600" />
               <div className="flex-1">
-                <p className="text-gray-800 font-medium">{fileName}</p>
+                <p className="text-slate-800 dark:text-slate-200 font-medium">{fileName}</p>
                 {filePath && (
                   <a
                     href={`/files/${filePath}`}
@@ -363,7 +363,7 @@ export default function QuizReviewModal({
               </div>
             </div>
           ) : (
-            <p className="text-gray-400 italic">Chưa nộp file</p>
+            <p className="text-slate-400 dark:text-slate-600 italic">Chưa nộp file</p>
           )}
         </div>
 
@@ -488,7 +488,7 @@ export default function QuizReviewModal({
         return renderFillBlankDropdownQuestion(qa);
       default:
         return (
-          <p className="text-gray-500 italic">
+          <p className="text-slate-500 dark:text-slate-500 italic">
             Loại câu hỏi này chưa được hỗ trợ xem lại
           </p>
         );
@@ -497,10 +497,10 @@ export default function QuizReviewModal({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-12 shadow-2xl">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-center mt-4 text-gray-600 font-medium">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-2xl">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-center mt-3 text-slate-600 dark:text-slate-400 text-sm font-medium">
             Đang tải bài làm...
           </p>
         </div>
@@ -510,19 +510,19 @@ export default function QuizReviewModal({
 
   if (error || !review) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
-          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-center mb-2">Có lỗi xảy ra</h3>
-          <p className="text-center text-gray-600 mb-6">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-200 dark:border-red-900/50">
+          <XCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+          <h3 className="text-lg font-bold text-center text-slate-900 dark:text-slate-50 mb-2">Có lỗi xảy ra</h3>
+          <p className="text-center text-slate-600 dark:text-slate-400 text-sm mb-4">
             {error || "Không thể tải bài làm"}
           </p>
-          <Button
+          <button
             onClick={onClose}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-xl transition-all"
           >
             Đóng
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -592,7 +592,7 @@ export default function QuizReviewModal({
               return (
                 <div
                   key={question.id}
-                  className="border-2 border-gray-200 rounded-xl overflow-hidden"
+                  className="border-2 border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden"
                 >
                   {/* Question Header */}
                   <div
@@ -603,7 +603,7 @@ export default function QuizReviewModal({
                           : question.question_type === "ESSAY" || question.question_type === "SHORT_ANSWER" || question.question_type === "FILE_UPLOAD"
                           ? "bg-yellow-50 border-yellow-200"
                           : "bg-red-50 border-red-200"
-                        : "bg-gray-50 border-gray-200"
+                        : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -616,7 +616,7 @@ export default function QuizReviewModal({
                                 : question.question_type === "ESSAY" || question.question_type === "SHORT_ANSWER" || question.question_type === "FILE_UPLOAD"
                                 ? "bg-yellow-600"
                                 : "bg-red-600"
-                              : "bg-gray-400"
+                              : "bg-slate-400 dark:bg-slate-600"
                           }`}
                         >
                           {index + 1}
@@ -650,11 +650,11 @@ export default function QuizReviewModal({
                           {/* For fill blank questions, don't show question_text here as it's already in the component */}
                           {question.question_type !== "FILL_BLANK_TEXT" && 
                            question.question_type !== "FILL_BLANK_DROPDOWN" && (
-                            <p className="text-gray-900 font-medium mb-1">
+                            <p className="text-slate-900 dark:text-slate-50 font-medium mb-1">
                               {question.question_text}
                             </p>
                           )}
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                             <span className="flex items-center gap-1">
                               <Award className="w-4 h-4" />
                               {studentAnswer?.points_earned?.toFixed(1) || 0}/{question.points} điểm
@@ -691,9 +691,9 @@ export default function QuizReviewModal({
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-gray-50 border-t rounded-b-2xl">
+        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t rounded-b-2xl">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Bạn đã hoàn thành bài quiz này
             </p>
             <Button

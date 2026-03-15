@@ -26,7 +26,7 @@ export default function ForumSearchBar({ sortBy, onSortChange, onSearch }: Forum
   };
 
   return (
-    <div className="bg-white rounded-lg border p-4 space-y-4">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
       {/* Search Bar */}
       <div className="flex gap-2">
         <div className="flex-1 relative">
@@ -36,20 +36,19 @@ export default function ForumSearchBar({ sortBy, onSortChange, onSearch }: Forum
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Tìm kiếm trong tiêu đề và nội dung..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 placeholder:text-slate-400 dark:placeholder:text-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
           />
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-600" />
         </div>
         <Button
           onClick={handleSearch}
-          className="bg-blue-600 text-white hover:bg-blue-700"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-3 shadow-sm transition-all active:scale-95"
         >
           Tìm kiếm
         </Button>
         <Button
           onClick={() => setShowFilters(!showFilters)}
-          variant="outline"
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-3 font-medium transition-all"
         >
           <SlidersHorizontal className="w-4 h-4" />
           Lọc
@@ -58,13 +57,13 @@ export default function ForumSearchBar({ sortBy, onSortChange, onSearch }: Forum
 
       {/* Filters */}
       {showFilters && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
           <div>
-            <label className="block text-sm font-medium mb-2">Sắp xếp theo</label>
+            <label className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Sắp xếp theo</label>
             <select
               value={sortBy}
               onChange={(e) => onSortChange(e.target.value as any)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
             >
               <option value="votes">Điểm cao nhất</option>
               <option value="newest">Mới nhất</option>
@@ -73,14 +72,14 @@ export default function ForumSearchBar({ sortBy, onSortChange, onSearch }: Forum
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2">Lọc theo tags (phân cách bằng dấu phẩy)</label>
+            <label className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Lọc theo tags (phân cách bằng dấu phẩy)</label>
             <input
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="vd: javascript,react,typescript"
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 placeholder:text-slate-400 dark:placeholder:text-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
             />
           </div>
         </div>
@@ -90,30 +89,30 @@ export default function ForumSearchBar({ sortBy, onSortChange, onSearch }: Forum
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => onSortChange('votes')}
-          className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
             sortBy === 'votes'
-              ? 'bg-blue-100 text-blue-700 font-medium'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
           🔥 Phổ biến
         </button>
         <button
           onClick={() => onSortChange('newest')}
-          className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
             sortBy === 'newest'
-              ? 'bg-blue-100 text-blue-700 font-medium'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
           ⏰ Mới nhất
         </button>
         <button
           onClick={() => onSortChange('views')}
-          className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
             sortBy === 'views'
-              ? 'bg-blue-100 text-blue-700 font-medium'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
           👁️ Xem nhiều

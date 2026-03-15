@@ -171,25 +171,25 @@ export default function FileUpload({
 
       {uploading && (
         <div className="mt-3">
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
             <div
               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-xs text-gray-600 mt-1 text-center">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 text-center">
             {progress < 100 ? "Đang tải lên..." : "Hoàn thành!"}
           </p>
         </div>
       )}
 
       {error && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
           ❌ {error}
         </div>
       )}
 
-      <div className="mt-2 text-xs text-gray-500">
+      <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         <p>📁 Định dạng: {getAcceptString()}</p>
         <p>📊 Kích thước tối đa: {maxSize}MB</p>
       </div>

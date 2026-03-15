@@ -432,22 +432,22 @@ export default function EditContentModal({
                   </div>
 
                   {removeFileConfirm && (
-                    <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded text-sm">
-                      <p className="text-red-700 mb-2">
+                    <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-sm">
+                      <p className="text-red-700 dark:text-red-400 mb-2">
                         Bạn có chắc muốn xóa file này?
                       </p>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={removeCurrentFile}
-                          className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+                          className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors"
                         >
                           Xác nhận xóa
                         </button>
                         <button
                           type="button"
                           onClick={() => setRemoveFileConfirm(false)}
-                          className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-sm hover:bg-gray-400"
+                          className="px-3 py-1 bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
                         >
                           Hủy
                         </button>

@@ -356,7 +356,6 @@ export default function TeacherQuizManagePage() {
 
   const startEditQuestion = (question: Question) => {
     setEditingQuestion(question);
-    console.log(question)
     setQuestionForm({
       question_type: question.question_type,
       question_text: question.question_text,
@@ -508,8 +507,8 @@ export default function TeacherQuizManagePage() {
         </Button>
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{quiz?.title}</h1>
-            <p className="text-gray-600 mt-2">{quiz?.description}</p>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{quiz?.title}</h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-2">{quiz?.description}</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -531,13 +530,13 @@ export default function TeacherQuizManagePage() {
 
       {/* Quiz Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-gray-600">Tổng câu hỏi</p>
-          <p className="text-2xl font-bold text-blue-700">{questions?.length}</p>
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">Tổng câu hỏi</p>
+          <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{questions?.length}</p>
         </div>
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <p className="text-sm text-gray-600">Tổng điểm</p>
-          <p className="text-2xl font-bold text-purple-700">{quiz?.total_points}</p>
+        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">Tổng điểm</p>
+          <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{quiz?.total_points}</p>
         </div>
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
           <p className="text-sm text-gray-600">Thời gian</p>
@@ -608,16 +607,16 @@ export default function TeacherQuizManagePage() {
                             )?.label
                           }
                         </span>
-                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm font-semibold">
+                        <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 rounded-lg text-sm font-semibold border border-purple-200 dark:border-purple-800">
                           {question.points} điểm
                         </span>
                         {images?.length > 0 && (
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm font-medium">
+                          <span className="px-3 py-1 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium border border-green-200 dark:border-green-800">
                             🖼️ {images?.length} ảnh
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-900 font-medium mb-2">
+                      <p className="text-slate-900 dark:text-slate-50 font-medium mb-2">
                         {question.question_text}
                       </p>
 

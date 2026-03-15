@@ -37,39 +37,39 @@ export function SectionModal({ courseId, section, onClose, onSuccess, existingSe
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-bold">{section ? "Chỉnh sửa chương" : "Thêm chương mới"}</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-lg">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">{section ? "Chỉnh sửa chương" : "Thêm chương mới"}</h2>
         </div>
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Tên chương *</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Tên chương *</label>
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Mô tả</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Mô tả</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows={3}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Thứ tự</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Thứ tự</label>
               <input
                 type="number"
                 value={formData.order_index}
                 onChange={(e) => setFormData({ ...formData, order_index: parseInt(e.target.value) })}
-                className="w-full px-4 py-2 border rounded-lg"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 min="0"
               />
             </div>
@@ -78,14 +78,14 @@ export function SectionModal({ courseId, section, onClose, onSuccess, existingSe
             <Button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? "Đang lưu..." : section ? "Cập nhật" : "Tạo chương"}
             </Button>
             <Button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              className="px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-700 font-medium transition-colors"
             >
               Hủy
             </Button>

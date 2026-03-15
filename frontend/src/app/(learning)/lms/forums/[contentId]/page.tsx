@@ -64,7 +64,7 @@ export default function ForumPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-12">
-          <p className="text-gray-500">Không tìm thấy diễn đàn</p>
+          <p className="text-slate-500 dark:text-slate-500">Không tìm thấy diễn đàn</p>
           <Button
             onClick={() => router.back()}
             className="mt-4"
@@ -90,15 +90,15 @@ export default function ForumPage() {
           Quay lại khóa học
         </Button>
         
-        <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="bg-white rounded-xl shadow-sm border p-6 dark:bg-slate-950/20">
           <div className="flex items-center gap-3 mb-2">
-            <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+            <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 rounded-full text-sm font-semibold border border-purple-200 dark:border-purple-800">
               💬 DIỄN ĐÀN
             </span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{content.title}</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-2">{content.title}</h1>
           {content.description && (
-            <p className="text-gray-600">{content.description}</p>
+            <p className="text-slate-600 dark:text-slate-400">{content.description}</p>
           )}
         </div>
       </div>

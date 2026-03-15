@@ -146,8 +146,8 @@ export default function YouTubeManagePage() {
     return (
       <div className="flex items-center justify-center min-h-[600px]">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Đang tải...</p>
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400">Đang tải...</p>
         </div>
       </div>
     );
@@ -159,9 +159,9 @@ export default function YouTubeManagePage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <Youtube className="w-10 h-10 text-red-600" />
-          <h1 className="text-3xl font-bold text-gray-900">Quản lý YouTube</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Quản lý YouTube</h1>
         </div>
-        <p className="text-gray-600">
+        <p className="text-slate-600 dark:text-slate-400">
           Kết nối YouTube để cho phép giảng viên upload video lên YouTube
         </p>
       </div>
@@ -179,7 +179,7 @@ export default function YouTubeManagePage() {
 
       {/* Status Card */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Trạng thái kết nối</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Trạng thái kết nối</h2>
         
         {status?.connected ? (
           <div className="space-y-4">
@@ -196,32 +196,32 @@ export default function YouTubeManagePage() {
 
             {/* Channel Info */}
             {status.channel_name && (
-              <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Kênh YouTube</p>
-                    <p className="font-semibold text-gray-800">{status.channel_name}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Kênh YouTube</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{status.channel_name}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Channel ID</p>
-                    <p className="font-mono text-sm text-gray-800">{status.channel_id}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Channel ID</p>
+                    <p className="font-mono text-sm text-slate-800 dark:text-slate-200">{status.channel_id}</p>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Connection Details */}
-            <div className="p-4 bg-gray-50 rounded-lg">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Kết nối lúc</p>
-                  <p className="text-sm text-gray-800">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Kết nối lúc</p>
+                  <p className="text-sm text-slate-800 dark:text-slate-200">
                     {status.connected_at ? new Date(status.connected_at).toLocaleString('vi-VN') : 'N/A'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Token hết hạn</p>
-                  <p className="text-sm text-gray-800">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Token hết hạn</p>
+                  <p className="text-sm text-slate-800 dark:text-slate-200">
                     {status.expires_at ? new Date(status.expires_at).toLocaleString('vi-VN') : 'N/A'}
                   </p>
                 </div>
@@ -286,52 +286,52 @@ export default function YouTubeManagePage() {
       {/* Info Boxes */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Features */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+          <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
             <span>✨</span>
             <span>Tính năng</span>
           </h3>
-          <ul className="space-y-2 text-sm text-gray-700">
+          <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
             <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-0.5">✓</span>
+              <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
               <span>Upload video không giới hạn dung lượng server</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-0.5">✓</span>
+              <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
               <span>Streaming video chất lượng cao từ YouTube</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-0.5">✓</span>
+              <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
               <span>Tự động tạo nhiều độ phân giải</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-0.5">✓</span>
+              <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
               <span>Hỗ trợ phụ đề và tốc độ phát</span>
             </li>
           </ul>
         </div>
 
         {/* Security */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+          <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
             <span>🔒</span>
             <span>Bảo mật</span>
           </h3>
-          <ul className="space-y-2 text-sm text-gray-700">
+          <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
             <li className="flex items-start gap-2">
-              <span className="text-blue-600 mt-0.5">•</span>
+              <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
               <span>Chỉ admin có quyền kết nối YouTube</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-600 mt-0.5">•</span>
+              <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
               <span>Tokens được mã hóa và lưu an toàn</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-600 mt-0.5">•</span>
+              <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
               <span>Tự động làm mới token khi hết hạn</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-600 mt-0.5">•</span>
+              <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
               <span>Có thể ngắt kết nối bất cứ lúc nào</span>
             </li>
           </ul>
@@ -342,7 +342,7 @@ export default function YouTubeManagePage() {
       <div className="mt-6 text-center">
         <Button
           onClick={() => router.push("/lms/admin")}
-          className="text-gray-600 hover:text-gray-800 underline"
+          className="text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline hover:no-underline transition-colors"
         >
           ← Quay lại Dashboard
         </Button>
