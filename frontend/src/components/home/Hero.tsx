@@ -2,14 +2,19 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { getAuthToken } from "@/utils/tokenManager";
 
 export default function Hero() {
   const router = useRouter();
   const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
-    const token = document.cookie.includes("authToken=");
-    setHasToken(token);
+    const checkToken = async () => {
+      const token = await getAuthToken();
+      setHasToken(!!token);
+    };
+    
+    checkToken();
   }, []);
 
   return (

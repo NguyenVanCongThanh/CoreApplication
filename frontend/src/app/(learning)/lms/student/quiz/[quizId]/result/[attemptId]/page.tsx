@@ -117,7 +117,7 @@ export default function AttemptResultPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-medium">Đang tải kết quả...</p>
+          <p className="mt-4 text-slate-600 dark:text-slate-400 font-medium">Đang tải kết quả...</p>
         </div>
       </div>
     );
@@ -129,7 +129,7 @@ export default function AttemptResultPage() {
         <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-xl border-2 border-red-200">
           <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-center mb-2">Có lỗi xảy ra</h3>
-          <p className="text-center text-gray-600 mb-6">{error || "Không thể tải thông tin"}</p>
+          <p className="text-center text-slate-600 dark:text-slate-400 mb-6">{error || "Không thể tải thông tin"}</p>
           <div className="flex gap-2">
             <Button
               onClick={() => router.push(`/lms/student/quiz/${quizId}/history`)}
@@ -153,19 +153,14 @@ export default function AttemptResultPage() {
   const { attempt, question_breakdown, time_breakdown, score_breakdown, grading_status } = summary;
 
   const getHeaderColor = () => {
-    if (grading_status.is_provisional) {
-      return "bg-gradient-to-r from-yellow-600 to-orange-600";
-    }
-    return score_breakdown.is_passed
-      ? "bg-gradient-to-r from-green-600 to-emerald-600"
-      : "bg-gradient-to-r from-red-600 to-pink-600";
+    return "bg-gradient-to-r from-blue-600 to-blue-700";
   };
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950\">
       {/* Header */}
-      <div className={`text-white ${getHeaderColor()}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-blue-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <Button
@@ -189,15 +184,12 @@ export default function AttemptResultPage() {
 
           {/* Thông báo điểm tạm thời */}
           {grading_status.is_provisional && (
-            <div className="mb-6 bg-white bg-opacity-20 backdrop-blur-sm rounded-xl p-4">
-              <div className="flex items-center gap-3 text-black">
-                <AlertCircle className="w-6 h-6" />
+            <div className="mb-4 bg-white bg-opacity-20 rounded-xl p-4">
+              <div className="flex items-center gap-3 text-white">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
                 <div>
-                  <p className="font-bold text-lg">Điểm tạm thời</p>
-                  <p className="text-sm opacity-90">
-                    Còn {grading_status.pending_grading_count} câu chưa được chấm. 
-                    Điểm hiện tại chỉ mang tính chất tham khảo và có thể thay đổi sau khi giáo viên chấm xong.
-                  </p>
+                  <p className="font-bold">Điểm tạm thời</p>
+                  <p className="text-sm">Còn {grading_status.pending_grading_count} câu chưa được chấm. Điểm hiện tại chỉ mang tính chất tham khảo.</p>
                 </div>
               </div>
             </div>
@@ -343,8 +335,8 @@ export default function AttemptResultPage() {
                           {q.question_type}
                         </span>
                       </div>
-                      <p className="text-gray-800 font-medium mb-3 text-lg">{q.question_text}</p>
-                      <div className="flex items-center gap-6 text-sm text-gray-600">
+                      <p className="text-slate-800 dark:text-slate-200 font-medium mb-3 text-lg">{q.question_text}</p>
+                      <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
                         <span className="flex items-center gap-1">
                           <Award className="w-4 h-4" />
                           {isPending 
@@ -367,30 +359,30 @@ export default function AttemptResultPage() {
 
         {/* Additional Info */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-blue-600" />
+          <h4 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             Thông tin bổ sung
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Bắt đầu làm bài:</p>
-              <p className="font-semibold text-gray-800 text-lg">{formatDate(attempt.started_at)}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Bắt đầu làm bài:</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-200 text-lg">{formatDate(attempt.started_at)}</p>
             </div>
             {attempt.submitted_at && (
               <div>
-                <p className="text-sm text-gray-600 mb-1">Nộp bài:</p>
-                <p className="font-semibold text-gray-800 text-lg">{formatDate(attempt.submitted_at)}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Nộp bài:</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 text-lg">{formatDate(attempt.submitted_at)}</p>
               </div>
             )}
             <div>
-              <p className="text-sm text-gray-600 mb-1">Trạng thái:</p>
-              <p className="font-semibold text-gray-800 text-lg">
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Trạng thái:</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-200 text-lg">
                 {grading_status.is_provisional ? "Đang chờ chấm" : attempt.status}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 mb-1">Tổng thời gian:</p>
-              <p className="font-semibold text-gray-800 text-lg">
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Tổng thời gian:</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-200 text-lg">
                 {time_breakdown.total_minutes} phút ({time_breakdown.total_seconds} giây)
               </p>
             </div>
@@ -398,9 +390,9 @@ export default function AttemptResultPage() {
         </div>
 
         {/* Footer with Review Button */}
-        <div className="p-6 bg-gray-50 border-t">
+        <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between gap-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Bạn có thể xem chi tiết đáp án và giải thích cho từng câu hỏi
             </p>
             <Button

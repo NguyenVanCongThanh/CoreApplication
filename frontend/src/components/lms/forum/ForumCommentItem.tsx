@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import forumService, { ForumComment } from "@/services/forumService";
-import { Button } from "@/components/ui/button";
 import { 
   ThumbsUp, 
   ThumbsDown, 
@@ -136,8 +135,10 @@ export default function ForumCommentItem({
 
   return (
     <div className={`${depth > 0 ? 'ml-8 mt-4' : ''}`}>
-      <div className={`border rounded-lg p-4 ${
-        localComment.is_accepted ? 'border-green-300 bg-green-50' : 'bg-white'
+      <div className={`border rounded-2xl p-6 shadow-sm transition-all ${
+        localComment.is_accepted 
+          ? 'border-green-300 dark:border-green-900/50 bg-green-50 dark:bg-green-950/30' 
+          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
       }`}>
         <div className="flex gap-4">
           {/* Vote Section */}
@@ -147,8 +148,8 @@ export default function ForumCommentItem({
               disabled={voting}
               className={`p-1.5 rounded transition-colors ${
                 localComment.current_user_vote === 'upvote'
-                  ? 'bg-green-100 text-green-600'
-                  : 'hover:bg-gray-100 text-gray-400'
+                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500'
               }`}
             >
               <ThumbsUp className="w-4 h-4" />
@@ -161,14 +162,14 @@ export default function ForumCommentItem({
               disabled={voting}
               className={`p-1.5 rounded transition-colors ${
                 localComment.current_user_vote === 'downvote'
-                  ? 'bg-red-100 text-red-600'
-                  : 'hover:bg-gray-100 text-gray-400'
+                  ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500'
               }`}
             >
               <ThumbsDown className="w-4 h-4" />
             </button>
             {localComment.is_accepted && (
-              <Check className="w-5 h-5 text-green-600 mt-2" />
+              <Check className="w-5 h-5 text-green-600 dark:text-green-400 mt-2" />
             )}
           </div>
 
@@ -176,15 +177,15 @@ export default function ForumCommentItem({
           <div className="flex-1 min-w-0">
             {/* Meta */}
             <div className="flex items-center gap-2 mb-2">
-              <span className="font-semibold text-gray-900">{localComment.user_name}</span>
-              <span className="text-xs text-gray-500">
+              <span className="font-semibold text-slate-900 dark:text-slate-50">{localComment.user_name}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-500">
                 {formatDistanceToNow(new Date(localComment.created_at), {
                   addSuffix: true,
                   locale: vi,
                 })}
               </span>
               {localComment.is_accepted && (
-                <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 text-xs rounded-lg font-medium">
                   <Check className="w-3 h-3" />
                   Được chấp nhận
                 </span>
@@ -198,30 +199,33 @@ export default function ForumCommentItem({
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
                   rows={4}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl
+                             text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600
+                             bg-slate-50 dark:bg-slate-800
+                             focus:bg-white dark:focus:bg-slate-900
+                             focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+                             transition-all"
                 />
                 <div className="flex gap-2 mt-2">
-                  <Button
+                  <button
                     onClick={handleEdit}
-                    size="sm"
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-4 py-2 text-sm transition-all active:scale-95"
                   >
                     Lưu
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     onClick={() => {
                       setEditing(false);
                       setEditText(localComment.body);
                     }}
-                    size="sm"
-                    variant="outline"
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 text-sm font-medium transition-all active:scale-95"
                   >
                     Hủy
-                  </Button>
+                  </button>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-700 mb-3 whitespace-pre-wrap">{localComment.body}</p>
+              <p className="text-slate-600 dark:text-slate-400 mb-3 whitespace-pre-wrap">{localComment.body}</p>
             )}
 
             {/* Actions */}
@@ -229,7 +233,7 @@ export default function ForumCommentItem({
               {canReply && (
                 <button
                   onClick={() => setShowReplyForm(!showReplyForm)}
-                  className="flex items-center gap-1 text-gray-600 hover:text-blue-600"
+                  className="flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Phản hồi
@@ -240,7 +244,7 @@ export default function ForumCommentItem({
               {!localComment.is_accepted && depth === 0 && (isTeacherOrAdmin || postOwnerId === localComment.user_id) && (
                 <button
                   onClick={handleAccept}
-                  className="flex items-center gap-1 text-green-600 hover:text-green-700"
+                  className="flex items-center gap-1 text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
                 >
                   <Check className="w-4 h-4" />
                   Chấp nhận
@@ -253,9 +257,9 @@ export default function ForumCommentItem({
               <div className="relative">
                 <button
                   onClick={() => setShowActions(!showActions)}
-                  className="p-1 hover:bg-gray-100 rounded"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
                 >
-                  <MoreVertical className="w-4 h-4 text-gray-500" />
+                  <MoreVertical className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                 </button>
 
                 {showActions && (
@@ -264,13 +268,13 @@ export default function ForumCommentItem({
                       className="fixed inset-0 z-10"
                       onClick={() => setShowActions(false)}
                     />
-                    <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg py-1 z-20 min-w-[120px]">
+                    <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg py-1 z-20 min-w-[120px]">
                       <button
                         onClick={() => {
                           setEditing(true);
                           setShowActions(false);
                         }}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 transition-colors"
                       >
                         <Edit className="w-3 h-3" />
                         Sửa
@@ -280,7 +284,7 @@ export default function ForumCommentItem({
                           handleDelete();
                           setShowActions(false);
                         }}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                        className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
                         Xóa
@@ -299,29 +303,32 @@ export default function ForumCommentItem({
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder="Viết phản hồi..."
                   rows={3}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl
+                             text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600
+                             bg-slate-50 dark:bg-slate-800
+                             focus:bg-white dark:focus:bg-slate-900
+                             focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+                             transition-all"
                   disabled={submitting}
                 />
                 <div className="flex gap-2">
-                  <Button
+                  <button
                     type="submit"
-                    size="sm"
                     disabled={submitting || !replyText.trim()}
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-semibold rounded-xl px-4 py-2 text-sm transition-all active:scale-95"
                   >
                     {submitting ? "Đang gửi..." : "Gửi"}
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     type="button"
-                    size="sm"
-                    variant="outline"
                     onClick={() => {
                       setShowReplyForm(false);
                       setReplyText("");
                     }}
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 text-sm font-medium transition-all active:scale-95"
                   >
                     Hủy
-                  </Button>
+                  </button>
                 </div>
               </form>
             )}

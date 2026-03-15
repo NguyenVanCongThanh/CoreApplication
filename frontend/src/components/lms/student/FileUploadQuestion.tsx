@@ -224,21 +224,21 @@ export default function FileUploadQuestion({
 
       {/* Upload Area */}
       {!uploadedFile ? (
-        <div className={`border-2 border-dashed rounded-xl p-6 transition-all ${
+        <div className={`border-2 border-dashed rounded-2xl p-6 transition-all ${
           disabled 
-            ? 'border-gray-300 bg-gray-50 cursor-not-allowed' 
-            : 'border-blue-300 bg-blue-50 hover:border-blue-400 hover:bg-blue-100 cursor-pointer'
+            ? 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 cursor-not-allowed' 
+            : 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 cursor-pointer'
         }`}>
           <div className="text-center space-y-3">
             <div className="flex justify-center">
-              <Upload className={`w-12 h-12 ${disabled ? 'text-gray-400' : 'text-blue-500'}`} />
+              <Upload className={`w-12 h-12 ${disabled ? 'text-slate-400 dark:text-slate-600' : 'text-blue-500 dark:text-blue-400'}`} />
             </div>
             
             <div>
-              <p className="text-lg font-medium text-gray-700 mb-1">
+              <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-1">
                 {placeholder}
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-slate-500 dark:text-slate-500">
                 Kéo thả file vào đây hoặc click để chọn file
               </p>
             </div>
@@ -253,7 +253,7 @@ export default function FileUploadQuestion({
             </Button>
 
             {/* File Requirements */}
-            <div className="text-xs text-gray-500 space-y-1">
+            <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
               <p>📄 Định dạng: {getAcceptString()}</p>
               <p>📊 Kích thước tối đa: {maxFileSize}MB</p>
               {required && <p className="text-red-600 font-medium">* Bắt buộc phải nộp file</p>}
@@ -262,10 +262,10 @@ export default function FileUploadQuestion({
         </div>
       ) : (
         // Uploaded File Display
-        <div className="border-2 border-green-300 bg-green-50 rounded-xl p-5">
+        <div className="border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-2xl p-5">
           <div className="flex items-start gap-4">
             <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-green-500 dark:bg-green-600 rounded-xl flex items-center justify-center">
                 <FileIcon className="w-6 h-6 text-white" />
               </div>
             </div>
@@ -273,10 +273,10 @@ export default function FileUploadQuestion({
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 truncate" title={uploadedFile.file_name}>
+                  <p className="font-semibold text-slate-900 dark:text-slate-50 truncate" title={uploadedFile.file_name}>
                     {uploadedFile.file_name}
                   </p>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     {formatFileSize(uploadedFile.file_size)}
                   </p>
                 </div>
@@ -319,13 +319,13 @@ export default function FileUploadQuestion({
       {/* Upload Progress */}
       {uploading && (
         <div className="space-y-2">
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2">
             <div
               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-xs text-gray-600 text-center">
+          <p className="text-xs text-slate-600 dark:text-slate-400 text-center">
             {progress < 100 ? "Đang tải lên..." : "Hoàn thành!"}
           </p>
         </div>
@@ -333,17 +333,17 @@ export default function FileUploadQuestion({
 
       {/* Error Message */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-2">
           <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-red-700 text-sm">{error}</p>
+          <p className="text-red-700 dark:text-red-400 text-sm">{error}</p>
         </div>
       )}
 
       {/* Required Field Warning */}
       {required && !uploadedFile && !disabled && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-2">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-amber-700 text-sm">
+          <p className="text-amber-700 dark:text-amber-400 text-sm">
             <strong>Lưu ý:</strong> Câu hỏi này yêu cầu bạn phải nộp file.
           </p>
         </div>

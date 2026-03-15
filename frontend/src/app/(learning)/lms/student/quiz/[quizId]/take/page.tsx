@@ -305,7 +305,7 @@ export default function StudentQuizTakingPage() {
       <div className="my-4 space-y-3">
         {positionImages.map((image) => (
           <div key={image.id} className="relative group">
-            <div className="relative rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-all">
+            <div className="relative rounded-lg overflow-hidden border-2 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-600 transition-all">
               <img
                 src={image.url}
                 alt={image.alt_text || image.file_name}
@@ -336,24 +336,24 @@ export default function StudentQuizTakingPage() {
     const questionImages = question.settings?.images || [];
 
     return (
-      <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-8">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border-2 border-slate-200 dark:border-slate-800 p-8">
         {/* Question Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-4">
-              <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-bold text-lg">
+              <span className="px-4 py-2 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 rounded-lg font-bold text-lg border border-blue-200 dark:border-blue-800">
                 Câu {currentQuestion + 1}/{questions.length}
               </span>
-              <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-semibold">
+              <span className="px-4 py-2 bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 rounded-lg font-semibold border border-purple-200 dark:border-purple-800">
                 {question.points} điểm
               </span>
               {question.is_required && (
-                <span className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium">
+                <span className="px-4 py-2 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 rounded-lg text-sm font-medium border border-red-200 dark:border-red-800">
                   * Bắt buộc
                 </span>
               )}
               {questionImages.length > 0 && (
-                <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium">
+                <span className="px-4 py-2 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium border border-green-200 dark:border-green-800">
                   🖼️ {questionImages.length} ảnh
                 </span>
               )}
@@ -366,12 +366,12 @@ export default function StudentQuizTakingPage() {
 
         {/* Question Text */}
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 leading-relaxed">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 leading-relaxed">
             {question.question_text}
           </h2>
           {question.question_html && (
             <div
-              className="mt-3 text-gray-700 prose max-w-none"
+              className="mt-3 text-slate-700 dark:text-slate-300 prose max-w-none"
               dangerouslySetInnerHTML={{ __html: question.question_html }}
             />
           )}
@@ -389,8 +389,8 @@ export default function StudentQuizTakingPage() {
                   key={idx}
                   className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                     answers[question.id]?.selected_option_id === option.id
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-300 hover:border-blue-300 hover:bg-gray-50"
+                      ? "border-blue-500 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/20"
+                      : "border-slate-300 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   }`}
                 >
                   <input
@@ -405,7 +405,7 @@ export default function StudentQuizTakingPage() {
                     }
                     className="mt-1 w-5 h-5"
                   />
-                  <span className="text-gray-900 flex-1">{option.option_text}</span>
+                  <span className="text-slate-900 dark:text-slate-50 flex-1">{option.option_text}</span>
                 </label>
               ))}
             </div>
@@ -418,8 +418,8 @@ export default function StudentQuizTakingPage() {
                   key={idx}
                   className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                     answers[question.id]?.selected_option_ids?.includes(option.id)
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-300 hover:border-blue-300 hover:bg-gray-50"
+                      ? "border-blue-500 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/20"
+                      : "border-slate-300 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   }`}
                 >
                   <input
@@ -437,7 +437,7 @@ export default function StudentQuizTakingPage() {
                     }}
                     className="mt-1 w-5 h-5"
                   />
-                  <span className="text-gray-900 flex-1">{option.option_text}</span>
+                  <span className="text-slate-900 dark:text-slate-50 flex-1">{option.option_text}</span>
                 </label>
               ))}
             </div>
@@ -453,7 +453,7 @@ export default function StudentQuizTakingPage() {
                   type: "short_answer",
                 })
               }
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               placeholder="Nhập câu trả lời của bạn..."
             />
           )}
@@ -467,7 +467,7 @@ export default function StudentQuizTakingPage() {
                   type: "essay",
                 })
               }
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               rows={8}
               placeholder="Nhập bài luận của bạn..."
             />
@@ -521,24 +521,24 @@ export default function StudentQuizTakingPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Đang tải quiz...</p>
+          <p className="text-slate-600 dark:text-slate-400">Đang tải quiz...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
       <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{quiz?.title}</h1>
-              <p className="text-gray-600 mt-2">{quiz?.description}</p>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">{quiz?.title}</h1>
+              <p className="text-slate-600 dark:text-slate-400 mt-2">{quiz?.description}</p>
             </div>
             {timeLeft !== null && (
               <div className={`px-6 py-3 rounded-lg font-bold text-xl ${
@@ -551,11 +551,11 @@ export default function StudentQuizTakingPage() {
 
           {/* Progress Bar */}
           <div className="mt-6">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400 mb-2">
               <span>Tiến độ</span>
               <span>{questions.filter(q => isQuestionAnswered(q)).length}/{questions.length} câu đã trả lời</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-3">
               <div
                 className="bg-blue-600 h-3 rounded-full transition-all duration-300"
                 style={{
@@ -574,7 +574,7 @@ export default function StudentQuizTakingPage() {
           <Button
             onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
             disabled={currentQuestion === 0}
-            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             ← Câu trước
           </Button>
@@ -588,8 +588,8 @@ export default function StudentQuizTakingPage() {
                   currentQuestion === idx
                     ? "bg-blue-600 text-white"
                     : isQuestionAnswered(questions[idx])
-                    ? "bg-green-100 text-green-700 border-2 border-green-300"
-                    : "bg-gray-100 text-gray-600 border-2 border-gray-300"
+                    ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-2 border-green-300 dark:border-green-700"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-2 border-slate-300 dark:border-slate-700"
                 }`}
               >
                 {idx + 1}

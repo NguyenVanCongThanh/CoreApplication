@@ -6,6 +6,7 @@ import { Logo } from "@/components/layout/Logo";
 import { userService } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
+import { getAuthToken } from "@/utils/tokenManager";
 
 export default function Navbar() {
   const router = useRouter();
@@ -13,11 +14,12 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const token = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("authToken="))
-      ?.split("=")[1];
-    setHasToken(!!token);
+    const checkToken = async () => {
+      const token = await getAuthToken();
+      setHasToken(!!token);
+    };
+
+    checkToken();
 
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
@@ -27,8 +29,8 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       userService.logout();
-      document.cookie = "authToken=; path=/; max-age=0";
       router.push("/login");
+      router.refresh();
     } catch (err) {
       console.error("Logout error:", err);
       document.cookie = "authToken=; path=/; max-age=0";

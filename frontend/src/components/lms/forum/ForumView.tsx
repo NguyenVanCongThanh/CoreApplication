@@ -65,13 +65,13 @@ export default function ForumView({ contentId, isTeacherOrAdmin = false }: Forum
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Diễn đàn thảo luận</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Diễn đàn thảo luận</h2>
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-3 shadow-sm transition-all active:scale-95"
         >
           <Plus className="w-4 h-4" />
           Đặt câu hỏi mới
@@ -91,9 +91,9 @@ export default function ForumView({ contentId, isTeacherOrAdmin = false }: Forum
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : posts.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border">
-          <p className="text-gray-500">Chưa có bài viết nào</p>
-          <p className="text-sm text-gray-400 mt-2">Hãy là người đầu tiên đặt câu hỏi!</p>
+        <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <p className="text-slate-500 dark:text-slate-400">Chưa có bài viết nào</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">Hãy là người đầu tiên đặt câu hỏi!</p>
         </div>
       ) : (
         <>
@@ -109,17 +109,17 @@ export default function ForumView({ contentId, isTeacherOrAdmin = false }: Forum
               <Button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                variant="outline"
+                className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Trước
               </Button>
-              <span className="px-4 py-2 text-sm">
+              <span className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400">
                 Trang {page} / {totalPages}
               </span>
               <Button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                variant="outline"
+                className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sau
               </Button>

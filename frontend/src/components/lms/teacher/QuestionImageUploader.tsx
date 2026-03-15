@@ -145,8 +145,8 @@ export default function QuestionImageUploader({
         <div
           className={`relative border-2 border-dashed rounded-2xl p-8 transition-all duration-300 ${
             dragActive
-              ? "border-blue-500 bg-blue-50 scale-[1.02]"
-              : "border-gray-300 hover:border-blue-400 hover:bg-gray-50"
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20 scale-[1.02]"
+              : "border-slate-300 dark:border-slate-700 hover:border-blue-400 hover:bg-slate-50 dark:hover:bg-slate-950/50"
           } ${disabled || uploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -175,8 +175,8 @@ export default function QuestionImageUploader({
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 font-medium">Đang upload hình ảnh...</p>
-                <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">Đang upload hình ảnh...</p>
+                <div className="w-64 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 transition-all duration-300 rounded-full"
                     style={{ width: `${uploadProgress}%` }}
@@ -194,10 +194,10 @@ export default function QuestionImageUploader({
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="text-base font-semibold text-gray-800 mb-2">
+                  <p className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-2">
                     Kéo thả ảnh vào đây hoặc click để chọn
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     Hỗ trợ: PNG, JPG, GIF, WEBP • Tối đa 5MB/ảnh
                   </p>
                 </div>
@@ -211,13 +211,13 @@ export default function QuestionImageUploader({
       {images.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <ImageIcon className="w-4 h-4 text-blue-600" />
+            <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-50 dark:bg-blue-950/20 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-800">
+                <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
               Hình ảnh đính kèm ({images.length})
             </h4>
-            <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
               Tổng: {formatFileSize(images.reduce((sum, img) => sum + img.file_size, 0))}
             </span>
           </div>
@@ -229,7 +229,7 @@ export default function QuestionImageUploader({
               .map((image, index) => (
                 <div
                   key={image.id}
-                  className="group relative bg-white border-2 border-gray-200 rounded-xl overflow-hidden hover:shadow-xl hover:border-blue-400 transition-all duration-300 transform hover:-translate-y-1"
+                  className="group relative bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-300 transform hover:-translate-y-1"
                 >
                   {/* Image Number Badge */}
                   <div className="absolute top-2 left-2 z-10 w-7 h-7 bg-black bg-opacity-70 rounded-full flex items-center justify-center">
@@ -237,7 +237,7 @@ export default function QuestionImageUploader({
                   </div>
 
                   {/* Image */}
-                  <div className="aspect-square relative bg-gradient-to-br from-gray-100 to-gray-200">
+                  <div className="aspect-square relative bg-gradient-to-br from-slate-100 dark:from-slate-700 to-slate-200 dark:to-slate-800">
                     <img
                       src={image.url} // Sửa thành .url
                       alt={image.caption || image.file_name}
@@ -250,7 +250,7 @@ export default function QuestionImageUploader({
                       <Button
                         type="button"
                         size="sm"
-                        className="bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+                        className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-lg border border-slate-200 dark:border-slate-700"
                         onClick={() => setPreviewImage(image.url)} // Sửa thành .url
                       >
                         <ZoomIn className="w-4 h-4 mr-1" />
@@ -271,15 +271,15 @@ export default function QuestionImageUploader({
                   </div>
 
                   {/* Info */}
-                  <div className="p-2.5 border-t bg-gradient-to-r from-gray-50 to-white">
-                    <p className="text-xs font-semibold text-gray-700 truncate mb-1">
+                  <div className="p-2.5 border-t border-slate-200 dark:border-slate-700 bg-gradient-to-r from-slate-50 dark:from-slate-700 to-white dark:to-slate-800">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate mb-1">
                       {image.file_name}
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
                         {formatFileSize(image.file_size)}
                       </span>
-                      <span className="text-xs text-green-600 font-medium">
+                      <span className="text-xs text-green-600 dark:text-green-400 font-medium">
                         ✓ Uploaded
                       </span>
                     </div>
@@ -300,7 +300,7 @@ export default function QuestionImageUploader({
             <Button
               type="button"
               size="sm"
-              className="absolute -top-14 right-0 bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+              className="absolute -top-14 right-0 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-lg border border-slate-200 dark:border-slate-700"
               onClick={(e) => {
                 e.stopPropagation();
                 setPreviewImage(null);

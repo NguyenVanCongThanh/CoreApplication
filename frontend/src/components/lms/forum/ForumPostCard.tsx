@@ -95,24 +95,24 @@ export default function ForumPostCard({ post, onPostDeleted, isTeacherOrAdmin }:
 
   return (
     <div
-      className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer ${
-        localPost.is_pinned ? 'border-blue-300 bg-blue-50' : ''
+      className={`bg-white dark:bg-slate-900 rounded-2xl border p-6 hover:shadow-md transition-all cursor-pointer ${
+        localPost.is_pinned ? 'border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-200 dark:border-slate-800'
       }`}
       onClick={() => router.push(`/lms/forums/posts/${localPost.id}`)}
     >
-      <div className="flex gap-4">
+      <div className="flex gap-6">
         {/* Vote Section */}
-        <div className="flex flex-col items-center gap-2 min-w-[60px]">
+        <div className="flex flex-col items-center gap-2 min-w-[70px]">
           <button
             onClick={(e) => {
               e.stopPropagation();
               handleVote('upvote');
             }}
             disabled={voting}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
               localPost.current_user_vote === 'upvote'
-                ? 'bg-green-100 text-green-600'
-                : 'hover:bg-gray-100 text-gray-400'
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-600'
             }`}
           >
             <ThumbsUp className="w-5 h-5" />
@@ -126,10 +126,10 @@ export default function ForumPostCard({ post, onPostDeleted, isTeacherOrAdmin }:
               handleVote('downvote');
             }}
             disabled={voting}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
               localPost.current_user_vote === 'downvote'
-                ? 'bg-red-100 text-red-600'
-                : 'hover:bg-gray-100 text-gray-400'
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-600'
             }`}
           >
             <ThumbsDown className="w-5 h-5" />
@@ -139,20 +139,20 @@ export default function ForumPostCard({ post, onPostDeleted, isTeacherOrAdmin }:
         {/* Content Section */}
         <div className="flex-1 min-w-0">
           {/* Title and Badges */}
-          <div className="flex items-start gap-2 mb-2">
+          <div className="flex items-start gap-2 mb-3">
             {localPost.is_pinned && (
-              <Pin className="w-4 h-4 text-blue-600 flex-shrink-0 mt-1" />
+              <Pin className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-1" />
             )}
             {localPost.is_locked && (
-              <Lock className="w-4 h-4 text-orange-600 flex-shrink-0 mt-1" />
+              <Lock className="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-1" />
             )}
-            <h3 className="text-lg font-semibold text-gray-900 hover:text-blue-600 flex-1">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 hover:text-blue-600 dark:hover:text-blue-400 flex-1 transition-colors">
               {localPost.title}
             </h3>
           </div>
 
           {/* Body Preview */}
-          <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+          <p className="text-slate-600 dark:text-slate-400 text-sm mb-3 line-clamp-2">
             {localPost.body}
           </p>
 

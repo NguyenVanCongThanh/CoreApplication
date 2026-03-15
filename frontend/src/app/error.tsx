@@ -16,7 +16,7 @@ export default function GlobalError({ error, reset }: Props) {
         </div>
 
         <h1 className="text-3xl font-bold mb-2">Ôi! Đã có lỗi xảy ra.</h1>
-        <p className="text-gray-700 mb-4">Mô tả: {error?.message ?? "Không có thông tin lỗi"}</p>
+        <p className="text-slate-700 dark:text-slate-300 mb-4">Mô tả: {error?.message ?? "Không có thông tin lỗi"}</p>
 
         <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
           <button
@@ -34,17 +34,17 @@ export default function GlobalError({ error, reset }: Props) {
             Thử lại
           </button>
 
-          <Link href="/" className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-800">
+          <Link href="/" className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
               Về Trang Chủ
           </Link>
         </div>
 
-        <details className="mt-4 text-left text-xs text-gray-500 max-w-xl mx-auto">
-          <summary className="cursor-pointer">Chi tiết lỗi</summary>
-          <pre className="whitespace-pre-wrap mt-2 text-[11px]">{String(error?.stack ?? "Không có stack")}</pre>
+        <details className="mt-4 text-left text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
+          <summary className="cursor-pointer font-semibold text-slate-600 dark:text-slate-300">Chi tiết lỗi</summary>
+          <pre className="whitespace-pre-wrap mt-2 text-[11px] bg-slate-100 dark:bg-slate-800 p-3 rounded border border-slate-200 dark:border-slate-700">{String(error?.stack ?? "Không có stack")}</pre>
         </details>
 
-        <p className="mt-4 text-xs text-gray-400">Nếu lỗi vẫn tiếp diễn, hãy gửi log cho team dev — họ sẽ cảm ơn bạn 😊</p>
+        <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">Nếu lỗi vẫn tiếp diễn, hãy gửi log cho team dev — họ sẽ cảm ơn bạn 😊</p>
     </>
   );
 }

@@ -165,7 +165,7 @@ export default function TeacherGradingPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Quay lại
         </Button>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Chấm bài</h1>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-2">Chấm bài</h1>
         
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -194,16 +194,16 @@ export default function TeacherGradingPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Bộ lọc</h3>
+          <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          <h3 className="font-semibold text-slate-900 dark:text-slate-50">Bộ lọc</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Filter by graded status */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Trạng thái chấm
             </label>
             <select
@@ -219,11 +219,11 @@ export default function TeacherGradingPage() {
 
           {/* Search student */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tìm học sinh
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              Tìm kiếm
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-600" />
               <input
                 type="text"
                 value={searchStudent}
@@ -301,14 +301,14 @@ export default function TeacherGradingPage() {
                   </div>
                   <div className="text-right">
                     {answer.points_earned !== undefined ? (
-                      <div className="px-4 py-2 bg-green-100 text-green-700 rounded-lg">
+                      <div className="px-4 py-2 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-lg border border-green-200 dark:border-green-800">
                         <p className="text-sm font-medium">Đã chấm</p>
                         <p className="text-lg font-bold">
                           {answer.points_earned}/{answer.points} điểm
                         </p>
                       </div>
                     ) : (
-                      <div className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg">
+                      <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 rounded-lg border border-yellow-200 dark:border-yellow-800">
                         <p className="text-sm font-medium">Chưa chấm</p>
                         <p className="text-lg font-bold">Tối đa: {answer.points} điểm</p>
                       </div>

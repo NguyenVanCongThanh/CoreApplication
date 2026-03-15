@@ -1,346 +1,446 @@
-/* eslint-disable @next/next/no-img-element */
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getCookie } from "@/utils/cookies";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { lmsService } from "@/services/lmsService";
-import { CheckCircle2, Clock, Loader } from "lucide-react";
-import { Course, Enrollment, TabType } from "@/types";
+import {
+  BookOpen, Clock, CheckCircle2, BarChart3,
+  ChevronRight, Search, RefreshCw,
+  LogOut, Home
+} from "lucide-react";
+import {
+  StatCard, Card, TabBar, CourseCard,
+  ProgressBar, Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
+  EmptyState, PageLoader, Alert
+} from "@/components/lms/shared";
+import { Course, Enrollment } from "@/types";
+
+type Tab = "my-courses" | "discover" | "pending";
+
+interface CourseWithProgress extends Enrollment {
+  progress?: number;
+  last_accessed?: string;
+}
+
+// ─── Stats row ────────────────────────────────────────────────────────────────
+
+function LearningStats({ enrollments }: { enrollments: Enrollment[] }) {
+  const accepted = enrollments.filter(e => e.status === "ACCEPTED");
+  const pending  = enrollments.filter(e => e.status === "WAITING");
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatCard
+        label="Đã đăng ký"
+        value={accepted.length}
+        sub="khóa học"
+        icon={<BookOpen className="w-5 h-5" />}
+        accent="blue"
+      />
+      <StatCard
+        label="Đang học"
+        value={accepted.length}
+        sub="khóa đang tiến hành"
+        icon={<Clock className="w-5 h-5" />}
+        accent="orange"
+      />
+      <StatCard
+        label="Hoàn thành"
+        value={0}
+        sub="khóa học"
+        icon={<CheckCircle2 className="w-5 h-5" />}
+        accent="green"
+      />
+      <StatCard
+        label="Chờ duyệt"
+        value={pending.length}
+        sub={pending.length > 0 ? "cần xử lý" : "không có"}
+        icon={<BarChart3 className="w-5 h-5" />}
+        accent={pending.length > 0 ? "orange" : "blue"}
+      />
+    </div>
+  );
+}
+
+// ─── Enrolled course item ─────────────────────────────────────────────────────
+
+function EnrolledCourseItem({
+  enrollment,
+  onOpen
+}: { enrollment: Enrollment; onOpen: (id: number) => void }) {
+  return (
+    <div
+      className="flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
+      onClick={() => onOpen(enrollment.course_id)}
+    >
+      {/* Icon */}
+      <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+        <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-slate-900 dark:text-slate-50 truncate">
+          {enrollment.course_title ?? `Khóa học #${enrollment.course_id}`}
+        </p>
+        {enrollment.teacher_name && (
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
+            {enrollment.teacher_name}
+          </p>
+        )}
+        <ProgressBar value={0} max={100} color="blue" showPercent={false} className="mt-2" />
+      </div>
+
+      {/* Arrow */}
+      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors flex-shrink-0" />
+    </div>
+  );
+}
+
+// ─── Discover card ────────────────────────────────────────────────────────────
+
+function DiscoverSection({
+  courses,
+  enrolling,
+  enrolledIds,
+  onEnroll,
+}: {
+  courses: Course[];
+  enrolling: number | null;
+  enrolledIds: Set<number>;
+  onEnroll: (id: number) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = courses.filter(c =>
+    c.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Tìm kiếm khóa học..."
+          className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-sm
+                     bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100
+                     placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen className="w-12 h-12" />}
+          title="Chưa có khóa học"
+          description="Hiện chưa có khóa học nào được xuất bản."
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {filtered.map(course => {
+            const enrolled = enrolledIds.has(course.id);
+            return (
+              <CourseCard
+                key={course.id}
+                id={course.id}
+                title={course.title}
+                description={course.description}
+                category={course.category}
+                level={course.level}
+                teacherName={course.teacher_name}
+                thumbnailUrl={course.thumbnail_url}
+                actions={
+                  enrolled ? (
+                    <Badge variant="green">Đã đăng ký</Badge>
+                  ) : (
+                    <PrimaryBtn
+                      size="sm"
+                      loading={enrolling === course.id}
+                      onClick={e => { e.stopPropagation(); onEnroll(course.id); }}
+                    >
+                      Đăng ký
+                    </PrimaryBtn>
+                  )
+                }
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Pending enrollments ──────────────────────────────────────────────────────
+
+function PendingList({
+  enrollments,
+  canceling,
+  onCancel
+}: { enrollments: Enrollment[]; canceling: number | null; onCancel: (id: number) => void }) {
+  if (enrollments.length === 0)
+    return (
+      <EmptyState
+        icon={<CheckCircle2 className="w-12 h-12" />}
+        title="Không có yêu cầu chờ"
+        description="Tất cả yêu cầu đăng ký đã được xử lý."
+      />
+    );
+
+  return (
+    <div className="space-y-3">
+      {enrollments.map(en => (
+        <div key={en.id} className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="w-10 h-10 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
+            <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-slate-900 dark:text-slate-50 truncate">
+              {en.course_title ?? `Khóa học #${en.course_id}`}
+            </p>
+            {en.teacher_name && (
+              <p className="text-xs text-slate-500 mt-0.5">{en.teacher_name}</p>
+            )}
+            <p className="text-xs text-slate-400 mt-0.5">
+              Đăng ký {new Date(en.enrolled_at).toLocaleDateString("vi-VN")}
+            </p>
+          </div>
+          <SecondaryBtn
+            size="sm"
+            loading={canceling === en.id}
+            className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+            onClick={() => onCancel(en.id)}
+          >
+            Hủy
+          </SecondaryBtn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function StudentDashboard() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState("");
-  const [activeTab, setActiveTab] = useState<TabType>('discover');
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [tab, setTab] = useState<Tab>("my-courses");
+
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
+  const [acceptedEnrollments, setAcceptedEnrollments] = useState<Enrollment[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<Enrollment[]>([]);
+  const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
+
+  const [loadingEnrolled, setLoadingEnrolled] = useState(true);
+  const [loadingDiscover, setLoadingDiscover] = useState(false);
+
   const [enrolling, setEnrolling] = useState<number | null>(null);
-  const [cancelingId, setCancelingId] = useState<number | null>(null);
+  const [canceling, setCanceling] = useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const selectedRole = sessionStorage.getItem("lms_selected_role");
-    if (selectedRole !== "STUDENT") {
-      router.push("/lms");
-      return;
-    }
+    const role = sessionStorage.getItem("lms_selected_role");
+    if (role !== "STUDENT") { router.push("/lms"); return; }
+    setUserName(getCookie("userName") || "bạn");
+    loadAllEnrollments();
+  }, []);
 
-    const name = getCookie("userName") || "";
-    setUserName(name);
-    
-    loadStudentData();
-  }, [router]);
-
-  const loadStudentData = async () => {
+  const loadAllEnrollments = useCallback(async () => {
+    setLoadingEnrolled(true);
     try {
-      // Load initial discover courses
-      setLoading(true);
-      const data = await lmsService.listPublishedCourses({ page_size: 20 });
-      setCourses(data || []);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error loading student data:", error);
-      setLoading(false);
-    }
-  };
-
-  // Tab handlers
-  const loadPublishedCourses = async () => {
-    try {
-      setLoading(true);
-      const data = await lmsService.listPublishedCourses({ page_size: 20 });
-      setCourses(data || []);
-    } catch (error) {
-      console.error("Failed to load courses:", error);
+      const [accepted, pending] = await Promise.all([
+        lmsService.getMyEnrollments("ACCEPTED"),
+        lmsService.getMyEnrollments("WAITING"),
+      ]);
+      setAcceptedEnrollments(accepted || []);
+      setPendingEnrollments(pending || []);
+      setAllEnrollments([...(accepted || []), ...(pending || [])]);
+    } catch {
+      setError("Không thể tải dữ liệu. Vui lòng thử lại.");
     } finally {
-      setLoading(false);
+      setLoadingEnrolled(false);
     }
-  };
+  }, []);
 
-  const loadMyCourses = async () => {
+  const loadDiscover = useCallback(async () => {
+    if (publishedCourses.length > 0) return;
+    setLoadingDiscover(true);
     try {
-      setLoading(true);
-      const data = await lmsService.getMyEnrollments('ACCEPTED');
-      setEnrollments(data || []);
-    } catch (error) {
-      console.error("Failed to load my courses:", error);
+      const data = await lmsService.listPublishedCourses({ page_size: 50 });
+      setPublishedCourses(data || []);
+    } catch {
+      setError("Không thể tải danh sách khóa học.");
     } finally {
-      setLoading(false);
+      setLoadingDiscover(false);
     }
-  };
-
-  const loadPendingEnrollments = async () => {
-    try {
-      setLoading(true);
-      const data = await lmsService.getMyEnrollments('WAITING');
-      setEnrollments(data || []);
-    } catch (error) {
-      console.error("Failed to load pending enrollments:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [publishedCourses.length]);
 
   useEffect(() => {
-    if (activeTab === 'discover') {
-      loadPublishedCourses();
-    } else if (activeTab === 'my-courses') {
-      loadMyCourses();
-    } else if (activeTab === 'pending') {
-      loadPendingEnrollments();
-    }
-  }, [activeTab]);
+    if (tab === "discover") loadDiscover();
+  }, [tab]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   const handleEnroll = async (courseId: number) => {
+    setEnrolling(courseId);
     try {
-      setEnrolling(courseId);
       await lmsService.enrollCourse(courseId);
-      alert('Đã gửi yêu cầu đăng ký. Vui lòng chờ giáo viên xác nhận.');
-      loadPublishedCourses();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Lỗi khi đăng ký khóa học');
+      await loadAllEnrollments();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Đăng ký thất bại.");
     } finally {
       setEnrolling(null);
     }
   };
 
-  const handleCancelEnrollment = async (enrollmentId: number) => {
-    if (!confirm('Bạn chắc chắn muốn hủy yêu cầu đăng ký này?')) return;
-
+  const handleCancel = async (enrollmentId: number) => {
+    if (!confirm("Xác nhận hủy yêu cầu đăng ký?")) return;
+    setCanceling(enrollmentId);
     try {
-      setCancelingId(enrollmentId);
       await lmsService.cancelEnrollment(enrollmentId);
-      alert('Yêu cầu đã bị hủy');
-      loadPendingEnrollments();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Lỗi khi hủy yêu cầu');
+      await loadAllEnrollments();
+    } catch {
+      setError("Không thể hủy yêu cầu.");
     } finally {
-      setCancelingId(null);
+      setCanceling(null);
     }
   };
 
-  const handleChangeRole = () => {
-    sessionStorage.removeItem("lms_selected_role");
-    router.push("/lms");
-  };
+  const enrolledIds = new Set(allEnrollments.map(e => e.course_id));
 
-  const handleBackToHome = () => {
-    router.push("/");
-  };
-
-  const renderDiscoverTab = () => (
-    <div className="space-y-4">
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <Loader className="animate-spin w-8 h-8" />
-        </div>
-      ) : courses.length === 0 ? (
-        <Card className="p-8 text-center text-gray-500">
-          Không có khóa học nào để khám phá
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {courses.map((course) => (
-            <Card key={course.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-              {course.thumbnail_url && (
-                <img 
-                  src={course.thumbnail_url} 
-                  alt={course.title}
-                  className="w-full h-40 object-cover"
-                />
-              )}
-              <div className="p-4">
-                <h3 className="font-semibold text-lg mb-2 line-clamp-2">{course.title}</h3>
-                {course.teacher_name && (
-                  <p className="text-sm text-gray-600 mb-2">Giáo viên: {course.teacher_name}</p>
-                )}
-                <p className="text-sm text-gray-700 mb-3 line-clamp-2">{course.description}</p>
-                <div className="flex gap-2 flex-wrap mb-3">
-                  {course.category && (
-                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                      {course.category}
-                    </span>
-                  )}
-                  {course.level && (
-                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                      {course.level}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  onClick={() => handleEnroll(course.id)}
-                  disabled={enrolling === course.id}
-                  className="w-full"
-                >
-                  {enrolling === course.id ? (
-                    <>
-                      <Loader className="w-4 h-4 mr-2 animate-spin" />
-                      Đang gửi...
-                    </>
-                  ) : (
-                    'Đăng ký'
-                  )}
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderMyCoursesTab = () => (
-    <div className="space-y-4">
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <Loader className="animate-spin w-8 h-8" />
-        </div>
-      ) : enrollments.length === 0 ? (
-        <Card className="p-8 text-center text-gray-500">
-          Bạn chưa được chấp nhận vào khóa học nào
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {enrollments.map((enrollment) => (
-            <Card key={enrollment.id} className="p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer">
-              <div 
-                className="flex-1"
-                onClick={() => router.push(`/lms/student/courses/${enrollment.course_id}`)}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
-                  <h3 className="font-semibold">{enrollment.course_title}</h3>
-                </div>
-                {enrollment.teacher_name && (
-                  <p className="text-sm text-gray-600">Giáo viên: {enrollment.teacher_name}</p>
-                )}
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => router.push(`/lms/student/courses/${enrollment.course_id}`)}
-              >
-                Vào khóa học
-              </Button>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderPendingTab = () => (
-    <div className="space-y-4">
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <Loader className="animate-spin w-8 h-8" />
-        </div>
-      ) : enrollments.length === 0 ? (
-        <Card className="p-8 text-center text-gray-500">
-          Không có yêu cầu đang chờ xác nhận
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {enrollments.map((enrollment) => (
-            <Card key={enrollment.id} className="p-4 flex items-center justify-between hover:shadow-md transition-shadow">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock className="w-5 h-5 text-yellow-600" />
-                  <h3 className="font-semibold">{enrollment.course_title}</h3>
-                </div>
-                {enrollment.teacher_name && (
-                  <p className="text-sm text-gray-600">Giáo viên: {enrollment.teacher_name}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-1">
-                  Đã yêu cầu: {new Date(enrollment.enrolled_at).toLocaleDateString('vi-VN')}
-                </p>
-              </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => handleCancelEnrollment(enrollment.id)}
-                disabled={cancelingId === enrollment.id}
-              >
-                {cancelingId === enrollment.id ? (
-                  <Loader className="w-4 h-4 animate-spin" />
-                ) : (
-                  'Hủy'
-                )}
-              </Button>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-transparent">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <span className="text-3xl">🎓</span>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800">Quản lý khóa học</h1>
-                <p className="text-sm text-gray-500">Xin chào, {userName}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleBackToHome}
-                variant="outline"
-                size="sm"
-              >
-                🏠 Trang chủ
-              </Button>
-              <Button
-                onClick={handleChangeRole}
-                variant="outline"
-                size="sm"
-              >
-                🔄 Đổi vai trò
-              </Button>
-            </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-slate-500 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1">
+              Học viên
+            </p>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight">
+              Xin chào, {userName} 👋
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-1">
+              Tiếp tục lộ trình học tập của bạn hôm nay.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <GhostBtn
+              size="sm"
+              icon={<Home className="w-4 h-4" />}
+              onClick={() => router.push("/")}
+            >
+              Trang chủ
+            </GhostBtn>
+            <GhostBtn
+              size="sm"
+              icon={<LogOut className="w-4 h-4" />}
+              onClick={() => { sessionStorage.removeItem("lms_selected_role"); router.push("/lms"); }}
+            >
+              Đổi vai trò
+            </GhostBtn>
           </div>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tabs */}
-        <div className="flex gap-4 mb-6 border-b bg-white rounded-t-lg p-4">
-          {[
-            { id: 'discover', label: 'Khám phá' },
-            { id: 'my-courses', label: 'Khóa học của tôi' },
-            { id: 'pending', label: 'Chờ xác nhận' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* ── Error alert ── */}
+        {error && <Alert type="error">{error}</Alert>}
 
-        {/* Tab Content */}
-        <div className="bg-white rounded-b-lg p-4">
-          {activeTab === 'discover' && renderDiscoverTab()}
-          {activeTab === 'my-courses' && renderMyCoursesTab()}
-          {activeTab === 'pending' && renderPendingTab()}
-        </div>
-      </main>
+        {/* ── Stats row ── */}
+        {loadingEnrolled ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0,1,2,3].map(i => (
+              <div key={i} className="h-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <LearningStats enrollments={allEnrollments} />
+        )}
+
+        {/* ── Tab section ── */}
+        <Card className="overflow-hidden">
+          {/* Tab bar */}
+          <div className="px-6 pt-5 pb-0 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-4">
+              <TabBar
+                tabs={[
+                  { id: "my-courses" as Tab, label: "Khóa học của tôi", badge: acceptedEnrollments.length },
+                  { id: "discover"  as Tab, label: "Khám phá" },
+                  { id: "pending"   as Tab, label: "Chờ xác nhận", badge: pendingEnrollments.length },
+                ]}
+                active={tab}
+                onChange={setTab}
+              />
+              <GhostBtn
+                size="sm"
+                icon={<RefreshCw className="w-3.5 h-3.5" />}
+                onClick={loadAllEnrollments}
+              >
+                Làm mới
+              </GhostBtn>
+            </div>
+          </div>
+
+          {/* Tab content */}
+          <div className="p-6">
+            {/* ── My courses ── */}
+            {tab === "my-courses" && (
+              loadingEnrolled ? <PageLoader /> :
+              acceptedEnrollments.length === 0 ? (
+                <EmptyState
+                  icon={<BookOpen className="w-14 h-14" />}
+                  title="Chưa học khóa nào"
+                  description="Hãy khám phá và đăng ký khóa học phù hợp với bạn."
+                  action={
+                    <PrimaryBtn icon={<Search className="w-4 h-4" />} onClick={() => setTab("discover")}>
+                      Khám phá khóa học
+                    </PrimaryBtn>
+                  }
+                />
+              ) : (
+                <div className="space-y-1 divide-y divide-slate-100 dark:divide-slate-800">
+                  {acceptedEnrollments.map(en => (
+                    <EnrolledCourseItem
+                      key={en.id}
+                      enrollment={en}
+                      onOpen={id => router.push(`/lms/student/courses/${id}`)}
+                    />
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ── Discover ── */}
+            {tab === "discover" && (
+              loadingDiscover ? <PageLoader /> :
+              <DiscoverSection
+                courses={publishedCourses}
+                enrolling={enrolling}
+                enrolledIds={enrolledIds}
+                onEnroll={handleEnroll}
+              />
+            )}
+
+            {/* ── Pending ── */}
+            {tab === "pending" && (
+              loadingEnrolled ? <PageLoader /> :
+              <PendingList
+                enrollments={pendingEnrollments}
+                canceling={canceling}
+                onCancel={handleCancel}
+              />
+            )}
+          </div>
+        </Card>
+
+      </div>
     </div>
   );
 }

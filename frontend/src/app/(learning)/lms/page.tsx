@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCookie } from "@/utils/cookies";
-import { Button } from "@/components/ui/button";
+import { getAuthToken, getCookie } from "@/utils/cookies";
 import lmsService from "@/services/lmsService";
 
 interface RoleOption {
@@ -11,8 +10,6 @@ interface RoleOption {
   label: string;
   description: string;
   icon: string;
-  color: string;
-  gradient: string;
 }
 
 const ROLE_OPTIONS: Record<string, RoleOption> = {
@@ -21,24 +18,18 @@ const ROLE_OPTIONS: Record<string, RoleOption> = {
     label: "Quản trị viên",
     description: "Quản lý toàn bộ hệ thống LMS, người dùng và khóa học",
     icon: "👑",
-    color: "from-purple-500 to-pink-500",
-    gradient: "bg-gradient-to-br from-purple-50 to-pink-50",
   },
   TEACHER: {
     value: "teacher",
     label: "Giảng viên",
     description: "Tạo và quản lý khóa học, bài giảng, đánh giá học viên",
     icon: "📚",
-    color: "from-blue-500 to-cyan-500",
-    gradient: "bg-gradient-to-br from-blue-50 to-cyan-50",
   },
   STUDENT: {
     value: "student",
     label: "Học viên",
     description: "Học tập, làm bài tập và theo dõi tiến độ học tập",
     icon: "🎓",
-    color: "from-green-500 to-emerald-500",
-    gradient: "bg-gradient-to-br from-green-50 to-emerald-50",
   },
 };
 
@@ -55,7 +46,11 @@ export default function LMSRoleSelection() {
 
   const fetchUserRoles = async () => {
     try {
-      const token = getCookie("authToken");
+      const checkToken = async () => {
+        return await getAuthToken();
+      };
+
+      const token = checkToken();
 
       // Get user info from token or API
       const userNameCookie = getCookie("userName") || "";
@@ -93,10 +88,10 @@ export default function LMSRoleSelection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-700 text-lg">Đang tải vai trò của bạn...</p>
+          <p className="text-slate-700 dark:text-slate-300 text-lg">Đang tải vai trò của bạn...</p>
         </div>
       </div>
     );
@@ -104,24 +99,24 @@ export default function LMSRoleSelection() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-transparent">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 text-center">
           <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">Không có quyền truy cập</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <div className="flex gap-3 justify-center">
-            <Button
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-3">Không có quyền truy cập</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">{error}</p>
+          <div className="flex gap-3 justify-center flex-col sm:flex-row">
+            <button
               onClick={() => router.push("/")}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors font-medium"
             >
               Quay lại trang chủ
-            </Button>
-            <Button
+            </button>
+            <button
               onClick={() => router.push("/contact")}
-              className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              className="px-6 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors font-medium"
             >
               Liên hệ hỗ trợ
-            </Button>
+            </button>
           </div>
         </div>
       </div>
@@ -129,23 +124,23 @@ export default function LMSRoleSelection() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
       <div className="max-w-6xl w-full">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full shadow-lg mb-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mb-4">
             <span className="text-4xl">🎓</span>
           </div>
-          <h1 className="text-4xl font-bold text-gray-800 mb-3">
+          <h1 className="text-4xl font-extrabold text-slate-900 dark:text-slate-50 mb-3">
             Chào mừng đến với LMS
           </h1>
           {userName && (
-            <p className="text-xl text-gray-600 mb-2">
-              Xin chào, <span className="font-semibold text-gray-800">{userName}</span>!
+            <p className="text-xl text-slate-600 dark:text-slate-400 mb-2">
+              Xin chào, <span className="font-semibold text-slate-900 dark:text-slate-50">{userName}</span>!
             </p>
           )}
-          <p className="text-gray-600 text-lg">
-            Bạn có <span className="font-semibold text-blue-600">{userRoles.length}</span> vai trò trong hệ thống. 
+          <p className="text-slate-600 dark:text-slate-400 text-lg">
+            Bạn có <span className="font-semibold text-blue-600 dark:text-blue-400">{userRoles.length}</span> vai trò trong hệ thống. 
             Vui lòng chọn vai trò bạn muốn sử dụng.
           </p>
         </div>
@@ -157,44 +152,38 @@ export default function LMSRoleSelection() {
             if (!option) return null;
 
             return (
-              <Button
+              <button
                 key={role}
                 onClick={() => selectRole(role)}
-                className={`${option.gradient} rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105 p-8 text-center group relative overflow-hidden`}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-left hover:shadow-md dark:hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-200 group"
               >
-                {/* Animated background */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${option.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
-                
-                {/* Content */}
-                <div className="relative z-10">
-                  <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-300">
-                    {option.icon}
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                    {option.label}
-                  </h3>
-                  <p className="text-gray-600 text-sm mb-6 min-h-[3rem]">
-                    {option.description}
-                  </p>
-                  <div className={`bg-gradient-to-r ${option.color} text-white py-2.5 px-6 rounded-lg transition-all group-hover:shadow-lg inline-flex items-center gap-2 font-medium`}>
-                    <span>Chọn vai trò</span>
-                    <span className="group-hover:translate-x-1 transition-transform">→</span>
-                  </div>
+                <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-200">
+                  {option.icon}
                 </div>
-              </Button>
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-2">
+                  {option.label}
+                </h3>
+                <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 min-h-[3rem]">
+                  {option.description}
+                </p>
+                <div className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl transition-all inline-flex items-center gap-2 font-medium text-sm group-hover:shadow-md">
+                  <span>Chọn vai trò</span>
+                  <span className="group-hover:translate-x-1 transition-transform">→</span>
+                </div>
+              </button>
             );
           })}
         </div>
 
         {/* Footer Actions */}
         <div className="text-center space-y-3">
-          <Button
+          <button
             onClick={() => router.push("/")}
-            className="text-gray-600 hover:text-gray-800 font-medium underline underline-offset-4 transition-colors"
+            className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 font-medium underline underline-offset-4 transition-colors"
           >
             ← Quay lại trang chủ
-          </Button>
-          <div className="text-sm text-gray-500">
+          </button>
+          <div className="text-sm text-slate-500 dark:text-slate-500">
             Bạn có thể thay đổi vai trò bất cứ lúc nào từ menu trong dashboard
           </div>
         </div>

@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getCookie } from "@/utils/cookies";
-import { StatCard } from "@/components/lms/admin/StatCard";
-import { ActionCard } from "@/components/lms/admin/ActionCard";
-import { PendingEnrollmentItem } from "@/components/lms/admin/PendingEnrollmentItem";
-import { ProgressBar } from "@/components/lms/admin/ProgressBar";
+import {
+  BookOpen, Users, CheckCircle2, Clock,
+  RefreshCw, Settings, Plus,
+  Home, LogOut, BarChart3,
+  Shield
+} from "lucide-react";
+import {
+  StatCard, Card, SectionHeader, ProgressBar,
+  SecondaryBtn, GhostBtn, PageLoader, Alert
+} from "@/components/lms/shared";
 
 interface DashboardStats {
   totalCourses: number;
@@ -19,308 +25,261 @@ interface DashboardStats {
   activeStudents: number;
 }
 
+interface PendingEnrollmentItem {
+  studentName: string;
+  courseName: string;
+  time: string;
+}
+
+// ─── Action card (grid item) ──────────────────────────────────────────────────
+
+function ActionItem({
+  icon, label, description, onClick, badge, accent = false
+}: {
+  icon: React.ReactNode; label: string; description: string;
+  onClick: () => void; badge?: number; accent?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col gap-3 p-5 rounded-2xl border text-left transition-all active:scale-95 hover:shadow-sm
+        ${accent
+          ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 hover:border-blue-400"
+          : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+        }`}
+    >
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center z-10">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent ? "bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{label}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{description}</p>
+      </div>
+    </button>
+  );
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
+
 export default function AdminDashboard() {
   const router = useRouter();
+  const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState("");
   const [stats, setStats] = useState<DashboardStats>({
-    totalCourses: 0,
-    publishedCourses: 0,
-    draftCourses: 0,
-    totalEnrollments: 0,
-    pendingEnrollments: 0,
-    totalStudents: 0,
-    totalTeachers: 0,
-    activeStudents: 0,
+    totalCourses: 0, publishedCourses: 0, draftCourses: 0,
+    totalEnrollments: 0, pendingEnrollments: 0,
+    totalStudents: 0, totalTeachers: 0, activeStudents: 0,
   });
-  const [userName, setUserName] = useState("");
 
   useEffect(() => {
-    const selectedRole = sessionStorage.getItem("lms_selected_role");
-    
-    if (selectedRole !== "ADMIN") {
-      router.push("/lms");
-      return;
-    }
+    const role = sessionStorage.getItem("lms_selected_role");
+    if (role !== "ADMIN") { router.push("/lms"); return; }
+    setUserName(getCookie("userName") || "Admin");
+    loadDashboard();
+  }, []);
 
-    const name = getCookie("userName") || "";
-    setUserName(name);
-    
-    loadDashboardData();
-  }, [router]);
-
-  const loadDashboardData = async () => {
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
     try {
-      // Load stats from API
-      // const data = await lmsService.getAdminStats();
-      // setStats(data);
-      
-      // Mock data for now
+      // Replace with real API calls
       setStats({
-        totalCourses: 12,
-        publishedCourses: 8,
-        draftCourses: 4,
-        totalEnrollments: 156,
-        pendingEnrollments: 8,
-        totalStudents: 45,
-        totalTeachers: 12,
-        activeStudents: 38,
+        totalCourses: 12, publishedCourses: 8, draftCourses: 4,
+        totalEnrollments: 156, pendingEnrollments: 8,
+        totalStudents: 45, totalTeachers: 12, activeStudents: 38,
       });
-      
-      setLoading(false);
-    } catch (error) {
-      console.error("Error loading stats:", error);
-      setLoading(false);
-    }
-  };
+    } catch { setError("Không thể tải dữ liệu."); }
+    finally { setLoading(false); }
+  }, []);
 
-  const handleSyncUsers = async () => {
+  const handleSync = async () => {
+    setSyncing(true);
     try {
-      setSyncing(true);
       const token = getCookie("authToken");
-      
-      const response = await fetch("http://localhost:8081/api/v1/admin/sync-users", {
+      const res = await fetch("http://localhost:8081/api/v1/admin/sync-users", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        alert(`✅ Đã đồng bộ ${data.synced_count} người dùng thành công!`);
-        await loadDashboardData();
+      if (res.ok) {
+        const data = await res.json();
+        alert(`✅ Đã đồng bộ ${data.synced_count ?? 0} người dùng.`);
+        loadDashboard();
       } else {
-        const error = await response.json();
-        alert(`❌ Đồng bộ thất bại: ${error.error || "Unknown error"}`);
+        const e = await res.json();
+        setError(`Đồng bộ thất bại: ${e.error ?? "Unknown error"}`);
       }
-    } catch (error) {
-      console.error(error);
-      alert("❌ Có lỗi xảy ra khi đồng bộ người dùng");
-    } finally {
-      setSyncing(false);
-    }
+    } catch { setError("Lỗi kết nối khi đồng bộ."); }
+    finally { setSyncing(false); }
   };
 
-  const handleChangeRole = () => {
-    sessionStorage.removeItem("lms_selected_role");
-    router.push("/lms");
-  };
-
-  const handleBackToHome = () => {
-    router.push("/");
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Đang tải dữ liệu...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader message="Đang tải dashboard..." />;
 
   return (
-    <div className="min-h-screen bg-transparent">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <span className="text-3xl">👑</span>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-800">Quản trị LMS</h1>
-                  <p className="text-sm text-gray-500">Xin chào, {userName}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleBackToHome}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                🏠 Trang chủ
-              </button>
-              <button
-                onClick={handleChangeRole}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                🔄 Đổi vai trò
-              </button>
-            </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-sm text-slate-500 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1">
+              Quản trị viên
+            </p>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight">
+              Dashboard LMS 👑
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-1">
+              Xin chào, <span className="font-semibold">{userName}</span>. Có {stats.pendingEnrollments} yêu cầu cần xử lý.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SecondaryBtn
+              size="sm"
+              icon={<RefreshCw className="w-4 h-4" />}
+              onClick={loadDashboard}
+            >
+              Làm mới
+            </SecondaryBtn>
+            <GhostBtn size="sm" icon={<Home className="w-4 h-4" />} onClick={() => router.push("/")}>
+              Trang chủ
+            </GhostBtn>
+            <GhostBtn
+              size="sm"
+              icon={<LogOut className="w-4 h-4" />}
+              onClick={() => { sessionStorage.removeItem("lms_selected_role"); router.push("/lms"); }}
+            >
+              Đổi vai trò
+            </GhostBtn>
           </div>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {error && <Alert type="error">{error}</Alert>}
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            icon="📚"
-            title="Tổng khóa học"
+            label="Tổng khóa học"
             value={stats.totalCourses}
-            subtitle={`${stats.publishedCourses} đã xuất bản, ${stats.draftCourses} nháp`}
-            color="blue"
+            sub={`${stats.publishedCourses} đã xuất bản`}
+            icon={<BookOpen className="w-5 h-5" />}
+            accent="blue"
           />
           <StatCard
-            icon="👥"
-            title="Tổng đăng ký"
+            label="Tổng đăng ký"
             value={stats.totalEnrollments}
-            subtitle={`${stats.pendingEnrollments} chờ duyệt`}
-            color="green"
-            trend={stats.pendingEnrollments > 0 ? "warning" : undefined}
+            sub={`${stats.pendingEnrollments} chờ duyệt`}
+            icon={<CheckCircle2 className="w-5 h-5" />}
+            accent={stats.pendingEnrollments > 0 ? "orange" : "green"}
           />
           <StatCard
-            icon="🎓"
-            title="Học viên"
+            label="Học viên"
             value={stats.totalStudents}
-            subtitle={`${stats.activeStudents} đang hoạt động`}
-            color="purple"
+            sub={`${stats.activeStudents} đang hoạt động`}
+            icon={<Users className="w-5 h-5" />}
+            accent="purple"
           />
           <StatCard
-            icon="👨‍🏫"
-            title="Giảng viên"
+            label="Giảng viên"
             value={stats.totalTeachers}
-            subtitle="Đang hoạt động"
-            color="orange"
+            icon={<Shield className="w-5 h-5" />}
+            accent="blue"
           />
         </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl shadow-sm border p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-            <span>⚡</span>
-            <span>Thao tác nhanh</span>
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <ActionCard
-              icon="🔄"
-              title="Đồng bộ người dùng"
-              description="Đồng bộ từ Auth Service"
-              onClick={handleSyncUsers}
-              loading={syncing}
-              variant="primary"
-            />
-            <ActionCard
-              icon="➕"
-              title="Thêm khóa học"
-              description="Tạo khóa học mới"
-              onClick={() => router.push("/lms/admin/courses/create")}
-              variant="success"
-            />
-            <ActionCard
-              icon="✅"
-              title="Duyệt đăng ký"
-              description={`${stats.pendingEnrollments} chờ duyệt`}
-              onClick={() => router.push("/lms/admin/enrollments")}
-              badge={stats.pendingEnrollments}
-              variant="warning"
-            />
-            <ActionCard
-              icon="📊"
-              title="Báo cáo"
-              description="Xem thống kê chi tiết"
-              onClick={() => router.push("/lms/admin/analytics")}
-              variant="info"
-            />
-            <ActionCard
-              icon="👥"
-              title="Quản lý người dùng"
-              description="Phân quyền và quản lý"
-              onClick={() => router.push("/lms/admin/users")}
-              variant="default"
-            />
-            <ActionCard
-              icon="⚙️"
-              title="Cài đặt hệ thống"
-              description="Cấu hình LMS"
-              onClick={() => router.push("/lms/admin/settings")}
-              variant="default"
-            />
-          </div>
-        </div>
+        {/* Two-column */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Pending Enrollments */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <span>📋</span>
-                <span>Đăng ký chờ duyệt</span>
-              </h3>
-              {stats.pendingEnrollments > 0 && (
-                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full">
-                  {stats.pendingEnrollments} mới
-                </span>
-              )}
+          {/* Quick actions (3/5) */}
+          <Card className="lg:col-span-3 p-6">
+            <SectionHeader title="Thao tác nhanh" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <ActionItem
+                icon={<RefreshCw className="w-5 h-5" />}
+                label="Đồng bộ người dùng"
+                description="Sync từ Auth Service"
+                onClick={handleSync}
+                accent
+              />
+              <ActionItem
+                icon={<Plus className="w-5 h-5" />}
+                label="Thêm khóa học"
+                description="Tạo khóa học mới"
+                onClick={() => router.push("/lms/admin/courses/create")}
+              />
+              <ActionItem
+                icon={<CheckCircle2 className="w-5 h-5" />}
+                label="Duyệt đăng ký"
+                description="Xử lý yêu cầu"
+                badge={stats.pendingEnrollments}
+                onClick={() => router.push("/lms/admin/enrollments")}
+              />
+              <ActionItem
+                icon={<BarChart3 className="w-5 h-5" />}
+                label="Báo cáo"
+                description="Thống kê chi tiết"
+                onClick={() => router.push("/lms/admin/analytics")}
+              />
+              <ActionItem
+                icon={<Users className="w-5 h-5" />}
+                label="Quản lý người dùng"
+                description="Phân quyền & quản lý"
+                onClick={() => router.push("/lms/admin/users")}
+              />
+              <ActionItem
+                icon={<Settings className="w-5 h-5" />}
+                label="Cài đặt hệ thống"
+                description="Cấu hình LMS"
+                onClick={() => router.push("/lms/admin/settings")}
+              />
             </div>
-            
-            {stats.pendingEnrollments > 0 ? (
-              <div className="space-y-3">
-                {/* Mock data - replace with real API */}
-                <PendingEnrollmentItem 
-                  studentName="Nguyễn Văn A"
-                  courseName="Lập trình Python cơ bản"
-                  time="2 giờ trước"
-                />
-                <PendingEnrollmentItem 
-                  studentName="Trần Thị B"
-                  courseName="Machine Learning nâng cao"
-                  time="5 giờ trước"
-                />
-                <button
-                  onClick={() => router.push("/lms/admin/enrollments")}
-                  className="w-full py-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Xem tất cả →
-                </button>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">✅</div>
-                <p className="text-sm">Không có đăng ký chờ duyệt</p>
-              </div>
-            )}
-          </div>
+          </Card>
 
-          {/* System Overview */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span>📈</span>
-              <span>Tổng quan hệ thống</span>
-            </h3>
-            
-            <div className="space-y-4">
+          {/* System overview (2/5) */}
+          <Card className="lg:col-span-2 p-6">
+            <SectionHeader title="Tổng quan hệ thống" />
+            <div className="space-y-5">
               <ProgressBar
                 label="Khóa học đã xuất bản"
                 value={stats.publishedCourses}
-                max={stats.totalCourses}
+                max={stats.totalCourses || 1}
                 color="blue"
               />
               <ProgressBar
                 label="Học viên hoạt động"
                 value={stats.activeStudents}
-                max={stats.totalStudents}
+                max={stats.totalStudents || 1}
                 color="green"
               />
               <ProgressBar
-                label="Tỷ lệ hoàn thành đăng ký"
+                label="Đăng ký đã duyệt"
                 value={stats.totalEnrollments - stats.pendingEnrollments}
-                max={stats.totalEnrollments}
+                max={stats.totalEnrollments || 1}
                 color="purple"
               />
             </div>
-          </div>
+
+            {/* Mini alert for pending */}
+            {stats.pendingEnrollments > 0 && (
+              <div className="mt-5 p-3 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                    <span className="font-semibold">{stats.pendingEnrollments}</span> yêu cầu đăng ký đang chờ xử lý
+                  </p>
+                </div>
+              </div>
+            )}
+          </Card>
+
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }

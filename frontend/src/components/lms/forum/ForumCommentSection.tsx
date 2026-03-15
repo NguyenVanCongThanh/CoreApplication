@@ -22,9 +22,9 @@ export default function ForumCommentSection({
 }: ForumCommentSectionProps) {
   if (comments.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-slate-500 dark:text-slate-400">
         <p>Chưa có câu trả lời nào</p>
-        <p className="text-sm text-gray-400 mt-1">Hãy là người đầu tiên trả lời!</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Hãy là người đầu tiên trả lời!</p>
       </div>
     );
   }

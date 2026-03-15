@@ -1,158 +1,463 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * Teacher LMS Dashboard
+ *
+ * Sections:
+ *   1. Header with greeting
+ *   2. Stats row: courses total / published / students / pending enrollments
+ *   3. Quick actions
+ *   4. Recent courses (mini cards)
+ *   5. Pending enrollments quick list
+ */
+
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
-import { Button } from "@/components/ui/button";
+import {
+  BookOpen, Users, CheckCircle2, Clock,
+  Plus, Settings, ChevronRight,
+  TrendingUp, AlertCircle, RefreshCw,
+  LogOut, Home, UserCheck
+} from "lucide-react";
+import {
+  StatCard, Card, SectionHeader,
+  Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
+  EmptyState, PageLoader, Alert, Spinner
+} from "@/components/lms/shared";
+import { Course } from "@/types";
+import { getCookie } from "@/utils/cookies";
 
-interface Course {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface PendingEnrollment {
   id: number;
-  title: string;
-  description: string;
-  status: string;
-  level: string;
-  category: string;
-  created_at: string;
+  course_id: number;
+  course_title: string;
+  student_name: string;
+  student_email: string;
+  enrolled_at: string;
 }
 
-export default function TeacherDashboardPage() {
+interface TeacherStats {
+  totalCourses: number;
+  publishedCourses: number;
+  draftCourses: number;
+  totalStudents: number;
+  pendingEnrollments: number;
+}
+
+// ─── Quick action card ────────────────────────────────────────────────────────
+
+function ActionCard({
+  icon, title, description, badge, onClick, variant = "default"
+}: {
+  icon: React.ReactNode; title: string; description: string;
+  badge?: number; onClick: () => void;
+  variant?: "default"|"primary"|"success"|"warning";
+}) {
+  const VARIANT = {
+    default: "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700",
+    primary: "border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 bg-blue-50/50 dark:bg-blue-900/10",
+    success: "border-green-200 dark:border-green-800 hover:border-green-400 dark:hover:border-green-600 bg-green-50/50 dark:bg-green-900/10",
+    warning: "border-yellow-200 dark:border-yellow-800 hover:border-yellow-400 dark:hover:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-900/10",
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex items-start gap-4 p-5 rounded-2xl border transition-all active:scale-95 hover:shadow-sm w-full text-left ${VARIANT[variant]}`}
+    >
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center z-10">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+      <div className="text-2xl flex-shrink-0 mt-0.5">{icon}</div>
+      <div>
+        <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{title}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{description}</p>
+      </div>
+    </button>
+  );
+}
+
+// ─── Pending enrollment item ──────────────────────────────────────────────────
+
+function PendingItem({ item, processing, onAccept, onReject }: {
+  item: PendingEnrollment;
+  processing: number | null;
+  onAccept: (id: number, courseId: number) => void;
+  onReject: (id: number, courseId: number) => void;
+}) {
+  const busy = processing === item.id;
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-600 dark:text-slate-400">
+        {item.student_name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{item.student_name}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-500 truncate">{item.course_title}</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {busy ? (
+          <Spinner className="w-5 h-5 border-2" />
+        ) : (
+          <>
+            <button
+              onClick={() => onAccept(item.id, item.course_id)}
+              className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 flex items-center justify-center hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors border border-green-200 dark:border-green-800"
+              title="Chấp nhận"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onReject(item.id, item.course_id)}
+              className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors border border-red-200 dark:border-red-800"
+              title="Từ chối"
+            >
+              <AlertCircle className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
+
+export default function TeacherDashboard() {
   const router = useRouter();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [stats, setStats] = useState<TeacherStats>({
+    totalCourses: 0, publishedCourses: 0, draftCourses: 0,
+    totalStudents: 0, pendingEnrollments: 0,
+  });
+  const [recentCourses, setRecentCourses] = useState<Course[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<PendingEnrollment[]>([]);
+  const [processing, setProcessing] = useState<number | null>(null);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
   useEffect(() => {
+    const role = sessionStorage.getItem("lms_selected_role");
+    if (role !== "TEACHER" && role !== "ADMIN") { router.push("/lms"); return; }
+    setUserName(getCookie("userName") || "giảng viên");
     loadDashboard();
   }, []);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true);
-      const data = await lmsService.listMyCourses({ page_size: 100 });
-      setCourses(data?.data || []);
-      setError("");
-    } catch (err) {
-      console.error("Error loading dashboard:", err);
-      setError("Không thể tải dữ liệu dashboard");
+      const coursesRes = await lmsService.listMyCourses({ page_size: 100 });
+      const courses: Course[] = coursesRes?.data ?? [];
+
+      const published = courses.filter(c => c.status === "PUBLISHED");
+      const draft = courses.filter(c => c.status === "DRAFT");
+
+      // Load pending enrollments across all published courses (first 5 courses for quick preview)
+      let pendingItems: PendingEnrollment[] = [];
+      let totalStudents = 0;
+      for (const course of published.slice(0, 10)) {
+        try {
+          const learners = await lmsService.getCourseLearners(course.id, "WAITING");
+          if (learners) {
+            pendingItems = [...pendingItems, ...learners.map((l: any) => ({
+              id: l.id,
+              course_id: course.id,
+              course_title: course.title,
+              student_name: l.student_name,
+              student_email: l.student_email,
+              enrolled_at: l.enrolled_at,
+            }))];
+          }
+          const accepted = await lmsService.getCourseLearners(course.id, "ACCEPTED");
+          totalStudents += (accepted ?? []).length;
+        } catch {}
+      }
+
+      setStats({
+        totalCourses: courses.length,
+        publishedCourses: published.length,
+        draftCourses: draft.length,
+        totalStudents,
+        pendingEnrollments: pendingItems.length,
+      });
+
+      // Sort by created_at desc, show 6 most recent
+      setRecentCourses([...courses].sort((a,b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ).slice(0, 6));
+
+      setPendingEnrollments(pendingItems.slice(0, 10));
+    } catch {
+      setError("Không thể tải dữ liệu. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // ── Enrollment actions ────────────────────────────────────────────────────
+
+  const handleAccept = async (enrollmentId: number, courseId: number) => {
+    setProcessing(enrollmentId);
+    try {
+      await lmsService.acceptEnrollment(enrollmentId, courseId);
+      setPendingEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
+      setStats(prev => ({
+        ...prev,
+        pendingEnrollments: Math.max(0, prev.pendingEnrollments - 1),
+        totalStudents: prev.totalStudents + 1,
+      }));
+    } catch { setError("Thao tác thất bại."); }
+    finally { setProcessing(null); }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[600px]">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Đang tải dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleReject = async (enrollmentId: number, courseId: number) => {
+    if (!confirm("Từ chối yêu cầu này?")) return;
+    setProcessing(enrollmentId);
+    try {
+      await lmsService.rejectEnrollment(enrollmentId, courseId);
+      setPendingEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
+      setStats(prev => ({ ...prev, pendingEnrollments: Math.max(0, prev.pendingEnrollments - 1) }));
+    } catch { setError("Thao tác thất bại."); }
+    finally { setProcessing(null); }
+  };
 
-  const totalCourses = courses.length;
-  const publishedCourses = courses.filter(c => c.status === "PUBLISHED").length;
-  const draftCourses = courses.filter(c => c.status === "DRAFT").length;
+  if (loading) return <PageLoader message="Đang tải dashboard..." />;
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard Giảng viên</h1>
-        <p className="text-gray-600 mt-2">Xin chào! Đây là bảng điều khiển của bạn</p>
-      </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-sm text-gray-600 mb-2">Tổng khóa học</h3>
-          <p className="text-3xl font-bold text-blue-600">{totalCourses}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-sm text-gray-600 mb-2">Đã xuất bản</h3>
-          <p className="text-3xl font-bold text-green-600">{publishedCourses}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-sm text-gray-600 mb-2">Bản nháp</h3>
-          <p className="text-3xl font-bold text-orange-600">{draftCourses}</p>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Thao tác nhanh</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Button
-            onClick={() => router.push("/lms/teacher/courses/create")}
-            className="p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all"
-          >
-            <div className="text-center">
-              <p className="text-lg font-semibold mb-1">Tạo khóa học mới</p>
-              <p className="text-sm opacity-90">Bắt đầu tạo khóa học của bạn</p>
-            </div>
-          </Button>
-          <Button
-            onClick={() => router.push("/lms/teacher/courses")}
-            className="p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all"
-          >
-            <div className="text-center">
-              <p className="text-lg font-semibold mb-1">Quản lý khóa học</p>
-              <p className="text-sm opacity-90">Xem và chỉnh sửa khóa học</p>
-            </div>
-          </Button>
-          <Button
-            onClick={loadDashboard}
-            className="p-6 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all"
-          >
-            <div className="text-center">
-              <p className="text-lg font-semibold mb-1">Làm mới</p>
-              <p className="text-sm opacity-90">Cập nhật dữ liệu mới nhất</p>
-            </div>
-          </Button>
-        </div>
-      </div>
-
-      {courses.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Khóa học gần đây</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {courses.slice(0, 6).map((course) => (
-              <div
-                key={course.id}
-                onClick={() => router.push(`/lms/teacher/courses/${course.id}`)}
-                className="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow cursor-pointer"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-gray-800 line-clamp-2">{course.title}</h3>
-                  <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ml-2 ${
-                    course.status === "PUBLISHED" 
-                      ? "bg-green-100 text-green-800"
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}>
-                    {course.status === "PUBLISHED" ? "Xuất bản" : "Nháp"}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 line-clamp-2 mb-2">
-                  {course.description || "Chưa có mô tả"}
-                </p>
-                <div className="flex gap-2 text-xs text-gray-500">
-                  {course.category && (
-                    <span className="bg-gray-100 px-2 py-1 rounded">{course.category}</span>
-                  )}
-                  {course.level && (
-                    <span className="bg-gray-100 px-2 py-1 rounded">{course.level}</span>
-                  )}
-                </div>
-              </div>
-            ))}
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-sm text-slate-500 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1">
+              Giảng viên
+            </p>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight">
+              {greeting}, {userName} 👨‍🏫
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-1">
+              Bạn có {stats.pendingEnrollments} yêu cầu đăng ký đang chờ xử lý.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <SecondaryBtn
+              size="sm"
+              icon={<RefreshCw className="w-4 h-4" />}
+              onClick={loadDashboard}
+            >
+              Làm mới
+            </SecondaryBtn>
+            <GhostBtn size="sm" icon={<Home className="w-4 h-4" />} onClick={() => router.push("/")}>
+              Trang chủ
+            </GhostBtn>
+            <GhostBtn
+              size="sm"
+              icon={<LogOut className="w-4 h-4" />}
+              onClick={() => { sessionStorage.removeItem("lms_selected_role"); router.push("/lms"); }}
+            >
+              Đổi vai trò
+            </GhostBtn>
           </div>
         </div>
-      )}
+
+        {error && <Alert type="error">{error}</Alert>}
+
+        {/* ── Stats ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Tổng khóa học"
+            value={stats.totalCourses}
+            sub={`${stats.draftCourses} nháp`}
+            icon={<BookOpen className="w-5 h-5" />}
+            accent="blue"
+          />
+          <StatCard
+            label="Đã xuất bản"
+            value={stats.publishedCourses}
+            icon={<CheckCircle2 className="w-5 h-5" />}
+            accent="green"
+            trend={stats.publishedCourses > 0 ? { value: "Đang hoạt động", up: true } : undefined}
+          />
+          <StatCard
+            label="Tổng học viên"
+            value={stats.totalStudents}
+            sub="đã được chấp nhận"
+            icon={<Users className="w-5 h-5" />}
+            accent="purple"
+          />
+          <StatCard
+            label="Chờ duyệt"
+            value={stats.pendingEnrollments}
+            sub={stats.pendingEnrollments > 0 ? "cần xử lý" : "đã xử lý hết"}
+            icon={<Clock className="w-5 h-5" />}
+            accent={stats.pendingEnrollments > 0 ? "orange" : "green"}
+          />
+        </div>
+
+        {/* ── Quick actions ── */}
+        <Card className="p-6">
+          <SectionHeader title="Thao tác nhanh" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <ActionCard
+              icon={<Plus className="w-6 h-6 text-blue-600" />}
+              title="Tạo khóa học"
+              description="Thêm khóa học mới"
+              variant="primary"
+              onClick={() => router.push("/lms/teacher/courses/create")}
+            />
+            <ActionCard
+              icon={<BookOpen className="w-6 h-6 text-slate-600" />}
+              title="Quản lý khóa học"
+              description="Xem và chỉnh sửa"
+              onClick={() => router.push("/lms/teacher/courses")}
+            />
+            <ActionCard
+              icon={<UserCheck className="w-6 h-6 text-yellow-600" />}
+              title="Duyệt đăng ký"
+              description="Xử lý yêu cầu"
+              badge={stats.pendingEnrollments}
+              variant={stats.pendingEnrollments > 0 ? "warning" : "default"}
+              onClick={() => router.push("/lms/teacher/courses")}
+            />
+            <ActionCard
+              icon={<TrendingUp className="w-6 h-6 text-green-600" />}
+              title="Thống kê"
+              description="Xem báo cáo chi tiết"
+              variant="success"
+              onClick={() => router.push("/lms/teacher/analytics")}
+            />
+          </div>
+        </Card>
+
+        {/* ── Two-column bottom ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          {/* Recent courses (3/5) */}
+          <Card className="lg:col-span-3 p-6">
+            <SectionHeader
+              title="Khóa học gần đây"
+              action={
+                <GhostBtn
+                  size="sm"
+                  icon={<ChevronRight className="w-4 h-4" />}
+                  onClick={() => router.push("/lms/teacher/courses")}
+                >
+                  Xem tất cả
+                </GhostBtn>
+              }
+            />
+
+            {recentCourses.length === 0 ? (
+              <EmptyState
+                icon={<BookOpen className="w-10 h-10" />}
+                title="Chưa có khóa học"
+                description="Hãy tạo khóa học đầu tiên của bạn."
+                action={
+                  <PrimaryBtn
+                    size="sm"
+                    icon={<Plus className="w-4 h-4" />}
+                    onClick={() => router.push("/lms/teacher/courses/create")}
+                  >
+                    Tạo khóa học
+                  </PrimaryBtn>
+                }
+              />
+            ) : (
+              <div className="space-y-1 divide-y divide-slate-100 dark:divide-slate-800">
+                {recentCourses.map(course => (
+                  <div
+                    key={course.id}
+                    className="flex items-center gap-3 py-3 cursor-pointer group"
+                    onClick={() => router.push(`/lms/teacher/courses/${course.id}`)}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                      <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">
+                        {course.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant={course.status === "PUBLISHED" ? "green" : "yellow"}>
+                          {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
+                        </Badge>
+                        {course.category && (
+                          <span className="text-xs text-slate-500">{course.category}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                        onClick={e => {
+                          e.stopPropagation();
+                          router.push(`/lms/teacher/courses/${course.id}`);
+                        }}
+                        title="Quản lý"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Pending enrollments (2/5) */}
+          <Card className="lg:col-span-2 p-6">
+            <SectionHeader
+              title="Chờ duyệt"
+              subtitle={`${stats.pendingEnrollments} yêu cầu`}
+            />
+
+            {pendingEnrollments.length === 0 ? (
+              <EmptyState
+                icon={<CheckCircle2 className="w-10 h-10" />}
+                title="Đã xử lý hết"
+                description="Không có yêu cầu nào đang chờ."
+              />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {pendingEnrollments.slice(0, 8).map(item => (
+                  <PendingItem
+                    key={item.id}
+                    item={item}
+                    processing={processing}
+                    onAccept={handleAccept}
+                    onReject={handleReject}
+                  />
+                ))}
+                {pendingEnrollments.length > 8 && (
+                  <div className="pt-3">
+                    <GhostBtn
+                      size="sm"
+                      className="w-full justify-center"
+                      onClick={() => router.push("/lms/teacher/courses")}
+                    >
+                      Xem thêm {pendingEnrollments.length - 8} yêu cầu
+                    </GhostBtn>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
+        </div>
+      </div>
     </div>
   );
 }
