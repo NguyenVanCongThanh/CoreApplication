@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInfo } from "@/types";
 import { Youtube, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { getAuthToken } from "@/utils/tokenManager";
 
 interface YouTubeVideoUploadProps {
   onFileUploaded: (fileInfo: FileInfo) => void;
@@ -79,9 +80,11 @@ export default function YouTubeVideoUpload({
       formData.append("privacyStatus", privacyStatus);
 
       // Get auth token
-      const cookies = document.cookie.split(";");
-      const authCookie = cookies.find(c => c.trim().startsWith("authToken="));
-      const token = authCookie ? authCookie.split("=")[1] : null;
+      const checkToken = async () => {
+        return await getAuthToken();
+      };
+      
+      const token = checkToken();
 
       if (!token) {
         setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
