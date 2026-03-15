@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInfo } from "@/types";
+import { getAuthToken } from "@/utils/tokenManager";
 
 interface FileUploadProps {
   onFileUploaded: (fileInfo: FileInfo) => void;
@@ -69,9 +70,11 @@ export default function FileUpload({
       formData.append("type", fileType);
 
       // Get auth token from cookie
-      const cookies = document.cookie.split(";");
-      const authCookie = cookies.find(c => c.trim().startsWith("authToken="));
-      const token = authCookie ? authCookie.split("=")[1] : null;
+      const checkToken = async () => {
+        return await getAuthToken();
+      };
+      
+      const token = checkToken();
 
       if (!token) {
         setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
