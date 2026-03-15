@@ -16,6 +16,7 @@ import { ChevronsLeft, ChevronsRight, LogOut, Sun, Moon } from "lucide-react";
 import { useUser } from "@/store/UserContext";
 import { useTheme } from "next-themes";
 import { userService } from "@/services/userService";
+import { clearAuthToken } from "@/utils/tokenManager";
 import SafeImage from "../common/SafeImage";
 
 const MIN_WIDTH = 64;
@@ -80,6 +81,7 @@ const Sidebar: React.FC = () => {
 
   const handleLogout = async () => {
     try { userService.logout(); } catch { /* silent */ }
+    clearAuthToken();
     setUser(null);
     router.push("/login");
     router.refresh();

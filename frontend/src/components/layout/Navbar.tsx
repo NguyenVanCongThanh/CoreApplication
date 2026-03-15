@@ -6,7 +6,7 @@ import { Logo } from "@/components/layout/Logo";
 import { userService } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import { getAuthToken } from "@/utils/tokenManager";
+import { getAuthToken, clearAuthToken } from "@/utils/tokenManager";
 
 export default function Navbar() {
   const router = useRouter();
@@ -29,13 +29,13 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       userService.logout();
-      router.push("/login");
-      router.refresh();
     } catch (err) {
       console.error("Logout error:", err);
       document.cookie = "authToken=; path=/; max-age=0";
-      router.push("/login");
     }
+    clearAuthToken();
+    router.push("/login");
+    router.refresh();
   };
 
   const navItems = [
