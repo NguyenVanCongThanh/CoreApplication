@@ -70,11 +70,7 @@ export default function FileUpload({
       formData.append("type", fileType);
 
       // Get auth token from cookie
-      const checkToken = async () => {
-        return await getAuthToken();
-      };
-      
-      const token = checkToken();
+      const token = await getAuthToken();
 
       if (!token) {
         setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
