@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import lmsService from "@/services/lmsService";
 import { FileToUpload } from "@/types";
+import { getAuthToken } from "@/utils/tokenManager";
 
 interface BulkUploadModalProps {
   sectionId: number;
@@ -163,7 +164,7 @@ export default function BulkUploadModal({
   };
 
   const uploadSingleFile = (fileItem: FileToUpload): Promise<any> => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const formData = new FormData();
       formData.append("file", fileItem.file);
       formData.append("type", fileItem.type);
@@ -202,9 +203,7 @@ export default function BulkUploadModal({
 
       const apiUrl =
         process.env.NEXT_PUBLIC_LMS_API_URL || "http://localhost:8081/api/v1";
-      const cookies = document.cookie.split(";");
-      const authCookie = cookies.find((c) => c.trim().startsWith("authToken="));
-      const token = authCookie ? authCookie.split("=")[1] : null;
+      const token = await getAuthToken();
 
       if (!token) {
         reject(new Error("No authentication token found"));

@@ -100,11 +100,7 @@ export default function FileUploadQuestion({
       formData.append("type", "document"); // File upload questions always use "document" type
 
       // Get auth token from cookie
-      const checkToken = async () => {
-        return await getAuthToken();
-      };
-      
-      const token = checkToken();
+      const token = await getAuthToken();
 
       if (!token) {
         setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
