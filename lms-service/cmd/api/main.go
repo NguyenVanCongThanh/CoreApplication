@@ -96,15 +96,19 @@ func main() {
 	enrollmentRepo := repository.NewEnrollmentRepository(db)
 	quizRepo := repository.NewQuizRepository(db)
 	forumRepo := repository.NewForumRepository(db)
+	progressRepo := repository.NewProgressRepository(db)
+	analyticsRepo := repository.NewAnalyticsRepository(db)
 
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
 	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo)
-	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo)
+	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo)
 	userSyncService := service.NewUserSyncService(userRepo)
 	forumService := service.NewForumService(forumRepo, courseRepo)
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
+	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
+	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo)
 
 	// Initialize handlers
 	userHandler := handler.NewUserHandler(userService)
@@ -114,6 +118,8 @@ func main() {
 	syncHandler := handler.NewUserSyncHandler(userSyncService, syncSecret)
 	quizHandler := handler.NewQuizHandler(quizService, storageProvider)
 	forumHandler := handler.NewForumHandler(forumService)
+	progressHandler := handler.NewProgressHandler(progressService)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -141,7 +147,7 @@ func main() {
 	// Development: http://localhost:3000/lmsapidocs/swagger/index.html
 	// Production: https://bdc.hpcc.vn/lmsapidocs/swagger/index.html
 	swaggerURL := "/lmsapidocs/swagger/doc.json"
-	
+
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler,
 		ginSwagger.URL(swaggerURL),
 		ginSwagger.DefaultModelsExpandDepth(-1),
@@ -202,6 +208,21 @@ func main() {
 				// Section management (Owner/Admin only via service layer)
 				courses.POST("/:courseId/sections", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.CreateSection)
 				courses.GET("/:courseId/sections", courseHandler.ListSections)
+
+				// ── Analytics (Teacher / Admin only)
+				courses.GET("/:courseId/quiz-analytics", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetCourseQuizAnalytics)
+				courses.GET("/:courseId/student-progress-overview", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetStudentProgressOverview)
+
+				// Course learners management
+				courses.GET("/:courseId/learners", enrollmentHandler.GetCourseLearners)
+				courses.POST("/:courseId/bulk-enroll", middleware.RequireRoles("ADMIN", "TEACHER"), enrollmentHandler.BulkEnroll)
+
+				// ── Analytics (Student) ───────────────────────────────────
+				courses.GET("/:courseId/my-quiz-scores", analyticsHandler.GetMyQuizScores)
+
+				// ── Progress tracking (Student) ───────────────────────────
+				courses.GET("/:courseId/my-progress", progressHandler.GetMyProgress)
+				courses.GET("/:courseId/progress-detail", progressHandler.GetMyProgressDetail)
 			}
 
 			// SECTION MANAGEMENT
@@ -223,6 +244,8 @@ func main() {
 				content.GET("/:contentId/quiz", quizHandler.GetQuizByContentID)
 				content.PUT("/:contentId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.UpdateContent)
 				content.DELETE("/:contentId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.DeleteContent)
+				// ── Progress tracking (Student) ───────────────────────────
+				content.POST("/:contentId/complete", progressHandler.MarkComplete)
 			}
 
 			// ENROLLMENT MANAGEMENT
@@ -238,10 +261,6 @@ func main() {
 				enrollments.PUT("/:enrollmentId/reject", enrollmentHandler.RejectEnrollment)
 			}
 
-			// Course learners management
-			courses.GET("/:courseId/learners", enrollmentHandler.GetCourseLearners)
-			courses.POST("/:courseId/bulk-enroll", middleware.RequireRoles("ADMIN", "TEACHER"), enrollmentHandler.BulkEnroll)
-		
 			quizzes := auth.Group("/quizzes")
 			{
 				// Teacher/Admin - Quiz CRUD
@@ -261,6 +280,8 @@ func main() {
 				// Grading
 				quizzes.GET("/:quizId/grading", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.ListAnswersForGrading)
 				quizzes.POST("/:quizId/bulk-grade", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.BulkGrade)
+				quizzes.GET("/:quizId/all-attempts", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetQuizAllAttempts)
+				quizzes.GET("/:quizId/wrong-answer-stats", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetQuizWrongAnswerStats)
 			}
 
 			// QUESTION ROUTES
@@ -268,7 +289,7 @@ func main() {
 			{
 				questions.PUT("/:questionId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.UpdateQuestion)
 				questions.DELETE("/:questionId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.DeleteQuestion)
-				
+
 				questions.POST("/:questionId/images", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.UploadQuestionImage)
 				questions.GET("/:questionId/images", quizHandler.ListQuestionImages)
 				questions.DELETE("/:questionId/images/:imageId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.DeleteQuestionImage)
@@ -305,14 +326,14 @@ func main() {
 					posts.GET("/:postId", forumHandler.GetPost)
 					posts.PUT("/:postId", middleware.RequireRoles("STUDENT", "TEACHER", "ADMIN"), forumHandler.UpdatePost)
 					posts.DELETE("/:postId", middleware.RequireRoles("STUDENT", "TEACHER", "ADMIN"), forumHandler.DeletePost)
-					
+
 					// Admin/Teacher actions
 					posts.POST("/:postId/pin", middleware.RequireRoles("TEACHER", "ADMIN"), forumHandler.PinPost)
 					posts.POST("/:postId/lock", middleware.RequireRoles("TEACHER", "ADMIN"), forumHandler.LockPost)
-					
+
 					// Voting
 					posts.POST("/:postId/vote", forumHandler.VotePost)
-					
+
 					// Comments on posts
 					posts.POST("/:postId/comments", forumHandler.CreateComment)
 					posts.GET("/:postId/comments", forumHandler.ListComments)
@@ -343,7 +364,7 @@ func main() {
 	go func() {
 		logger.Info(fmt.Sprintf("Starting LMS server on port %s", cfg.App.Port))
 		logger.Info(fmt.Sprintf("Environment: %s", cfg.App.Env))
-		
+
 		if cfg.App.Env == "production" {
 			logger.Info("Swagger docs: https://bdc.hpcc.vn/lmsapidocs/swagger/index.html")
 			logger.Info("Mock JWT: https://bdc.hpcc.vn/lmsapidocs/mock-jwt")
@@ -351,7 +372,7 @@ func main() {
 			logger.Info("Swagger docs: http://localhost:3000/lmsapidocs/swagger/index.html")
 			logger.Info("Mock JWT: http://localhost:3000/lmsapidocs/mock-jwt")
 		}
-		
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", err)
 		}
