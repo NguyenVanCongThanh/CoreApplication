@@ -10,6 +10,7 @@ import BulkUploadModal from "@/components/lms/teacher/BulkUploadModal";
 import { EditCourseModal } from "@/components/lms/teacher/EditCourseModal";
 import { SectionModal } from "@/components/lms/teacher/SectionModal";
 import { OverviewTab } from "@/components/lms/teacher/OverviewTab";
+import { StudentsTab } from "@/components/lms/teacher/StudentTab";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
   Trash2, Eye, CheckCircle2, XCircle,
@@ -23,7 +24,7 @@ import {
 } from "@/components/lms/shared";
 import { Course, Section, Content } from "@/types";
 
-type Tab = "overview" | "content" | "learners" | "quizzes";
+type Tab = "overview" | "content" | "learners" | "quizzes" | "students";
 
 // ─── Learner list tab ─────────────────────────────────────────────────────────
 
@@ -564,6 +565,7 @@ export default function TeacherCourseDetailPage() {
                   { id: "overview"  as Tab, label: "Tổng quan" },
                   { id: "content"   as Tab, label: "Nội dung", badge: sections.length },
                   { id: "learners"  as Tab, label: "Học viên" },
+                  { id: "students"  as Tab, label: "Tiến độ học tập"},
                 ]}
                 active={tab}
                 onChange={setTab}
@@ -584,6 +586,9 @@ export default function TeacherCourseDetailPage() {
             )}
             {tab === "learners" && (
               <LearnersTab courseId={id} />
+            )}
+            {tab === "students" && (
+              <StudentsTab courseId={id} />
             )}
           </div>
         </Card>

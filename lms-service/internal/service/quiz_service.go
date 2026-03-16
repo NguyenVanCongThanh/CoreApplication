@@ -15,20 +15,23 @@ import (
 )
 
 type QuizService struct {
-	quizRepo   *repository.QuizRepository
-	courseRepo *repository.CourseRepository
-	userRepo   *repository.UserRepository
+	quizRepo       *repository.QuizRepository
+	courseRepo     *repository.CourseRepository
+	userRepo       *repository.UserRepository
+	progressRepo   *repository.ProgressRepository
 }
 
 func NewQuizService(
 	quizRepo *repository.QuizRepository,
 	courseRepo *repository.CourseRepository,
 	userRepo *repository.UserRepository,
+	progressRepo *repository.ProgressRepository,
 ) *QuizService {
 	return &QuizService{
-		quizRepo:   quizRepo,
-		courseRepo: courseRepo,
-		userRepo:   userRepo,
+		quizRepo:     quizRepo,
+		courseRepo:   courseRepo,
+		userRepo:     userRepo,
+		progressRepo: progressRepo,
 	}
 }
 
@@ -803,6 +806,11 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 
 	// Update analytics
 	_ = s.quizRepo.UpdateQuizAnalytics(ctx, quiz.ID)
+
+	// Auto-mark quiz content as completed (if it has a content_id)
+	if quiz.ContentID > 0 {
+		_ = s.progressRepo.MarkComplete(ctx, quiz.ContentID, studentID)
+	}
 
 	// Build result response
 	return s.buildQuizResultResponse(ctx, attempt, quiz)
