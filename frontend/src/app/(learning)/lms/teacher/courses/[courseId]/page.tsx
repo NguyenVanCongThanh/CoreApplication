@@ -11,6 +11,8 @@ import { EditCourseModal } from "@/components/lms/teacher/EditCourseModal";
 import { SectionModal } from "@/components/lms/teacher/SectionModal";
 import { OverviewTab } from "@/components/lms/teacher/OverviewTab";
 import { StudentsTab } from "@/components/lms/teacher/StudentTab";
+import { AIQuizGenPanel } from "@/components/lms/teacher/AIQuizGenPanel";
+import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
   Trash2, Eye, CheckCircle2, XCircle,
@@ -24,7 +26,7 @@ import {
 } from "@/components/lms/shared";
 import { Course, Section, Content } from "@/types";
 
-type Tab = "overview" | "content" | "learners" | "quizzes" | "students";
+type Tab = "overview" | "content" | "learners" | "quizzes" | "students" | "ai";
 
 // ─── Learner list tab ─────────────────────────────────────────────────────────
 
@@ -566,6 +568,7 @@ export default function TeacherCourseDetailPage() {
                   { id: "content"   as Tab, label: "Nội dung", badge: sections.length },
                   { id: "learners"  as Tab, label: "Học viên" },
                   { id: "students"  as Tab, label: "Tiến độ học tập"},
+                  { id: "ai" as Tab, label: "🤖 AI" },
                 ]}
                 active={tab}
                 onChange={setTab}
@@ -589,6 +592,14 @@ export default function TeacherCourseDetailPage() {
             )}
             {tab === "students" && (
               <StudentsTab courseId={id} />
+            )}
+            {tab === "ai" && (
+              <div className="space-y-8">
+                <AIQuizGenPanel courseId={id} />
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
+                  <AIHeatmapSection courseId={id} role="teacher" />
+                </div>
+              </div>
             )}
           </div>
         </Card>

@@ -15,6 +15,7 @@ import (
 	"example/hello/internal/middleware"
 	"example/hello/internal/repository"
 	"example/hello/internal/service"
+	"example/hello/pkg/ai"
 	"example/hello/pkg/cache"
 	"example/hello/pkg/database"
 	"example/hello/pkg/logger"
@@ -90,6 +91,8 @@ func main() {
 		logger.Info("Using local storage")
 	}
 
+	aiClient := ai.NewClient()
+
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	courseRepo := repository.NewCourseRepository(db)
@@ -120,6 +123,7 @@ func main() {
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
+	aiHandler := handler.NewAIHandler(aiClient)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -347,6 +351,65 @@ func main() {
 					comments.POST("/:commentId/accept", forumHandler.AcceptComment)
 					comments.POST("/:commentId/vote", forumHandler.VoteComment)
 				}
+			}
+
+			aiGroup := auth.Group("/ai")
+			{
+				// ── Phase 1: Error Diagnosis ──────────────────────────────────────────
+				// POST /api/v1/ai/attempts/:attemptId/questions/:questionId/diagnose
+				aiGroup.POST("/attempts/:attemptId/questions/:questionId/diagnose",
+					aiHandler.DiagnoseWrongAnswer)
+			}
+
+			// Per-course AI routes (reuse courseId param)
+			aiCourses := auth.Group("/courses/:courseId/ai")
+			{
+				// ── Phase 1: Heatmap ──────────────────────────────────────────────────
+				aiCourses.GET("/heatmap",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.GetClassHeatmap)
+			
+				aiCourses.GET("/my-heatmap",
+					aiHandler.GetStudentHeatmap)
+			
+				// ── Knowledge Graph ───────────────────────────────────────────────────
+				aiCourses.POST("/nodes",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.CreateKnowledgeNode)
+			
+				aiCourses.GET("/nodes",
+					aiHandler.ListKnowledgeNodes)
+			
+				// ── Phase 2: Quiz Generation ──────────────────────────────────────────
+				aiCourses.POST("/generate-quiz",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.GenerateQuiz)
+			
+				aiCourses.GET("/drafts",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.ListDraftQuestions)
+			
+				// ── Phase 2: Spaced Repetition ────────────────────────────────────────
+				aiCourses.GET("/reviews/due",
+					aiHandler.GetDueReviews)
+			
+				aiCourses.POST("/reviews/record",
+					aiHandler.RecordReviewResponse)
+			
+				aiCourses.GET("/reviews/stats",
+					aiHandler.GetReviewStats)
+			}
+			
+			// Quiz draft review (outside course context)
+			quizDrafts := auth.Group("/ai/quiz-drafts")
+			{
+				quizDrafts.POST("/:genId/approve",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.ApproveQuestion)
+			
+				quizDrafts.POST("/:genId/reject",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.RejectQuestion)
 			}
 		}
 	}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import quizService from "@/services/quizService";
 import FillBlankTextStudent from "@/components/lms/student/FillBlankTextStudent";
 import FillBlankDropdownStudent from "@/components/lms/student/FillBlankDropdownStudent";
+import AIDiagnosisModal from "./AIDiagnosisModal";
 import {
   CheckCircle,
   XCircle,
@@ -15,6 +16,7 @@ import {
   Eye,
   FileText,
   Upload,
+  Sparkles,
 } from "lucide-react";
 import type {
   FillBlankTextSettings,
@@ -109,6 +111,7 @@ export default function QuizReviewModal({
   const [review, setReview] = useState<QuizReview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [diagnosisTarget, setDiagnosisTarget] = useState<{ qId: number; text: string } | null>(null);
 
   useEffect(() => {
     loadReview();
@@ -683,11 +686,27 @@ export default function QuizReviewModal({
                         <p className="text-amber-900">{question.explanation}</p>
                       </div>
                     )}
+                    {!isCorrect && (
+                      <button
+                        onClick={() => setDiagnosisTarget({ qId: question.id, text: question.question_text })}
+                        className="mt-3 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-950/50 transition-colors">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        AI Phân tích lỗi này
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
+          {diagnosisTarget && (
+            <AIDiagnosisModal
+              attemptId={attemptId}
+              questionId={diagnosisTarget.qId}
+              questionText={diagnosisTarget.text}
+              onClose={() => setDiagnosisTarget(null)}
+            />
+          )}
         </div>
 
         {/* Footer */}

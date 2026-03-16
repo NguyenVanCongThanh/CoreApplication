@@ -1,0 +1,97 @@
+"""
+ai-service/app/core/config.py
+Configuration for Anthropic (chat) + Ollama (embedding).
+"""
+from functools import lru_cache
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # ── App ──────────────────────────────────────────────
+    app_env: str = "development"
+    app_port: int = 8000
+    log_level: str = "INFO"
+
+    # ── PostgreSQL ───────────────────────────────────────
+    db_host: str = "postgres-lms"
+    db_port: int = 5432
+    db_user: str = "lms_user"
+    db_password: str = "lms_password"
+    db_name: str = "lms_db"
+    db_min_connections: int = 2
+    db_max_connections: int = 10
+
+    # ── Redis ────────────────────────────────────────────
+    redis_host: str = "redis-lms"
+    redis_port: int = 6379
+    redis_password: str = ""
+    redis_db: int = 1
+
+    # ── MinIO ────────────────────────────────────────────
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin123"
+    minio_bucket: str = "lms-files"
+    minio_use_ssl: bool = False
+
+    # ════════════════════════════════════════════════════
+    # Anthropic — Chat / Diagnosis / Quiz Generation
+    # ════════════════════════════════════════════════════
+    anthropic_api_key: str = ""
+
+    # claude-3-5-haiku-20241022  → nhanh, rẻ, dùng cho diagnosis
+    # claude-3-5-sonnet-20241022 → tốt hơn, dùng cho quiz gen
+    chat_model: str = "claude-3-5-haiku-20241022"
+    quiz_model: str = "claude-3-5-sonnet-20241022"
+
+    # ════════════════════════════════════════════════════
+    # Ollama — Embedding (nomic-embed-text, 768 dims)
+    # ════════════════════════════════════════════════════
+    ollama_host: str = "http://ollama:11434"
+
+    # nomic-embed-text → 768 dims, 137M params, CPU-friendly
+    # mxbai-embed-large → 1024 dims, heavier but better quality
+    embedding_model: str = "nomic-embed-text"
+    embedding_dimensions: int = 768   # ← phải khớp với pgvector column!
+
+    # ── RAG ─────────────────────────────────────────────
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    top_k_chunks: int = 3
+
+    # ── Celery ───────────────────────────────────────────
+    celery_task_time_limit: int = 3600
+
+    # ── Internal ─────────────────────────────────────────
+    lms_service_url: str = "http://lms-backend:8081"
+    ai_service_secret: str = "ai-service-secret-change-me"
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
+    @property
+    def database_url(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    @property
+    def database_url_sync(self) -> str:
+        return (
+            f"postgresql://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    @property
+    def redis_url(self) -> str:
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

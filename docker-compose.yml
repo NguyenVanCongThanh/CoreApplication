@@ -265,7 +265,7 @@ services:
       - app-network
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${LMS_POSTGRES_USER} -d $${LMS_POSTGRES_DB}"]
     logging: *common-logging
     deploy:
       resources:
@@ -425,6 +425,225 @@ services:
       - "traefik.http.routers.lms.rule=Host(`bdc.hpcc.vn`) && PathPrefix(`/lmsapiv1`)"
       - "traefik.http.services.lms.loadbalancer.server.port=8081"
 
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
+    container_name: ai-service
+    restart: unless-stopped
+ 
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_PORT: 8000
+      LOG_LEVEL: INFO
+ 
+      # Database (shared with lms-service)
+      DB_HOST: postgres-lms
+      DB_PORT: 5432
+      DB_USER: ${LMS_POSTGRES_USER}
+      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
+      DB_NAME: ${LMS_POSTGRES_DB}
+ 
+      # Redis (shared)
+      REDIS_HOST: redis-lms
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 1
+ 
+      # MinIO
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: lms-files
+      MINIO_USE_SSL: "false"
+ 
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+
+      OLLAMA_HOST: http://ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+
+      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
+
+      CHUNK_SIZE: 500
+      CHUNK_OVERLAP: 50
+      TOP_K_CHUNKS: 3
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      postgres-lms:
+        condition: service_healthy
+      redis-lms:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
+    networks:
+      - app-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    labels:
+      - "service.type=ai"
+      - "service.name=ai-service"
+
+  ai-worker:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
+    container_name: ai-worker
+    restart: unless-stopped
+ 
+    # Override CMD to run Celery worker
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+ 
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DB_HOST: postgres-lms
+      DB_PORT: 5432
+      DB_USER: ${LMS_POSTGRES_USER}
+      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
+      DB_NAME: ${LMS_POSTGRES_DB}
+      REDIS_HOST: redis-lms
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 1
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: lms-files
+
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+
+      OLLAMA_HOST: http://ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      CHUNK_SIZE: 500
+      CHUNK_OVERLAP: 50
+
+    depends_on:
+      postgres-lms:
+        condition: service_healthy
+      redis-lms:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+ 
+    networks:
+      - app-network
+ 
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+ 
+    labels:
+      - "service.type=worker"
+      - "service.name=ai-worker"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+
+    volumes:
+      - ollama_data:/root/.ollama
+
+    ports:
+      - "11434:11434"
+
+    networks:
+      - app-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+    # ── GPU support
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    # runtime: nvidia
+
+    logging: *common-logging
+
+    labels:
+      - "service.type=ai"
+      - "service.name=ollama"
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    restart: "no"
+
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Waiting for Ollama server...' &&
+        until curl -sf http://ollama:11434/api/version; do sleep 2; done &&
+        echo 'Pulling ${EMBEDDING_MODEL:-nomic-embed-text}...' &&
+        ollama pull ${EMBEDDING_MODEL:-nomic-embed-text} &&
+        echo 'Model ready.'
+      "
+
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+    networks:
+      - app-network
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+    labels:
+      - "service.type=init"
+      - "service.name=ollama-init"
+
   # MinIO: Object Storage
   minio:
     image: minio/minio:latest
@@ -495,6 +714,10 @@ volumes:
     labels:
       - "backup.enabled=true"
       - "backup.schedule=daily"
+  ollama_data:
+    driver: local
+    labels:
+      - "backup.enabled=false"
 
 # Networks
 networks:

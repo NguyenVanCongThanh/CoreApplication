@@ -12,6 +12,8 @@ import { Course } from "@/types";
 import { StatsHeroCards }        from "@/components/lms/student/stats/StatsHeroCards";
 import { CourseProgressSection } from "@/components/lms/student/stats/CourseProgressSection";
 import { QuizScoreSection }      from "@/components/lms/student/stats/QuizScoreSection";
+import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
+import { SpacedRepetitionWidget } from "@/components/lms/student/SpacedRepetitionWidget";
 
 export default function StudentStatsPage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -120,7 +122,10 @@ export default function StudentStatsPage() {
 
         {/* Quiz scores */}
         <QuizScoreSection scores={quizScores} courseId={id} />
-
+        {/* AI Heatmap */}
+        <AIHeatmapSection courseId={id} role="student" />
+        {/* Spaced Repetition */}
+        <SpacedRepetitionWidget courseId={id} />
       </main>
     </div>
   );

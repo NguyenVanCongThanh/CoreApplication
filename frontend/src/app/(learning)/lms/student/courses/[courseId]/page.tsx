@@ -29,6 +29,8 @@ import ContentViewer from "@/components/lms/student/ContentViewer";
 import { Badge, ContentTypeBadge, PageLoader, GhostBtn, ProgressBar } from "@/components/lms/shared";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
+import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
+import { SpacedRepetitionWidget } from "@/components/lms/student/SpacedRepetitionWidget";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 
@@ -734,6 +736,11 @@ export default function StudentCourseDetailPage() {
                   </div>
                 )}
               </section>
+
+              {/* AI Heatmap */}
+              <AIHeatmapSection courseId={id} role="student" />
+              {/* Spaced Repetition */}
+              <SpacedRepetitionWidget courseId={id} />
             </div>
           )}
 
