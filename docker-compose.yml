@@ -247,7 +247,7 @@ services:
 
   # Database: PostgreSQL (LMS Service)
   postgres-lms:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: postgres-lms
     restart: unless-stopped
     environment:
@@ -464,7 +464,6 @@ services:
       CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
 
-      OLLAMA_HOST: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
 
@@ -484,8 +483,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
 
     networks:
       - app-network
@@ -541,7 +538,6 @@ services:
       CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
 
-      OLLAMA_HOST: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
       CHUNK_SIZE: 500
@@ -552,8 +548,6 @@ services:
         condition: service_healthy
       redis-lms:
         condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
  
     networks:
       - app-network
@@ -570,81 +564,6 @@ services:
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-
-    volumes:
-      - ollama_data:/root/.ollama
-
-    ports:
-      - "11434:11434"
-
-    networks:
-      - app-network
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 1G
-
-    # ── GPU support
-    # environment:
-    #   - NVIDIA_VISIBLE_DEVICES=all
-    # runtime: nvidia
-
-    logging: *common-logging
-
-    labels:
-      - "service.type=ai"
-      - "service.name=ollama"
-
-  ollama-init:
-    image: ollama/ollama:latest
-    container_name: ollama-init
-    restart: "no"
-
-    entrypoint: >
-      /bin/sh -c "
-        echo 'Waiting for Ollama server...' &&
-        until curl -sf http://ollama:11434/api/version; do sleep 2; done &&
-        echo 'Pulling ${EMBEDDING_MODEL:-nomic-embed-text}...' &&
-        ollama pull ${EMBEDDING_MODEL:-nomic-embed-text} &&
-        echo 'Model ready.'
-      "
-
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-
-    depends_on:
-      ollama:
-        condition: service_healthy
-
-    networks:
-      - app-network
-
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-
-    labels:
-      - "service.type=init"
-      - "service.name=ollama-init"
 
   # MinIO: Object Storage
   minio:
@@ -716,10 +635,6 @@ volumes:
     labels:
       - "backup.enabled=true"
       - "backup.schedule=daily"
-  ollama_data:
-    driver: local
-    labels:
-      - "backup.enabled=false"
 
 # Networks
 networks:

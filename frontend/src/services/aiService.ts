@@ -94,11 +94,16 @@ class AIService {
 
   async diagnoseWrongAnswer(
     attemptId: number,
-    questionId: number
+    questionId: number,
+    wrongAnswer: string,
+    courseId: number
   ): Promise<DiagnosisResult> {
     const res = await lmsApiClient.post(
       `/ai/attempts/${attemptId}/questions/${questionId}/diagnose`,
-      {}
+      {
+        wrong_answer: wrongAnswer,
+        course_id: courseId,
+      }
     );
     return res.data?.data ?? res.data;
   }

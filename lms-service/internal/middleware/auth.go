@@ -72,11 +72,11 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		// Normalize role: ROLE_ADMIN -> ADMIN, ROLE_USER -> TEACHER, etc
+		// Normalize role: ROLE_ADMIN -> ADMIN, ROLE_USER -> STUDENT, etc
 		normalizedRole := normalizeRole(claims.Role)
 		if normalizedRole == "" {
 			logger.Warn(fmt.Sprintf("JWT token has unknown role: %s", claims.Role))
-			normalizedRole = "TEACHER" // Default to TEACHER
+			normalizedRole = "STUDENT" // Default to STUDENT
 		}
 		
 		// Set user info in context
@@ -96,7 +96,7 @@ func normalizeRole(role string) string {
 	case "ROLE_MANAGER":
 		return "ADMIN"
 	case "ROLE_USER":
-		return "TEACHER"
+		return "STUDENT"
 	case "ADMIN":
 		return "ADMIN"
 	case "TEACHER":

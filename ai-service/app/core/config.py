@@ -1,6 +1,5 @@
 """
 ai-service/app/core/config.py
-Configuration for Anthropic (chat) + Ollama (embedding).
 """
 from functools import lru_cache
 from pydantic_settings import BaseSettings
@@ -45,14 +44,10 @@ class Settings(BaseSettings):
     quiz_model: str = "claude-3-5-sonnet-20241022"
 
     # ════════════════════════════════════════════════════
-    # Ollama — Embedding (nomic-embed-text, 768 dims)
+    # Embedding (nomic-embed-text, 768 dims)
     # ════════════════════════════════════════════════════
-    ollama_host: str = "http://ollama:11434"
-
-    # nomic-embed-text → 768 dims, 137M params, CPU-friendly
-    # mxbai-embed-large → 1024 dims, heavier but better quality
-    embedding_model: str = "nomic-embed-text"
-    embedding_dimensions: int = 768   # ← phải khớp với pgvector column!
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    embedding_dimensions: int = 768
 
     # ── RAG ─────────────────────────────────────────────
     chunk_size: int = 500
