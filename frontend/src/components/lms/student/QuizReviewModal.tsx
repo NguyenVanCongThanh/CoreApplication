@@ -14,7 +14,6 @@ import {
   Award,
   MessageSquare,
   Eye,
-  FileText,
   Upload,
   Sparkles,
   Clock,
@@ -113,6 +112,7 @@ type QuestionFilter = "all" | "correct" | "wrong" | "pending";
 
 interface QuizReviewPageProps {
   attemptId: number;
+  courseId: number;
   onBack: () => void;
 }
 
@@ -256,6 +256,7 @@ function MiniStat({
 
 export default function QuizReviewPage({
   attemptId,
+  courseId,
   onBack,
 }: QuizReviewPageProps) {
   const [review, setReview] = useState<QuizReview | null>(null);
@@ -266,6 +267,8 @@ export default function QuizReviewPage({
   const [diagnosisTarget, setDiagnosisTarget] = useState<{
     qId: number;
     text: string;
+    wrongAnswer: string;
+    courseId: number;
   } | null>(null);
 
   useEffect(() => {
@@ -311,6 +314,39 @@ export default function QuizReviewPage({
 
   const isEssayType = (type: string) =>
     ["ESSAY", "SHORT_ANSWER", "FILE_UPLOAD"].includes(type);
+
+  const extractWrongAnswer = (qa: QuestionWithAnswer): string => {
+    const { question, student_answer } = qa;
+    if (!student_answer?.answer_data) return "";
+    const data = student_answer.answer_data;
+
+    switch (question.question_type) {
+      case "SINGLE_CHOICE": {
+        const selectedId = data.selected_option_id;
+        const opt = question.answer_options.find((o) => o.id === selectedId);
+        return opt?.option_text ?? String(selectedId ?? "");
+      }
+      case "MULTIPLE_CHOICE": {
+        const ids: number[] = data.selected_option_ids ?? [];
+        return question.answer_options
+          .filter((o) => ids.includes(o.id))
+          .map((o) => o.option_text)
+          .join(", ");
+      }
+      case "SHORT_ANSWER":
+      case "ESSAY":
+        return data.answer_text ?? data.text ?? "";
+      case "FILL_BLANK_TEXT":
+      case "FILL_BLANK_DROPDOWN": {
+        const blanks: any[] = data.blanks ?? [];
+        return blanks
+          .map((b) => `[${b.blank_id}]: ${b.answer ?? b.selected_option_id ?? ""}`)
+          .join(" | ");
+      }
+      default:
+        return JSON.stringify(data);
+    }
+  };
 
   // ── render question images ───────────────────────────────────────────────────
 
@@ -1008,7 +1044,7 @@ export default function QuizReviewPage({
                   </p>
                 </div>
               ) : (
-                filteredQuestions.map((qa, index) => {
+                filteredQuestions.map((qa) => {
                   const question = qa.question;
                   const studentAnswer = qa.student_answer;
                   const isCorrect = studentAnswer?.is_correct ?? false;
@@ -1125,6 +1161,8 @@ export default function QuizReviewPage({
                               setDiagnosisTarget({
                                 qId: question.id,
                                 text: question.question_text,
+                                wrongAnswer: extractWrongAnswer(qa),
+                                courseId,
                               })
                             }
                             className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 rounded-xl hover:bg-violet-100 dark:hover:bg-violet-950/50 transition-all active:scale-95"
@@ -1150,6 +1188,8 @@ export default function QuizReviewPage({
           attemptId={attemptId}
           questionId={diagnosisTarget.qId}
           questionText={diagnosisTarget.text}
+          wrongAnswer={diagnosisTarget.wrongAnswer}
+          courseId={diagnosisTarget.courseId}
           onClose={() => setDiagnosisTarget(null)}
         />
       )}

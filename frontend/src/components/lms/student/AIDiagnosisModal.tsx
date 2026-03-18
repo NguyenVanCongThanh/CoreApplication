@@ -17,7 +17,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Sparkles, BookOpen, Video, AlertCircle,
-  ChevronRight, Brain, Lightbulb, Target, ExternalLink
+  ChevronRight, Brain, Lightbulb, Target
 } from "lucide-react";
 import aiService, { DiagnosisResult } from "@/services/aiService";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,8 @@ interface Props {
   attemptId: number;
   questionId: number;
   questionText: string;
+  wrongAnswer: string;
+  courseId: number;
   onClose: () => void;
 }
 
@@ -56,6 +58,8 @@ export default function AIDiagnosisModal({
   attemptId,
   questionId,
   questionText,
+  wrongAnswer,
+  courseId,
   onClose,
 }: Props) {
   const [loading, setLoading] = useState(true);
@@ -64,11 +68,11 @@ export default function AIDiagnosisModal({
 
   useEffect(() => {
     aiService
-      .diagnoseWrongAnswer(attemptId, questionId)
+      .diagnoseWrongAnswer(attemptId, questionId, wrongAnswer, courseId)
       .then(setResult)
       .catch((e) => setError(e?.response?.data?.error ?? "Không thể phân tích lỗi này."))
       .finally(() => setLoading(false));
-  }, [attemptId, questionId]);
+  }, [attemptId, questionId, wrongAnswer, courseId]);
 
   const gapCfg = result
     ? (GAP_COLORS[result.gap_type] ?? GAP_COLORS.unknown)
@@ -77,7 +81,7 @@ export default function AIDiagnosisModal({
   const deepLinkHref = (() => {
     const dl = result?.deep_link;
     if (!dl) return null;
-    const base = `/lms/student/courses`; // user will navigate manually; just show the fragment
+    const base = `/lms/student/courses`;
     return dl.url_fragment ?? null;
   })();
 
