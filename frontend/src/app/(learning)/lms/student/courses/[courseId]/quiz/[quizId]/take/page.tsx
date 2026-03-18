@@ -62,6 +62,7 @@ export default function StudentQuizTakingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const quizId = parseInt(params.quizId as string);
+  const courseId = parseInt(params.courseId as string);
   
   const shouldStart = searchParams.get("start") === "true";
   const hasStartedRef = useRef(false);
@@ -82,7 +83,7 @@ export default function StudentQuizTakingPage() {
 
   useEffect(() => {
     if (shouldStart && hasStartedRef.current) {
-      router.replace(`/lms/student/quiz/${quizId}/take`, { scroll: false });
+      router.replace(`/lms/student/courses/${courseId}/quiz/${quizId}/take`, { scroll: false });
     }
   }, [shouldStart, quizId, router]);
 
@@ -115,12 +116,12 @@ export default function StudentQuizTakingPage() {
       const inProgressAttempt = attempts.find((a: any) => a.status === "IN_PROGRESS");
 
       if (!shouldStart && !inProgressAttempt) {
-        router.replace(`/lms/student/quiz/${quizId}/history`);
+        router.replace(`/lms/student/courses/${courseId}/quiz/${quizId}/history`);
         return;
       }
 
       if (!inProgressAttempt && hasStartedRef.current) {
-        router.replace(`/lms/student/quiz/${quizId}/history`);
+        router.replace(`/lms/student/courses/${courseId}/quiz/${quizId}/history`);
         return;
       }
 
@@ -152,7 +153,7 @@ export default function StudentQuizTakingPage() {
         attemptInfo = attemptData.data;
         
         hasStartedRef.current = true;
-        router.replace(`/lms/student/quiz/${quizId}/take`, { scroll: false });
+        router.replace(`/lms/student/courses/${courseId}/quiz/${quizId}/take`, { scroll: false });
         
         if (quizInfo.time_limit_minutes) {
           setTimeLeft(quizInfo.time_limit_minutes * 60);
@@ -189,7 +190,7 @@ export default function StudentQuizTakingPage() {
     } catch (error: any) {
       console.error("Error starting quiz:", error);
       alert(error.response?.data?.message || "Không thể bắt đầu quiz");
-      router.push(`/lms/student/quiz/${quizId}/history`);
+      router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/history`);
     }
   };
 
@@ -258,7 +259,7 @@ export default function StudentQuizTakingPage() {
       setSubmitting(true);
       await quizService.submitQuiz(attempt.id);
       alert("Đã nộp bài thành công!");
-      router.push(`/lms/student/quiz/${quizId}/result/${attempt.id}`);
+      router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/result/${attempt.id}`);
     } catch (error: any) {
       console.error("Error submitting quiz:", error);
       alert(error.response?.data?.message || "Không thể nộp bài");

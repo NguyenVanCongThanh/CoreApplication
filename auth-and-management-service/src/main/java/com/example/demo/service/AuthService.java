@@ -39,7 +39,28 @@ public class AuthService {
     }
 
     public String generateToken(User user) {
-        return jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        List<String> roles = determineRoles(user.getRole());
+        return jwtService.generateToken(user.getId(), user.getEmail(), roles);
+    }
+
+    /**
+     * Determine roles for LMS:
+     * - All users: TEACHER + STUDENT
+     * - ADMIN: TEACHER + STUDENT + ADMIN
+     */
+    private List<String> determineRoles(UserRole userRole) {
+        List<String> roles = new ArrayList<>();
+        
+        // Default: all users have TEACHER and STUDENT
+        roles.add("TEACHER");
+        roles.add("STUDENT");
+        
+        // ADMIN gets additional ADMIN role
+        if (userRole == UserRole.ROLE_ADMIN) {
+            roles.add("ADMIN");
+        }
+        
+        return roles;
     }
 
     @Transactional

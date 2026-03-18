@@ -27,12 +27,12 @@ public class JwtService {
         this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
-    public String generateToken(Long userId, String email, String role) {
+    public String generateToken(Long userId, String email, java.util.List<String> roles) {
         return Jwts.builder()
                 .subject(email)
                 .claim("user_id", userId)
                 .claim("email", email)
-                .claim("role", role)
+                .claim("roles", roles)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(secretKey)
@@ -49,6 +49,11 @@ public class JwtService {
 
     public String extractRole(String token) {
         return extractAllClaims(token).get("role", String.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> extractRoles(String token) {
+        return extractAllClaims(token).get("roles", java.util.List.class);
     }
 
     public boolean validateToken(String token) {
