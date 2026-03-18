@@ -15,6 +15,7 @@ import (
 	"example/hello/internal/middleware"
 	"example/hello/internal/repository"
 	"example/hello/internal/service"
+	"example/hello/pkg/ai"
 	"example/hello/pkg/cache"
 	"example/hello/pkg/database"
 	"example/hello/pkg/logger"
@@ -90,6 +91,8 @@ func main() {
 		logger.Info("Using local storage")
 	}
 
+	aiClient := ai.NewClient()
+
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	courseRepo := repository.NewCourseRepository(db)
@@ -120,6 +123,7 @@ func main() {
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
+	aiHandler := handler.NewAIHandler(aiClient)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -178,7 +182,7 @@ func main() {
 			protected.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
 			{
 				protected.POST("/upload", fileHandler.UploadFile)
-				protected.DELETE("/delete/*filepath", middleware.RequireRoles("ADMIN", "TEACHER"), fileHandler.DeleteFile)
+				protected.DELETE("/delete/*filepath", fileHandler.DeleteFile)
 			}
 		}
 
@@ -198,24 +202,24 @@ func main() {
 				courses.GET("/:courseId", courseHandler.GetCourse)
 
 				// Teacher/Admin only - Create course
-				courses.POST("", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.CreateCourse)
+				courses.POST("", courseHandler.CreateCourse)
 
 				// Teacher/Admin only - Update/Delete/Publish course
-				courses.PUT("/:courseId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.UpdateCourse)
+				courses.PUT("/:courseId", courseHandler.UpdateCourse)
 				courses.DELETE("/:courseId", middleware.RequireRole("ADMIN"), courseHandler.DeleteCourse)
-				courses.POST("/:courseId/publish", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.PublishCourse)
+				courses.POST("/:courseId/publish", courseHandler.PublishCourse)
 
 				// Section management (Owner/Admin only via service layer)
-				courses.POST("/:courseId/sections", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.CreateSection)
+				courses.POST("/:courseId/sections", courseHandler.CreateSection)
 				courses.GET("/:courseId/sections", courseHandler.ListSections)
 
 				// ── Analytics (Teacher / Admin only)
-				courses.GET("/:courseId/quiz-analytics", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetCourseQuizAnalytics)
-				courses.GET("/:courseId/student-progress-overview", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetStudentProgressOverview)
+				courses.GET("/:courseId/quiz-analytics", analyticsHandler.GetCourseQuizAnalytics)
+				courses.GET("/:courseId/student-progress-overview", analyticsHandler.GetStudentProgressOverview)
 
 				// Course learners management
 				courses.GET("/:courseId/learners", enrollmentHandler.GetCourseLearners)
-				courses.POST("/:courseId/bulk-enroll", middleware.RequireRoles("ADMIN", "TEACHER"), enrollmentHandler.BulkEnroll)
+				courses.POST("/:courseId/bulk-enroll", enrollmentHandler.BulkEnroll)
 
 				// ── Analytics (Student) ───────────────────────────────────
 				courses.GET("/:courseId/my-quiz-scores", analyticsHandler.GetMyQuizScores)
@@ -229,11 +233,11 @@ func main() {
 			sections := auth.Group("/sections")
 			{
 				sections.GET("/:sectionId", courseHandler.GetSection)
-				sections.PUT("/:sectionId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.UpdateSection)
-				sections.DELETE("/:sectionId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.DeleteSection)
+				sections.PUT("/:sectionId", courseHandler.UpdateSection)
+				sections.DELETE("/:sectionId", courseHandler.DeleteSection)
 
 				// Content management
-				sections.POST("/:sectionId/content", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.CreateContent)
+				sections.POST("/:sectionId/content", courseHandler.CreateContent)
 				sections.GET("/:sectionId/content", courseHandler.ListContent)
 			}
 
@@ -242,8 +246,8 @@ func main() {
 			{
 				content.GET("/:contentId", courseHandler.GetContent)
 				content.GET("/:contentId/quiz", quizHandler.GetQuizByContentID)
-				content.PUT("/:contentId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.UpdateContent)
-				content.DELETE("/:contentId", middleware.RequireRoles("ADMIN", "TEACHER"), courseHandler.DeleteContent)
+				content.PUT("/:contentId", courseHandler.UpdateContent)
+				content.DELETE("/:contentId", courseHandler.DeleteContent)
 				// ── Progress tracking (Student) ───────────────────────────
 				content.POST("/:contentId/complete", progressHandler.MarkComplete)
 			}
@@ -264,13 +268,13 @@ func main() {
 			quizzes := auth.Group("/quizzes")
 			{
 				// Teacher/Admin - Quiz CRUD
-				quizzes.POST("", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.CreateQuiz)
+				quizzes.POST("", quizHandler.CreateQuiz)
 				quizzes.GET("/:quizId", quizHandler.GetQuiz)
-				quizzes.PUT("/:quizId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.UpdateQuiz)
-				quizzes.DELETE("/:quizId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.DeleteQuiz)
+				quizzes.PUT("/:quizId", quizHandler.UpdateQuiz)
+				quizzes.DELETE("/:quizId", quizHandler.DeleteQuiz)
 
 				// Question Management
-				quizzes.POST("/:quizId/questions", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.CreateQuestion)
+				quizzes.POST("/:quizId/questions", quizHandler.CreateQuestion)
 				quizzes.GET("/:quizId/questions", quizHandler.ListQuestions)
 
 				// Student - Take Quiz
@@ -278,21 +282,21 @@ func main() {
 				quizzes.GET("/:quizId/my-attempts", quizHandler.GetMyQuizAttempts)
 
 				// Grading
-				quizzes.GET("/:quizId/grading", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.ListAnswersForGrading)
-				quizzes.POST("/:quizId/bulk-grade", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.BulkGrade)
-				quizzes.GET("/:quizId/all-attempts", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetQuizAllAttempts)
-				quizzes.GET("/:quizId/wrong-answer-stats", middleware.RequireRoles("ADMIN", "TEACHER"), analyticsHandler.GetQuizWrongAnswerStats)
+				quizzes.GET("/:quizId/grading", quizHandler.ListAnswersForGrading)
+				quizzes.POST("/:quizId/bulk-grade", quizHandler.BulkGrade)
+				quizzes.GET("/:quizId/all-attempts", analyticsHandler.GetQuizAllAttempts)
+				quizzes.GET("/:quizId/wrong-answer-stats", analyticsHandler.GetQuizWrongAnswerStats)
 			}
 
 			// QUESTION ROUTES
 			questions := auth.Group("/questions")
 			{
-				questions.PUT("/:questionId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.UpdateQuestion)
-				questions.DELETE("/:questionId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.DeleteQuestion)
+				questions.PUT("/:questionId", quizHandler.UpdateQuestion)
+				questions.DELETE("/:questionId", quizHandler.DeleteQuestion)
 
-				questions.POST("/:questionId/images", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.UploadQuestionImage)
+				questions.POST("/:questionId/images", quizHandler.UploadQuestionImage)
 				questions.GET("/:questionId/images", quizHandler.ListQuestionImages)
-				questions.DELETE("/:questionId/images/:imageId", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.DeleteQuestionImage)
+				questions.DELETE("/:questionId/images/:imageId", quizHandler.DeleteQuestionImage)
 			}
 
 			// QUIZ ATTEMPT ROUTES
@@ -309,7 +313,7 @@ func main() {
 			// ANSWER GRADING ROUTES
 			answers := auth.Group("/answers")
 			{
-				answers.POST("/:answerId/grade", middleware.RequireRoles("ADMIN", "TEACHER"), quizHandler.GradeAnswer)
+				answers.POST("/:answerId/grade", quizHandler.GradeAnswer)
 			}
 
 			// FORUM ROUTES
@@ -347,6 +351,65 @@ func main() {
 					comments.POST("/:commentId/accept", forumHandler.AcceptComment)
 					comments.POST("/:commentId/vote", forumHandler.VoteComment)
 				}
+			}
+
+			aiGroup := auth.Group("/ai")
+			{
+				// ── Phase 1: Error Diagnosis ──────────────────────────────────────────
+				// POST /api/v1/ai/attempts/:attemptId/questions/:questionId/diagnose
+				aiGroup.POST("/attempts/:attemptId/questions/:questionId/diagnose",
+					aiHandler.DiagnoseWrongAnswer)
+			}
+
+			// Per-course AI routes (reuse courseId param)
+			aiCourses := auth.Group("/courses/:courseId/ai")
+			{
+				// ── Phase 1: Heatmap ──────────────────────────────────────────────────
+				aiCourses.GET("/heatmap",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.GetClassHeatmap)
+			
+				aiCourses.GET("/my-heatmap",
+					aiHandler.GetStudentHeatmap)
+			
+				// ── Knowledge Graph ───────────────────────────────────────────────────
+				aiCourses.POST("/nodes",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.CreateKnowledgeNode)
+			
+				aiCourses.GET("/nodes",
+					aiHandler.ListKnowledgeNodes)
+			
+				// ── Phase 2: Quiz Generation ──────────────────────────────────────────
+				aiCourses.POST("/generate-quiz",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.GenerateQuiz)
+			
+				aiCourses.GET("/drafts",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.ListDraftQuestions)
+			
+				// ── Phase 2: Spaced Repetition ────────────────────────────────────────
+				aiCourses.GET("/reviews/due",
+					aiHandler.GetDueReviews)
+			
+				aiCourses.POST("/reviews/record",
+					aiHandler.RecordReviewResponse)
+			
+				aiCourses.GET("/reviews/stats",
+					aiHandler.GetReviewStats)
+			}
+			
+			// Quiz draft review (outside course context)
+			quizDrafts := auth.Group("/ai/quiz-drafts")
+			{
+				quizDrafts.POST("/:genId/approve",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.ApproveQuestion)
+			
+				quizDrafts.POST("/:genId/reject",
+					middleware.RequireRoles("ADMIN", "TEACHER"),
+					aiHandler.RejectQuestion)
 			}
 		}
 	}

@@ -21,6 +21,7 @@ type Config struct {
 	CORS     CORSConfig
 	Server   ServerConfig
 	Email    EmailConfig
+	AIConf	 AIConfig
 }
 
 // AppConfig holds application-specific configuration
@@ -104,6 +105,11 @@ type EmailConfig struct {
 	SMTPPassword string
 	FromEmail    string
 	FromName     string
+}
+
+type AIConfig struct {
+	baseURL		string
+	secret		string
 }
 
 func LoadStorageConfig() StorageConfig {
@@ -202,6 +208,11 @@ func Load() (*Config, error) {
 			SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 			FromEmail:    getEnv("EMAIL_FROM", "noreply@lms.com"),
 			FromName:     getEnv("EMAIL_FROM_NAME", "LMS System"),
+		},
+
+		AIConf: AIConfig{
+			baseURL: 	getEnv("AI_SERVICE_URL", "http://ai-service:8000"),
+			secret: 	getEnv("AI_SERVICE_SECRET", "None"),
 		},
 	}
 

@@ -9,7 +9,6 @@ type DashboardLayoutProps = {
 export default async function DashboardLayout({ children }: DashboardLayoutProps) {
   const cookieStore = await cookies();
   const token = cookieStore.get("authToken")?.value;
-  console.log(token)  
   if (token) {
     redirect("/");
   }
