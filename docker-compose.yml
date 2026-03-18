@@ -385,7 +385,7 @@ services:
       CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,OPTIONS,PATCH"
       CORS_ALLOWED_HEADERS: "Authorization,Content-Type,Accept"
 
-      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET}
+      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
       
       # Performance
       GOMAXPROCS: 2
@@ -460,7 +460,7 @@ services:
       MINIO_BUCKET: lms-files
       MINIO_USE_SSL: "false"
  
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
       CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
 
@@ -534,7 +534,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: lms-files
 
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
       CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
 
