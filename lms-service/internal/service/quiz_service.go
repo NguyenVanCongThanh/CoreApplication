@@ -788,7 +788,9 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 			}
 
 			if s.canAutoGrade(question.QuestionType) {
-				_ = s.autoGradeAnswer(ctx, &ans, question)
+				if err := s.autoGradeAnswer(ctx, &ans, question); err != nil {
+					logger.Error(fmt.Sprintf("Auto-grade failed for question %d", ans.QuestionID), err)
+				}
 			}
 		}
 
@@ -1061,10 +1063,17 @@ func (s *QuizService) autoGradeAnswer(ctx context.Context, answer *models.QuizSt
 
 // gradeSingleChoice grades a single choice question
 func (s *QuizService) gradeSingleChoice(ctx context.Context, answerData map[string]interface{}, questionID int64) (bool, error) {
-	selectedID, ok := answerData["selected_option_id"].(float64) // JSON numbers are float64
-	if !ok {
-		return false, fmt.Errorf("invalid answer format")
-	}
+	var selectedID int64
+    switch v := answerData["selected_option_id"].(type) {
+    case float64:
+        selectedID = int64(v)
+    case int64:
+        selectedID = v
+    case int:
+        selectedID = int64(v)
+    default:
+        return false, fmt.Errorf("invalid answer format: selected_option_id type %T", answerData["selected_option_id"])
+    }
 
 	options, err := s.quizRepo.ListAnswerOptions(ctx, questionID)
 	if err != nil {

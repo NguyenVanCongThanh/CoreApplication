@@ -44,9 +44,9 @@ class Settings(BaseSettings):
     quiz_model: str = "claude-3-5-sonnet-20241022"
 
     # ════════════════════════════════════════════════════
-    # Embedding (nomic-embed-text, 768 dims)
+    # Embedding (nomic-ai/nomic-embed-text-v1.5-Q, 768 dims)
     # ════════════════════════════════════════════════════
-    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5-Q"
     embedding_dimensions: int = 768
 
     # ── RAG ─────────────────────────────────────────────
