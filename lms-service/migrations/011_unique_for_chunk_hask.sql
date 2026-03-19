@@ -1,0 +1,1 @@
+ALTER TABLE document_chunks ADD CONSTRAINT unique_chunk_hash UNIQUE (chunk_hash);

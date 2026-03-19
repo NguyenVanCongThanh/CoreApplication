@@ -1,14 +1,5 @@
 "use client";
 
-/**
- * AIQuizGenPanel.tsx
- * Teacher panel: generate quiz questions from course documents using AI,
- * then review, approve or reject each generated question.
- *
- * Usage:
- *   <AIQuizGenPanel courseId={123} />
- */
-
 import { useEffect, useState, useCallback } from "react";
 import {
   Sparkles, RefreshCw, ChevronDown, ChevronUp,
@@ -16,6 +7,7 @@ import {
   Layers, Zap, Clock
 } from "lucide-react";
 import aiService, { GeneratedQuestion, KnowledgeNode } from "@/services/aiService";
+import { AINodeManager } from "@/components/lms/teacher/AINodeManager";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -172,7 +164,6 @@ function DraftCard({
 }
 
 export function AIQuizGenPanel({ courseId }: Props) {
-  const [tab, setTab] = useState<"generate" | "drafts">("generate");
   const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
   const [drafts, setDrafts] = useState<GeneratedQuestion[]>([]);
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
@@ -181,6 +172,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const [generating, setGenerating] = useState(false);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
+  const [activeSection, setActiveSection] = useState<"nodes" | "generate" | "drafts">("nodes");
 
   const loadNodes = useCallback(async () => {
     try {
@@ -194,7 +186,17 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const loadDrafts = useCallback(async () => {
     setLoadingDrafts(true);
     try {
-      setDrafts(await aiService.listDraftQuestions(courseId));
+      const data = await aiService.listDraftQuestions(courseId);
+      
+      // LÀM PHẲNG DỮ LIỆU Ở ĐÂY:
+      const formattedDrafts = data.map((q: any) => ({
+        ...q,
+        // Kiểm tra nếu là chuỗi thì ép kiểu về mảng object, nếu đã là mảng thì giữ nguyên
+        answer_options: typeof q.answer_options === 'string' 
+          ? JSON.parse(q.answer_options) 
+          : q.answer_options
+      }));
+      setDrafts(formattedDrafts);
     } catch (e: any) {
       setError(e?.response?.data?.error ?? "Không tải được danh sách câu hỏi.");
     } finally {
@@ -218,7 +220,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
         language,
         questions_per_level: 1,
       });
-      setTab("drafts");
+      setActiveSection("drafts");
       await loadDrafts();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? "Không thể tạo quiz. Kiểm tra AI service.");
@@ -254,19 +256,23 @@ export function AIQuizGenPanel({ courseId }: Props) {
 
       {/* Tab bar */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-        {(["generate", "drafts"] as const).map((t) => (
+        {(["nodes", "generate", "drafts"] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setActiveSection(t);
+            }}
             className={cn(
               "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all",
-              tab === t
+              activeSection === t
                 ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
-            {t === "generate" ? <Zap className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-            {t === "generate" ? "Tạo mới" : `Chờ duyệt (${draftCount})`}
+            {t === "nodes" && <BookOpen className="w-3.5 h-3.5" />}
+            {t === "generate" && <Zap className="w-3.5 h-3.5" />}
+            {t === "drafts" && <Clock className="w-3.5 h-3.5" />}
+            {t === "nodes" ? "Nodes" : t === "generate" ? "Tạo mới" : `Chờ duyệt (${draftCount})`}
           </button>
         ))}
       </div>
@@ -279,7 +285,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
       )}
 
       {/* Generate tab */}
-      {tab === "generate" && (
+      {activeSection === "generate" && (
         <div className="space-y-5">
           {/* Node selector */}
           <div>
@@ -391,7 +397,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
       )}
 
       {/* Drafts tab */}
-      {tab === "drafts" && (
+      {activeSection === "drafts" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -422,6 +428,14 @@ export function AIQuizGenPanel({ courseId }: Props) {
             ))
           )}
         </div>
+      )}
+
+      {activeSection === "nodes" && (
+        <AINodeManager
+          courseId={courseId}
+          nodes={nodes}
+          onNodesChange={loadNodes}
+        />
       )}
     </div>
   );

@@ -265,7 +265,7 @@ services:
       - app-network
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD-SHELL", "pg_isready -U $${LMS_POSTGRES_USER} -d $${LMS_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
     logging: *common-logging
     deploy:
       resources:
@@ -460,11 +460,11 @@ services:
       MINIO_BUCKET: lms-files
       MINIO_USE_SSL: "false"
  
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+      GROQ_API_KEY: ${GROQ_API_KEY:-None}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
 
       AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
@@ -507,6 +507,9 @@ services:
       - "service.type=ai"
       - "service.name=ai-service"
 
+    volumes:
+      - ai_model_cache:/root/.cache/fastembed
+
   ai-worker:
     build:
       context: ./ai-service
@@ -534,11 +537,11 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: lms-files
 
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+      GROQ_API_KEY: ${GROQ_API_KEY:-None}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
       CHUNK_SIZE: 500
       CHUNK_OVERLAP: 50
@@ -564,6 +567,9 @@ services:
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
+
+    volumes:
+      - ai_model_cache:/root/.cache/fastembed
 
   # MinIO: Object Storage
   minio:
@@ -635,6 +641,9 @@ volumes:
     labels:
       - "backup.enabled=true"
       - "backup.schedule=daily"
+
+  ai_model_cache:
+    driver: local
 
 # Networks
 networks:

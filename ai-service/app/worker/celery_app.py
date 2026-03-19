@@ -19,6 +19,8 @@ from celery import Celery
 
 from app.core.config import get_settings
 
+from minio import Minio
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -171,15 +173,22 @@ def process_document_task(
 
 def _download_file(url: str) -> bytes:
     """Download file from URL (MinIO presigned URL or direct path)."""
-    if url.startswith("http"):
-        with httpx.Client(timeout=120) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            return resp.content
-    else:
-        # Local path (dev environment)
-        with open(url, "rb") as f:
-            return f.read()
+    client = Minio(
+        os.getenv("MINIO_ENDPOINT"),
+        access_key=os.getenv("MINIO_ACCESS_KEY"),
+        secret_key=os.getenv("MINIO_SECRET_KEY"),
+        secure=False
+    )
+
+    bucket = os.getenv("MINIO_BUCKET")
+
+    response = client.get_object(bucket, url)
+
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
 
 
 def _get_or_generate_transcript(content_id: int, video_bytes: bytes) -> dict | None:
