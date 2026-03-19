@@ -277,6 +277,8 @@ const STATUS_CFG = {
 
 function QuizScoreCard({ score }: { score: StudentQuizScore }) {
   const router = useRouter();
+  const params = useParams();
+  const courseId = parseInt(params.courseId as string);
   const cfg    = STATUS_CFG[score.status] ?? STATUS_CFG.not_started;
   const pct    = score.best_percentage ?? 0;
   const barColor =
@@ -287,7 +289,7 @@ function QuizScoreCard({ score }: { score: StudentQuizScore }) {
   return (
     <div
       className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer group"
-      onClick={() => router.push(`/lms/student/quiz/${score.quiz_id}/history`)}
+      onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${score.quiz_id}/history`)}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate flex-1">{score.quiz_title}</p>
@@ -453,7 +455,6 @@ export default function StudentCourseDetailPage() {
     setMarkingComplete(true);
     try {
       const res = await progressService.markContentComplete(contentId);
-      console.log(res)
       setCompletedIds(prev => new Set([...prev, contentId]));
       await loadProgress(); // refresh summary
     } catch {
@@ -772,6 +773,7 @@ export default function StudentCourseDetailPage() {
                     content={activeContent}
                     userRole="STUDENT"
                     isCompleted={completedIds.has(activeContent.id)}
+                    courseId={courseId}
                     onComplete={() => handleMarkComplete(activeContent.id)}
                   />
 

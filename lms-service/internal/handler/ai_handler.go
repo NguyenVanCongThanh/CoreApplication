@@ -407,3 +407,35 @@ func (h *AIHandler) GetReviewStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, dto.NewDataResponse(stats))
 }
+
+func (h *AIHandler) TriggerDocumentProcess(c *gin.Context) {
+    contentID, _ := strconv.ParseInt(c.Param("contentId"), 10, 64)
+    
+    var body struct {
+        CourseID    int64  `json:"course_id" binding:"required"`
+        NodeID      *int64 `json:"node_id"`
+        FileURL     string `json:"file_url"`
+        ContentType string `json:"content_type"`
+    }
+    if err := c.ShouldBindJSON(&body); err != nil {
+        c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_request", err.Error()))
+        return
+    }
+    if body.ContentType == "" {
+        body.ContentType = "application/pdf"
+    }
+
+    result, err := h.aiClient.ProcessDocument(c.Request.Context(), ai.ProcessDocumentRequest{
+        ContentID:   contentID,
+        CourseID:    body.CourseID,
+        NodeID:      body.NodeID,
+        FileURL:     body.FileURL,
+        ContentType: body.ContentType,
+    })
+    if err != nil {
+        logger.Error("Document processing trigger failed", err)
+        c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+        return
+    }
+    c.JSON(http.StatusAccepted, dto.NewDataResponse(result))
+}

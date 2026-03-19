@@ -205,6 +205,15 @@ class LMSService {
     const response = await lmsApiClient.delete(`/enrollments/${enrollmentId}`);
     return response.data;
   }
+
+  async triggerDocumentProcessing(contentId: number, courseId: number, nodeId?: number, fileUrl?: string) {
+    const response = await lmsApiClient.post(`/content/${contentId}/process`, {
+      course_id: courseId,
+      node_id: nodeId,
+      file_url: fileUrl,
+    });
+    return response.data;
+  }
 }
 
 export const lmsService = new LMSService();

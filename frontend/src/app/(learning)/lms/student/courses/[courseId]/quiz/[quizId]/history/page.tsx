@@ -37,6 +37,7 @@ export default function QuizHistoryPage() {
   const params = useParams();
   const router = useRouter();
   const quizId = parseInt(params.quizId as string);
+  const courseId = parseInt(params.courseId as string);
 
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,7 +221,7 @@ export default function QuizHistoryPage() {
               </p>
             </div>
             <Button
-              onClick={() => router.push(`/lms/student/quiz/${quizId}/take?start=true`)}
+              onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/take?start=true`)}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               size="lg"
             >
@@ -243,7 +244,7 @@ export default function QuizHistoryPage() {
               Bạn chưa làm bài quiz này. Hãy bắt đầu lần làm đầu tiên!
             </p>
             <Button
-              onClick={() => router.push(`/lms/student/quiz/${quizId}/take`)}
+              onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/take`)}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               size="lg"
             >
@@ -315,7 +316,7 @@ export default function QuizHistoryPage() {
                     {attempt.status !== "IN_PROGRESS" && (
                       <Button
                         onClick={() =>
-                          router.push(`/lms/student/quiz/${quizId}/result/${attempt.id}`)
+                          router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/result/${attempt.id}`)
                         }
                         variant="outline"
                         size="lg"
@@ -326,7 +327,7 @@ export default function QuizHistoryPage() {
                     )}
                     {attempt.status === "IN_PROGRESS" && (
                       <Button
-                        onClick={() => router.push(`/lms/student/quiz/${quizId}/take`)}
+                        onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/take`)}
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                         size="lg"
                       >

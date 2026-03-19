@@ -49,7 +49,16 @@ async def startup():
     logger.info("Starting AI Service...")
     await init_async_pool()
     logger.info("Database pool initialized.")
-
+    
+    logger.info("Pre-loading embedding model (may take a few minutes on first run)...")
+    try:
+        from app.core.llm import get_embed_model
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, get_embed_model)
+        logger.info("Embedding model loaded successfully.")
+    except Exception as e:
+        logger.error(f"Failed to pre-load embedding model: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():

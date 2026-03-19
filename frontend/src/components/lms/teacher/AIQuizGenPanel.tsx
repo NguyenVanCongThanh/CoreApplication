@@ -1,14 +1,5 @@
 "use client";
 
-/**
- * AIQuizGenPanel.tsx
- * Teacher panel: generate quiz questions from course documents using AI,
- * then review, approve or reject each generated question.
- *
- * Usage:
- *   <AIQuizGenPanel courseId={123} />
- */
-
 import { useEffect, useState, useCallback } from "react";
 import {
   Sparkles, RefreshCw, ChevronDown, ChevronUp,
@@ -16,6 +7,8 @@ import {
   Layers, Zap, Clock
 } from "lucide-react";
 import aiService, { GeneratedQuestion, KnowledgeNode } from "@/services/aiService";
+import { AINodeManager } from "@/components/lms/teacher/AINodeManager";
+import { QuizSelectorModal } from "@/components/lms/teacher/QuizSelectorModal";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -40,15 +33,14 @@ const STATUS_CFG = {
 
 function DraftCard({
   q,
-  onApprove,
+  onApproveClick,
   onReject,
 }: {
   q: GeneratedQuestion;
-  onApprove: (id: number) => Promise<void>;
+  onApproveClick: (id: number) => void;
   onReject: (id: number) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
 
@@ -56,9 +48,8 @@ function DraftCard({
   const bloomLabel = BLOOM_LEVELS.find((b) => b.id === q.bloom_level)?.label ?? q.bloom_level;
   const statusCfg = STATUS_CFG[q.status] ?? STATUS_CFG.DRAFT;
 
-  const handleApprove = async () => {
-    setApproving(true);
-    try { await onApprove(q.id); } finally { setApproving(false); }
+  const handleApprove = () => {
+    onApproveClick(q.id);
   };
 
   const handleReject = async () => {
@@ -138,11 +129,10 @@ function DraftCard({
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleApprove}
-                disabled={approving}
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                {approving ? "Đang duyệt…" : "Duyệt"}
+                Duyệt
               </button>
               <div className="flex-1 flex gap-2">
                 <input
@@ -172,7 +162,6 @@ function DraftCard({
 }
 
 export function AIQuizGenPanel({ courseId }: Props) {
-  const [tab, setTab] = useState<"generate" | "drafts">("generate");
   const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
   const [drafts, setDrafts] = useState<GeneratedQuestion[]>([]);
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
@@ -181,6 +170,12 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const [generating, setGenerating] = useState(false);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
+  const [activeSection, setActiveSection] = useState<"nodes" | "generate" | "drafts">("nodes");
+  
+  // Quiz selector modal states
+  const [isQuizSelectorOpen, setIsQuizSelectorOpen] = useState(false);
+  const [pendingQuestionId, setPendingQuestionId] = useState<number | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   const loadNodes = useCallback(async () => {
     try {
@@ -194,7 +189,17 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const loadDrafts = useCallback(async () => {
     setLoadingDrafts(true);
     try {
-      setDrafts(await aiService.listDraftQuestions(courseId));
+      const data = await aiService.listDraftQuestions(courseId);
+      
+      // LÀM PHẲNG DỮ LIỆU Ở ĐÂY:
+      const formattedDrafts = data.map((q: any) => ({
+        ...q,
+        // Kiểm tra nếu là chuỗi thì ép kiểu về mảng object, nếu đã là mảng thì giữ nguyên
+        answer_options: typeof q.answer_options === 'string' 
+          ? JSON.parse(q.answer_options) 
+          : q.answer_options
+      }));
+      setDrafts(formattedDrafts);
     } catch (e: any) {
       setError(e?.response?.data?.error ?? "Không tải được danh sách câu hỏi.");
     } finally {
@@ -207,7 +212,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
     loadDrafts();
   }, [loadNodes, loadDrafts]);
 
-  const handleGenerate = async () => {
+  const handleGenerateQuiz = async () => {
     if (!selectedNode) { alert("Vui lòng chọn chủ đề (Knowledge Node)."); return; }
     if (selectedBlooms.length === 0) { alert("Vui lòng chọn ít nhất 1 cấp độ Bloom."); return; }
     setGenerating(true);
@@ -218,7 +223,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
         language,
         questions_per_level: 1,
       });
-      setTab("drafts");
+      setActiveSection("drafts");
       await loadDrafts();
     } catch (e: any) {
       setError(e?.response?.data?.error ?? "Không thể tạo quiz. Kiểm tra AI service.");
@@ -227,12 +232,27 @@ export function AIQuizGenPanel({ courseId }: Props) {
     }
   };
 
-  const handleApprove = async (id: number) => {
-    await aiService.approveQuestion(id);
-    await loadDrafts();
+  const handleApproveClick = (questionId: number) => {
+    setPendingQuestionId(questionId);
+    setIsQuizSelectorOpen(true);
   };
 
-  const handleReject = async (id: number) => {
+  const handleQuizSelected = async (quizId: number) => {
+    if (!pendingQuestionId) return;
+    
+    setApprovingId(pendingQuestionId);
+    try {
+      await aiService.approveQuestion(pendingQuestionId, quizId);
+      await loadDrafts();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail ?? "Lỗi khi duyệt câu hỏi");
+    } finally {
+      setApprovingId(null);
+      setPendingQuestionId(null);
+    }
+  };
+
+  const handleRejectQuestion = async (id: number) => {
     await aiService.rejectQuestion(id, "Câu hỏi không phù hợp");
     await loadDrafts();
   };
@@ -254,19 +274,23 @@ export function AIQuizGenPanel({ courseId }: Props) {
 
       {/* Tab bar */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-        {(["generate", "drafts"] as const).map((t) => (
+        {(["nodes", "generate", "drafts"] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setActiveSection(t);
+            }}
             className={cn(
               "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all",
-              tab === t
+              activeSection === t
                 ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
-            {t === "generate" ? <Zap className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-            {t === "generate" ? "Tạo mới" : `Chờ duyệt (${draftCount})`}
+            {t === "nodes" && <BookOpen className="w-3.5 h-3.5" />}
+            {t === "generate" && <Zap className="w-3.5 h-3.5" />}
+            {t === "drafts" && <Clock className="w-3.5 h-3.5" />}
+            {t === "nodes" ? "Nodes" : t === "generate" ? "Tạo mới" : `Chờ duyệt (${draftCount})`}
           </button>
         ))}
       </div>
@@ -279,7 +303,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
       )}
 
       {/* Generate tab */}
-      {tab === "generate" && (
+      {activeSection === "generate" && (
         <div className="space-y-5">
           {/* Node selector */}
           <div>
@@ -367,7 +391,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
 
           {/* Generate button */}
           <button
-            onClick={handleGenerate}
+            onClick={handleGenerateQuiz}
             disabled={generating || !selectedNode || selectedBlooms.length === 0}
             className="w-full flex items-center justify-center gap-2 py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
@@ -391,7 +415,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
       )}
 
       {/* Drafts tab */}
-      {tab === "drafts" && (
+      {activeSection === "drafts" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -418,11 +442,39 @@ export function AIQuizGenPanel({ courseId }: Props) {
             </div>
           ) : (
             drafts.map((q) => (
-              <DraftCard key={q.id} q={q} onApprove={handleApprove} onReject={handleReject} />
+              <div key={q.id} className={approvingId === q.id ? "opacity-50 pointer-events-none" : ""}>
+                <DraftCard
+                  q={q}
+                  onApproveClick={handleApproveClick}
+                  onReject={handleRejectQuestion}
+                />
+                {approvingId === q.id && (
+                  <div className="flex items-center justify-center gap-2 py-2 text-sm text-violet-600 dark:text-violet-400">
+                    <div className="w-3 h-3 border-2 border-violet-600 border-t-transparent rounded-full animate-spin dark:border-violet-400" />
+                    Đang duyệt…
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
       )}
+
+      {activeSection === "nodes" && (
+        <AINodeManager
+          courseId={courseId}
+          nodes={nodes}
+          onNodesChange={loadNodes}
+        />
+      )}
+
+      {/* Quiz Selector Modal */}
+      <QuizSelectorModal
+        courseId={courseId}
+        isOpen={isQuizSelectorOpen}
+        onClose={() => setIsQuizSelectorOpen(false)}
+        onSelect={handleQuizSelected}
+      />
     </div>
   );
 }

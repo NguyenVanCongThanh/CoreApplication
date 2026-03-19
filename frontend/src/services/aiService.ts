@@ -156,8 +156,15 @@ class AIService {
     return res.data?.data ?? res.data ?? [];
   }
 
-  async approveQuestion(genId: number, reviewNote = ""): Promise<void> {
-    await lmsApiClient.post(`/ai/quiz-drafts/${genId}/approve`, { review_note: reviewNote });
+  async approveQuestion(
+    genId: number,
+    quizId: number,
+    reviewNote = ""
+  ): Promise<void> {
+    await lmsApiClient.post(`/ai/quiz-drafts/${genId}/approve`, {
+      quiz_id: quizId,
+      review_note: reviewNote,
+    });
   }
 
   async rejectQuestion(genId: number, reviewNote: string): Promise<void> {

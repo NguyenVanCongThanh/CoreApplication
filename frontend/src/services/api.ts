@@ -39,7 +39,6 @@ export class ApiClient {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(response)
       throw new Error(errorText || `POST ${endpoint} failed (${response.status})`);
     }
     return response.json();

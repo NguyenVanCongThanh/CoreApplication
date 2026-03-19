@@ -54,7 +54,7 @@ func (r *QuizRepository) CreateQuiz(ctx context.Context, quiz *models.Quiz) erro
 // GetQuiz retrieves quiz by ID
 func (r *QuizRepository) GetQuiz(ctx context.Context, quizID int64) (*models.Quiz, error) {
 	query := `SELECT * FROM quizzes WHERE id = $1`
-	
+
 	var quiz models.Quiz
 	err := r.db.QueryRowContext(ctx, query, quizID).Scan(
 		&quiz.ID,
@@ -86,14 +86,14 @@ func (r *QuizRepository) GetQuiz(ctx context.Context, quizID int64) (*models.Qui
 		}
 		return nil, err
 	}
-	
+
 	return &quiz, nil
 }
 
 // GetQuizWithStats retrieves quiz with statistics
 func (r *QuizRepository) GetQuizWithStats(ctx context.Context, quizID int64) (*models.QuizWithStats, error) {
 	query := `SELECT * FROM quiz_summary_view WHERE id = $1`
-	
+
 	var quiz models.QuizWithStats
 	err := r.db.QueryRowContext(ctx, query, quizID).Scan(
 		&quiz.ID,
@@ -132,14 +132,14 @@ func (r *QuizRepository) GetQuizWithStats(ctx context.Context, quizID int64) (*m
 		}
 		return nil, err
 	}
-	
+
 	return &quiz, nil
 }
 
 // GetQuizByContentID retrieves quiz by content ID
 func (r *QuizRepository) GetQuizByContentID(ctx context.Context, contentID int64) (*models.Quiz, error) {
 	query := `SELECT * FROM quizzes WHERE content_id = $1`
-	
+
 	var quiz models.Quiz
 	err := r.db.QueryRowContext(ctx, query, contentID).Scan(
 		&quiz.ID,
@@ -171,7 +171,7 @@ func (r *QuizRepository) GetQuizByContentID(ctx context.Context, contentID int64
 		}
 		return nil, err
 	}
-	
+
 	return &quiz, nil
 }
 
@@ -231,11 +231,11 @@ func (r *QuizRepository) ListQuizzesByCourse(ctx context.Context, courseID int64
 		JOIN course_sections cs ON sc.section_id = cs.id
 		WHERE cs.course_id = $1
 	`
-	
+
 	if publishedOnly {
 		query += ` AND qs.is_published = true`
 	}
-	
+
 	query += ` ORDER BY cs.order_index, sc.order_index`
 
 	rows, err := r.db.QueryContext(ctx, query, courseID)
@@ -304,30 +304,33 @@ func (r *QuizRepository) CreateQuestion(ctx context.Context, question *models.Qu
 // GetQuestion retrieves question by ID
 func (r *QuizRepository) GetQuestion(ctx context.Context, questionID int64) (*models.QuizQuestion, error) {
 	query := `SELECT * FROM quiz_questions WHERE id = $1`
-	
+
 	var q models.QuizQuestion
 	err := r.db.QueryRowContext(ctx, query, questionID).Scan(
-        &q.ID,
-        &q.QuizID,
-        &q.QuestionType,
-        &q.QuestionText,
-        &q.QuestionHTML,
-        &q.Explanation,
-        &q.Points,
+		&q.ID,
+		&q.QuizID,
+		&q.QuestionType,
+		&q.QuestionText,
+		&q.QuestionHTML,
+		&q.Explanation,
+		&q.Points,
 		&q.OrderIndex,
 		&q.Settings,
-        &q.IsRequired,
-        &q.CreatedAt,
-        &q.UpdatedAt,
-    )
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, fmt.Errorf("question not found")
-        }
-        return nil, err
-    }
+		&q.IsRequired,
+		&q.CreatedAt,
+		&q.UpdatedAt,
+		&q.NodeID,
+		&q.BloomLevel,
+		&q.ReferenceChunkID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("question not found")
+		}
+		return nil, err
+	}
 
-    return &q, nil
+	return &q, nil
 }
 
 // GetQuestionWithOptions retrieves question with answer options and correct answers
@@ -429,6 +432,9 @@ func (r *QuizRepository) ListQuestions(ctx context.Context, quizID int64) ([]mod
 			&q.IsRequired,
 			&q.CreatedAt,
 			&q.UpdatedAt,
+			&q.NodeID,
+			&q.BloomLevel,
+			&q.ReferenceChunkID,
 		)
 		if err != nil {
 			return nil, err
@@ -655,7 +661,7 @@ func (r *QuizRepository) GetStudentAttemptCount(ctx context.Context, quizID, stu
 		SELECT COUNT(*) FROM quiz_attempts
 		WHERE quiz_id = $1 AND student_id = $2
 	`
-	
+
 	var count int
 	err := r.db.QueryRowContext(ctx, query, quizID, studentID).Scan(&count)
 	return count, err
@@ -669,7 +675,7 @@ func (r *QuizRepository) GetStudentLatestAttempt(ctx context.Context, quizID, st
 		ORDER BY attempt_number DESC
 		LIMIT 1
 	`
-	
+
 	var attempt models.QuizAttempt
 	err := r.db.QueryRowContext(ctx, query, quizID, studentID).Scan(
 		&attempt.ID,
@@ -698,7 +704,7 @@ func (r *QuizRepository) GetStudentLatestAttempt(ctx context.Context, quizID, st
 		}
 		return nil, err
 	}
-	
+
 	return &attempt, nil
 }
 
@@ -734,7 +740,7 @@ func (r *QuizRepository) ListStudentAttempts(ctx context.Context, quizID, studen
 		WHERE quiz_id = $1 AND student_id = $2
 		ORDER BY attempt_number DESC
 	`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, quizID, studentID)
 
 	if err != nil {
@@ -787,13 +793,13 @@ func (r *QuizRepository) ListQuizAttempts(ctx context.Context, quizID int64, sta
 		SELECT * FROM student_quiz_attempts_view
 		WHERE quiz_id = $1
 	`
-	
+
 	args := []interface{}{quizID}
 	if status != "" {
 		query += ` AND status = $2`
 		args = append(args, status)
 	}
-	
+
 	query += ` ORDER BY started_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -873,7 +879,7 @@ func (r *QuizRepository) CreateStudentAnswer(ctx context.Context, answer *models
 // GetStudentAnswer retrieves a student answer
 func (r *QuizRepository) GetStudentAnswer(ctx context.Context, answerID int64) (*models.QuizStudentAnswer, error) {
 	query := `SELECT * FROM quiz_student_answers WHERE id = $1`
-	
+
 	var answer models.QuizStudentAnswer
 	err := r.db.QueryRowContext(ctx, query, answerID).Scan(
 		&answer.ID,
@@ -896,7 +902,7 @@ func (r *QuizRepository) GetStudentAnswer(ctx context.Context, answerID int64) (
 		}
 		return nil, err
 	}
-	
+
 	return &answer, nil
 }
 
@@ -906,7 +912,7 @@ func (r *QuizRepository) GetStudentAnswerByQuestion(ctx context.Context, attempt
 		SELECT * FROM quiz_student_answers
 		WHERE attempt_id = $1 AND question_id = $2
 	`
-	
+
 	var answer models.QuizStudentAnswer
 	err := r.db.QueryRowContext(ctx, query, attemptID, questionID).Scan(
 		&answer.ID,
@@ -929,7 +935,7 @@ func (r *QuizRepository) GetStudentAnswerByQuestion(ctx context.Context, attempt
 		}
 		return nil, err
 	}
-	
+
 	return &answer, nil
 }
 
@@ -962,7 +968,6 @@ func (r *QuizRepository) ListAttemptAnswers(ctx context.Context, attemptID int64
 		ORDER BY answered_at
 	`
 
-	
 	rows, err := r.db.QueryContext(ctx, query, attemptID)
 	if err != nil {
 		return nil, err
@@ -1005,7 +1010,7 @@ func (r *QuizRepository) ListAttemptAnswers(ctx context.Context, attemptID int64
 // CountAnsweredQuestions counts how many questions have been answered in an attempt
 func (r *QuizRepository) CountAnsweredQuestions(ctx context.Context, attemptID int64) (int, error) {
 	query := `SELECT COUNT(*) FROM quiz_student_answers WHERE attempt_id = $1`
-	
+
 	var count int
 	err := r.db.QueryRowContext(ctx, query, attemptID).Scan(&count)
 	return count, err
@@ -1036,7 +1041,7 @@ func (r *QuizRepository) UpdateQuizAnalytics(ctx context.Context, quizID int64) 
 			average_score = EXCLUDED.average_score,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	
+
 	_, err := r.db.ExecContext(ctx, query, quizID)
 	return err
 }
@@ -1097,7 +1102,7 @@ func (r *QuizRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
 // CheckQuizOwnership verifies if a user owns a quiz
 func (r *QuizRepository) CheckQuizOwnership(ctx context.Context, quizID, userID int64) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM quizzes WHERE id = $1 AND created_by = $2)`
-	
+
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, quizID, userID).Scan(&exists)
 	return exists, err
@@ -1106,7 +1111,7 @@ func (r *QuizRepository) CheckQuizOwnership(ctx context.Context, quizID, userID 
 // CheckAttemptOwnership verifies if a student owns an attempt
 func (r *QuizRepository) CheckAttemptOwnership(ctx context.Context, attemptID, studentID int64) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM quiz_attempts WHERE id = $1 AND student_id = $2)`
-	
+
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, attemptID, studentID).Scan(&exists)
 	return exists, err

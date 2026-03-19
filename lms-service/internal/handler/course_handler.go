@@ -22,6 +22,33 @@ func NewCourseHandler(courseService *service.CourseService) *CourseHandler {
 	}
 }
 
+// hasRole checks if a role exists in the roles array
+func hasRole(roles []string, targetRole string) bool {
+	if roles == nil {
+		return false
+	}
+	for _, r := range roles {
+		if r == targetRole {
+			return true
+		}
+	}
+	return false
+}
+
+// getRoleFromContext extracts primary role from context (weighted: ADMIN > TEACHER > STUDENT)
+func getRoleFromContext(c *gin.Context) string {
+	rolesInterface, _ := c.Get("user_roles")
+	roles, _ := rolesInterface.([]string)
+
+	if hasRole(roles, "ADMIN") {
+		return "ADMIN"
+	}
+	if hasRole(roles, "TEACHER") {
+		return "TEACHER"
+	}
+	return "STUDENT"
+}
+
 // CreateCourse creates a new course
 // @Summary Create a course
 // @Description Create a new course (Teacher/Admin only)
@@ -378,7 +405,18 @@ func (h *CourseHandler) ListSections(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	rulesInterface, _ := c.Get("user_roles")
+	roles, _ := rulesInterface.([]string)
+
+	// Determine primary role for service logic
+	var role string
+	if hasRole(roles, "ADMIN") {
+		role = "ADMIN"
+	} else if hasRole(roles, "TEACHER") {
+		role = "TEACHER"
+	} else {
+		role = "STUDENT"
+	}
 
 	sections, err := h.courseService.ListSections(c.Request.Context(), courseID, userID, role)
 	if err != nil {

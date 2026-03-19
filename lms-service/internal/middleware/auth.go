@@ -14,9 +14,9 @@ import (
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID int64  `json:"user_id"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UserID int64    `json:"user_id"`
+	Email  string   `json:"email"`
+	Roles  []string `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -72,23 +72,27 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		// Normalize role: ROLE_ADMIN -> ADMIN, ROLE_USER -> STUDENT, etc
-		normalizedRole := normalizeRole(claims.Role)
-		if normalizedRole == "" {
-			logger.Warn(fmt.Sprintf("JWT token has unknown role: %s", claims.Role))
-			normalizedRole = "STUDENT" // Default to STUDENT
+		// Validate roles is not empty
+		if len(claims.Roles) == 0 {
+			logger.Warn("JWT token has no roles")
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "No roles found in token"))
+			c.Abort()
+			return
 		}
 		
 		// Set user info in context
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
-		c.Set("user_role", normalizedRole)
+		c.Set("user_roles", claims.Roles)
+		// Set first role for backward compatibility
+		c.Set("user_role", claims.Roles[0])
 
 		c.Next()
 	}
 }
 
-// normalizeRole converts Spring backend roles (ROLE_ADMIN) to LMS roles (ADMIN)
+// normalizeRole converts role strings (for backward compatibility)
+// Note: Roles now come from Java already normalized, so this is mainly for reference
 func normalizeRole(role string) string {
 	switch role {
 	case "ROLE_ADMIN":
@@ -104,21 +108,36 @@ func normalizeRole(role string) string {
 	case "STUDENT":
 		return "STUDENT"
 	default:
-		return ""
+		return "STUDENT" // Default to STUDENT for unknown roles
 	}
 }
 
 // RequireRole checks if user has a specific role
 func RequireRole(role string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userRole, exists := c.Get("user_role")
+		userRolesInterface, exists := c.Get("user_roles")
 		if !exists {
-			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "User role not found"))
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "User roles not found"))
 			c.Abort()
 			return
 		}
 
-		if userRole.(string) != role {
+		userRoles, ok := userRolesInterface.([]string)
+		if !ok {
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Invalid user roles format"))
+			c.Abort()
+			return
+		}
+
+		hasRole := false
+		for _, userRole := range userRoles {
+			if userRole == role {
+				hasRole = true
+				break
+			}
+		}
+
+		if !hasRole {
 			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Insufficient permissions"))
 			c.Abort()
 			return
@@ -131,18 +150,29 @@ func RequireRole(role string) gin.HandlerFunc {
 // RequireRoles checks if user has any of the specified roles
 func RequireRoles(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userRole, exists := c.Get("user_role")
+		userRolesInterface, exists := c.Get("user_roles")
 		if !exists {
-			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "User role not found"))
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "User roles not found"))
 			c.Abort()
 			return
 		}
 
-		role := userRole.(string)
+		userRoles, ok := userRolesInterface.([]string)
+		if !ok || len(userRoles) == 0 {
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Invalid user roles format"))
+			c.Abort()
+			return
+		}
+
 		hasRole := false
-		for _, r := range roles {
-			if role == r {
-				hasRole = true
+		for _, requiredRole := range roles {
+			for _, userRole := range userRoles {
+				if userRole == requiredRole {
+					hasRole = true
+					break
+				}
+			}
+			if hasRole {
 				break
 			}
 		}
@@ -188,7 +218,11 @@ func OptionalAuth(jwtSecret string) gin.HandlerFunc {
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			c.Set("user_id", claims.UserID)
 			c.Set("user_email", claims.Email)
-			c.Set("user_role", claims.Role)
+			c.Set("user_roles", claims.Roles)
+			// Set first role for backward compatibility
+			if len(claims.Roles) > 0 {
+				c.Set("user_role", claims.Roles[0])
+			}
 		}
 
 		c.Next()

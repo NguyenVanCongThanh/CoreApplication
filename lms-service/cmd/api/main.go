@@ -250,6 +250,7 @@ func main() {
 				content.DELETE("/:contentId", courseHandler.DeleteContent)
 				// ── Progress tracking (Student) ───────────────────────────
 				content.POST("/:contentId/complete", progressHandler.MarkComplete)
+				content.POST("/:contentId/process", aiHandler.TriggerDocumentProcess)
 			}
 
 			// ENROLLMENT MANAGEMENT

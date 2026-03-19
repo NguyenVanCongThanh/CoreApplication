@@ -163,7 +163,7 @@ function QuizCard({ score, courseId }: { score: StudentQuizScore; courseId: numb
 
       {/* Action button */}
       <button
-        onClick={() => router.push(`/lms/student/quiz/${score.quiz_id}`)}
+        onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${score.quiz_id}`)}
         className={cn(
           "w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95",
           score.status === "passed"

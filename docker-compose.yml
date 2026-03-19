@@ -26,7 +26,6 @@ services:
     image: ${DOCKER_USERNAME}/bdc-frontend:${IMAGE_TAG:-latest}
     container_name: nextjs-prod
     restart: unless-stopped
-    
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -40,35 +39,33 @@ services:
       YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
       YOUTUBE_REDIRECT_URI: ${YOUTUBE_REDIRECT_URI}
       NEXT_PUBLIC_YOUTUBE_UPLOAD_ENABLED: ${NEXT_PUBLIC_YOUTUBE_UPLOAD_ENABLED}
-      
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      
       NEXT_TELEMETRY_DISABLED: 1
-    
+
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    
+
     volumes:
       - ./frontend/logs:/app/logs
       - ./frontend/data:/app/data
-    
+
     depends_on:
       backend:
         condition: service_healthy
       lms-backend:
         condition: service_healthy
-    
+
     networks:
       - app-network
-    
+
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       start_period: 45s
-    
+
     logging: *common-logging
-    
+
     deploy:
       resources:
         limits:
@@ -77,10 +74,10 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    
+
     security_opt:
       - no-new-privileges:true
-    
+
     labels:
       - "service.type=frontend"
       - "service.name=nextjs-prod"
@@ -93,7 +90,7 @@ services:
     image: postgres:15-alpine
     container_name: postgres-auth
     restart: unless-stopped
-    
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -101,23 +98,23 @@ services:
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
       POSTGRES_MAX_CONNECTIONS: 100
       POSTGRES_SHARED_BUFFERS: "128MB"
-    
+
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
-    
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./auth-and-management-service/init-scripts:/docker-entrypoint-initdb.d:ro
-    
+
     networks:
       - app-network
-    
+
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-    
+
     logging: *common-logging
-    
+
     deploy:
       resources:
         limits:
@@ -126,10 +123,10 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    
+
     security_opt:
       - no-new-privileges:true
-    
+
     labels:
       - "service.type=database"
       - "service.name=postgres-auth"
@@ -145,26 +142,24 @@ services:
     image: ${DOCKER_USERNAME}/bdc-backend:${IMAGE_TAG:-latest}
     container_name: auth-service
     restart: unless-stopped
-    
+
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      
+
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
 
       LMS_API_URL: ${LMS_API_URL}
       LMS_API_SECRET: ${LMS_API_SECRET}
-      
-      # HikariCP Optimized Settings
+
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_MAX_POOL_SIZE:-20}
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${HIKARI_MIN_IDLE:-5}
       SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 20000
       SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: 300000
       SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: 1200000
       SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME: 300000
-      
-      # JPA Settings
+
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${JPA_DDL_AUTO:-update}
       SPRING_JPA_SHOW_SQL: false
       SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: false
@@ -172,26 +167,21 @@ services:
       SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_INSERTS: true
       SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_UPDATES: true
       SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_FETCH_SIZE: 50
-      
-      # JWT Configuration
-      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-key-in-production}
+
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
-      
-      # CORS Configuration (allow frontend)
+
       CORS_ALLOWED_ORIGINS: http://frontend:3000,https://bdc.hpcc.vn,http://localhost:3000
-      
-      # Logging
+
       LOGGING_LEVEL_ROOT: ${LOG_LEVEL:-INFO}
       LOGGING_LEVEL_COM_EXAMPLE: ${LOG_LEVEL:-INFO}
       LOGGING_PATTERN_CONSOLE: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-      
-      # Actuator
+
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED: true
       MANAGEMENT_HEALTH_READINESSSTATE_ENABLED: true
-      
-      # JVM Optimizations
+
       JAVA_OPTS: >-
         -XX:+UseContainerSupport
         -XX:MaxRAMPercentage=75.0
@@ -199,33 +189,32 @@ services:
         -XX:MaxGCPauseMillis=200
         -XX:+ParallelRefProcEnabled
         -Djava.security.egd=file:/dev/./urandom
-      
-      # Email Configuration
+
       EMAIL_PASSWORD: ${EMAIL_PASSWORD}
       EMAIL: ${EMAIL}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL}
-    
+
     ports:
       - "${BACKEND_PORT:-8080}:8080"
-    
+
     volumes:
       - upload_data:/app/uploads
       - ./auth-and-management-service/logs:/app/logs
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     networks:
       - app-network
-    
+
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health/liveness"]
       start_period: 60s
-    
+
     logging: *common-logging
-    
+
     deploy:
       resources:
         limits:
@@ -234,10 +223,10 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    
+
     security_opt:
       - no-new-privileges:true
-    
+
     labels:
       - "service.type=backend"
       - "service.name=auth-service"
@@ -265,7 +254,7 @@ services:
       - app-network
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD-SHELL", "pg_isready -U $${LMS_POSTGRES_USER} -d $${LMS_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
     logging: *common-logging
     deploy:
       resources:
@@ -296,7 +285,7 @@ services:
       --save 60 10000
       --appendonly yes
       --appendfsync everysec
-    
+
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -334,18 +323,14 @@ services:
     image: ${DOCKER_USERNAME}/bdc-lms:${IMAGE_TAG:-latest}
     container_name: lms-service
     restart: unless-stopped
-    
     environment:
-      # Application
       APP_ENV: ${APP_ENV:-production}
       APP_PORT: ${LMS_PORT:-8081}
       APP_NAME: "LMS Service"
       GIN_MODE: release
 
-      # Sync user
       LMS_SYNC_SECRET: ${LMS_SYNC_SECRET}
-      
-      # Database
+
       DB_HOST: postgres-lms
       DB_PORT: 5432
       DB_USER: ${LMS_POSTGRES_USER}
@@ -356,46 +341,41 @@ services:
       DB_MAX_IDLE_CONNS: 10
       DB_CONN_MAX_LIFETIME: 5m
       DB_CONN_MAX_IDLE_TIME: 10m
-      
-      # Redis
+
       REDIS_HOST: redis-lms
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_DB: 0
       REDIS_POOL_SIZE: 10
-      
-      # JWT (shared with main auth service)
-      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-key-in-production}
+
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_HOURS: 1
-      
-      # File Storage
+
       STORAGE_TYPE: ${STORAGE_TYPE}
-      UPLOAD_MAX_SIZE: 104857600  # 100MB
+      UPLOAD_MAX_SIZE: 104857600
       UPLOAD_DIR: /app/uploads
       ALLOWED_VIDEO_FORMATS: "mp4,avi,mov,mkv,webm,flv"
       ALLOWED_DOCUMENT_FORMATS: "pdf,doc,docx,ppt,pptx,xls,xlsx,txt"
       ALLOWED_IMAGE_FORMATS: "jpg,jpeg,png,gif,webp,svg"
-      
-      # Auth Service (internal Docker network)
+
       AUTH_SERVICE_URL: http://backend:8080
       AUTH_SERVICE_TIMEOUT: 10s
-      
-      # CORS (allow frontend)
+
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,OPTIONS,PATCH"
       CORS_ALLOWED_HEADERS: "Authorization,Content-Type,Accept"
 
-      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
-      
-      # Performance
+      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET}
+
       GOMAXPROCS: 2
       GOGC: 100
-    
+
     ports:
       - "${LMS_PORT:-8081}:8081"
     volumes:
       - lms_upload_data:/app/uploads
       - ./lms-service/logs:/app/logs
+
     depends_on:
       postgres-lms:
         condition: service_healthy
@@ -403,13 +383,17 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+
     networks:
       - app-network
+
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
       start_period: 45s
+
     logging: *common-logging
+
     deploy:
       resources:
         limits:
@@ -418,8 +402,10 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
     security_opt:
       - no-new-privileges:true
+
     labels:
       - "service.type=backend"
       - "service.name=lms-service"
@@ -460,11 +446,11 @@ services:
       MINIO_BUCKET: lms-files
       MINIO_USE_SSL: "false"
  
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+      GROQ_API_KEY: ${GROQ_API_KEY:-None}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
 
       AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
@@ -507,6 +493,9 @@ services:
       - "service.type=ai"
       - "service.name=ai-service"
 
+    volumes:
+      - ai_model_cache:/root/.cache/fastembed
+
   ai-worker:
     build:
       context: ./ai-service
@@ -534,11 +523,11 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: lms-files
 
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-claude-3-5-haiku-20241022}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-claude-3-5-sonnet-20241022}
+      GROQ_API_KEY: ${GROQ_API_KEY:-None}
+      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
       CHUNK_SIZE: 500
       CHUNK_OVERLAP: 50
@@ -564,6 +553,9 @@ services:
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
+
+    volumes:
+      - ai_model_cache:/root/.cache/fastembed
 
   # MinIO: Object Storage
   minio:
@@ -635,6 +627,8 @@ volumes:
     labels:
       - "backup.enabled=true"
       - "backup.schedule=daily"
+  ai_model_cache:
+    driver: local
 
 # Networks
 networks:

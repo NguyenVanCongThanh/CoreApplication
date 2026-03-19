@@ -116,3 +116,5 @@ temp/
 
 *.csv
 *.apps.googleusercontent.com.json
+
+server/

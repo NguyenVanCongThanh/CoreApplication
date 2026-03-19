@@ -34,6 +34,7 @@ export interface ContentItem {
 interface ContentViewerProps {
   content: ContentItem;
   userRole?: "STUDENT" | "TEACHER" | "ADMIN" | string;
+  courseId?: string,
   isCompleted?: boolean;
   onComplete?: () => void;
 }
@@ -281,11 +282,13 @@ interface QuizData {
 function QuizRenderer({
   content,
   userRole,
+  courseId,
   isCompleted,
   onComplete,
 }: {
   content: ContentItem;
   userRole: string;
+  courseId?: string;
   isCompleted: boolean;
   onComplete?: () => void;
 }) {
@@ -347,7 +350,7 @@ function QuizRenderer({
   const handleStart = () => {
     if (!quiz?.id) return;
     if (!availability?.ok) { alert(availability?.msg); return; }
-    router.push(`/lms/student/quiz/${quiz.id}/take?start=true`);
+    router.push(`/lms/student/courses/${courseId}/quiz/${quiz.id}/take?start=true`);
   };
 
   // ── Loading ──
@@ -472,7 +475,7 @@ function QuizRenderer({
                 : "🚀 Bắt đầu làm bài"}
           </button>
           <button
-            onClick={() => router.push(`/lms/student/quiz/${quiz.id}/history`)}
+            onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${quiz.id}/history`)}
             className="px-4 py-3.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl font-medium text-sm transition-all active:scale-95"
           >
             📜 Lịch sử
@@ -603,6 +606,7 @@ function ActionButton({
 export default function ContentViewer({
   content,
   userRole = "STUDENT",
+  courseId,
   isCompleted = false,
   onComplete,
 }: ContentViewerProps) {
@@ -621,6 +625,7 @@ export default function ContentViewer({
           <QuizRenderer
             content={content}
             userRole={userRole}
+            courseId={courseId}
             isCompleted={isCompleted}
             onComplete={onComplete}
           />
