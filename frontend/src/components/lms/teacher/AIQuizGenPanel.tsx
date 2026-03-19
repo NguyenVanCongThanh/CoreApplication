@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import aiService, { GeneratedQuestion, KnowledgeNode } from "@/services/aiService";
 import { AINodeManager } from "@/components/lms/teacher/AINodeManager";
+import { QuizSelectorModal } from "@/components/lms/teacher/QuizSelectorModal";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -32,15 +33,14 @@ const STATUS_CFG = {
 
 function DraftCard({
   q,
-  onApprove,
+  onApproveClick,
   onReject,
 }: {
   q: GeneratedQuestion;
-  onApprove: (id: number) => Promise<void>;
+  onApproveClick: (id: number) => void;
   onReject: (id: number) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
 
@@ -48,9 +48,8 @@ function DraftCard({
   const bloomLabel = BLOOM_LEVELS.find((b) => b.id === q.bloom_level)?.label ?? q.bloom_level;
   const statusCfg = STATUS_CFG[q.status] ?? STATUS_CFG.DRAFT;
 
-  const handleApprove = async () => {
-    setApproving(true);
-    try { await onApprove(q.id); } finally { setApproving(false); }
+  const handleApprove = () => {
+    onApproveClick(q.id);
   };
 
   const handleReject = async () => {
@@ -130,11 +129,10 @@ function DraftCard({
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleApprove}
-                disabled={approving}
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                {approving ? "Đang duyệt…" : "Duyệt"}
+                Duyệt
               </button>
               <div className="flex-1 flex gap-2">
                 <input
@@ -173,6 +171,11 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
   const [activeSection, setActiveSection] = useState<"nodes" | "generate" | "drafts">("nodes");
+  
+  // Quiz selector modal states
+  const [isQuizSelectorOpen, setIsQuizSelectorOpen] = useState(false);
+  const [pendingQuestionId, setPendingQuestionId] = useState<number | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   const loadNodes = useCallback(async () => {
     try {
@@ -209,7 +212,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
     loadDrafts();
   }, [loadNodes, loadDrafts]);
 
-  const handleGenerate = async () => {
+  const handleGenerateQuiz = async () => {
     if (!selectedNode) { alert("Vui lòng chọn chủ đề (Knowledge Node)."); return; }
     if (selectedBlooms.length === 0) { alert("Vui lòng chọn ít nhất 1 cấp độ Bloom."); return; }
     setGenerating(true);
@@ -229,12 +232,27 @@ export function AIQuizGenPanel({ courseId }: Props) {
     }
   };
 
-  const handleApprove = async (id: number) => {
-    await aiService.approveQuestion(id);
-    await loadDrafts();
+  const handleApproveClick = (questionId: number) => {
+    setPendingQuestionId(questionId);
+    setIsQuizSelectorOpen(true);
   };
 
-  const handleReject = async (id: number) => {
+  const handleQuizSelected = async (quizId: number) => {
+    if (!pendingQuestionId) return;
+    
+    setApprovingId(pendingQuestionId);
+    try {
+      await aiService.approveQuestion(pendingQuestionId, quizId);
+      await loadDrafts();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail ?? "Lỗi khi duyệt câu hỏi");
+    } finally {
+      setApprovingId(null);
+      setPendingQuestionId(null);
+    }
+  };
+
+  const handleRejectQuestion = async (id: number) => {
     await aiService.rejectQuestion(id, "Câu hỏi không phù hợp");
     await loadDrafts();
   };
@@ -373,7 +391,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
 
           {/* Generate button */}
           <button
-            onClick={handleGenerate}
+            onClick={handleGenerateQuiz}
             disabled={generating || !selectedNode || selectedBlooms.length === 0}
             className="w-full flex items-center justify-center gap-2 py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
@@ -424,7 +442,19 @@ export function AIQuizGenPanel({ courseId }: Props) {
             </div>
           ) : (
             drafts.map((q) => (
-              <DraftCard key={q.id} q={q} onApprove={handleApprove} onReject={handleReject} />
+              <div key={q.id} className={approvingId === q.id ? "opacity-50 pointer-events-none" : ""}>
+                <DraftCard
+                  q={q}
+                  onApproveClick={handleApproveClick}
+                  onReject={handleRejectQuestion}
+                />
+                {approvingId === q.id && (
+                  <div className="flex items-center justify-center gap-2 py-2 text-sm text-violet-600 dark:text-violet-400">
+                    <div className="w-3 h-3 border-2 border-violet-600 border-t-transparent rounded-full animate-spin dark:border-violet-400" />
+                    Đang duyệt…
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -437,6 +467,14 @@ export function AIQuizGenPanel({ courseId }: Props) {
           onNodesChange={loadNodes}
         />
       )}
+
+      {/* Quiz Selector Modal */}
+      <QuizSelectorModal
+        courseId={courseId}
+        isOpen={isQuizSelectorOpen}
+        onClose={() => setIsQuizSelectorOpen(false)}
+        onSelect={handleQuizSelected}
+      />
     </div>
   );
 }

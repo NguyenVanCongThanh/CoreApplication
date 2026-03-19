@@ -62,7 +62,7 @@ function HeatCell({ node }: { node: HeatmapNode }) {
         <p className="text-white font-semibold text-xs leading-tight truncate">
           {node.name_vi ?? node.node_name}
         </p>
-        <p className="text-white/80 text-xs mt-1 font-mono">{node.wrong_rate.toFixed(0)}% sai</p>
+        <p className="text-white/80 text-xs mt-1 font-mono">{node.wrong_rate}% sai</p>
       </div>
 
       {/* Tooltip */}
@@ -204,7 +204,7 @@ export function AIHeatmapSection({ courseId, role }: Props) {
                       {n.name_vi ?? n.node_name}
                     </span>
                     <span className="text-xs font-bold text-rose-700 dark:text-rose-400">
-                      {n.wrong_rate.toFixed(0)}% sai
+                      {n.wrong_rate}% sai
                     </span>
                   </div>
                 ))}
