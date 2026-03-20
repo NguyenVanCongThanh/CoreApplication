@@ -5,18 +5,18 @@ import { useRouter } from "next/navigation";
 import { getCookie } from "@/utils/cookies";
 import { lmsService } from "@/services/lmsService";
 import {
-  BookOpen, Clock, CheckCircle2, BarChart3,
+  BookOpen, Clock, CheckCircle2,
   ChevronRight, Search, RefreshCw,
   LogOut, Home
 } from "lucide-react";
 import {
   StatCard, Card, TabBar, CourseCard,
-  ProgressBar, Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
+  ProgressBar, Badge, PrimaryBtn,GhostBtn,
   EmptyState, PageLoader, Alert
 } from "@/components/lms/shared";
 import { Course, Enrollment } from "@/types";
 
-type Tab = "my-courses" | "discover" | "pending";
+type Tab = "my-courses" | "discover";
 
 interface CourseWithProgress extends Enrollment {
   progress?: number;
@@ -27,10 +27,9 @@ interface CourseWithProgress extends Enrollment {
 
 function LearningStats({ enrollments }: { enrollments: Enrollment[] }) {
   const accepted = enrollments.filter(e => e.status === "ACCEPTED");
-  const pending  = enrollments.filter(e => e.status === "WAITING");
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-3 lg:grid-cols-3 gap-4">
       <StatCard
         label="Đã đăng ký"
         value={accepted.length}
@@ -51,13 +50,6 @@ function LearningStats({ enrollments }: { enrollments: Enrollment[] }) {
         sub="khóa học"
         icon={<CheckCircle2 className="w-5 h-5" />}
         accent="green"
-      />
-      <StatCard
-        label="Chờ duyệt"
-        value={pending.length}
-        sub={pending.length > 0 ? "cần xử lý" : "không có"}
-        icon={<BarChart3 className="w-5 h-5" />}
-        accent={pending.length > 0 ? "orange" : "blue"}
       />
     </div>
   );
@@ -173,54 +165,6 @@ function DiscoverSection({
   );
 }
 
-// ─── Pending enrollments ──────────────────────────────────────────────────────
-
-function PendingList({
-  enrollments,
-  canceling,
-  onCancel
-}: { enrollments: Enrollment[]; canceling: number | null; onCancel: (id: number) => void }) {
-  if (enrollments.length === 0)
-    return (
-      <EmptyState
-        icon={<CheckCircle2 className="w-12 h-12" />}
-        title="Không có yêu cầu chờ"
-        description="Tất cả yêu cầu đăng ký đã được xử lý."
-      />
-    );
-
-  return (
-    <div className="space-y-3">
-      {enrollments.map(en => (
-        <div key={en.id} className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-          <div className="w-10 h-10 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
-            <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-slate-900 dark:text-slate-50 truncate">
-              {en.course_title ?? `Khóa học #${en.course_id}`}
-            </p>
-            {en.teacher_name && (
-              <p className="text-xs text-slate-500 mt-0.5">{en.teacher_name}</p>
-            )}
-            <p className="text-xs text-slate-400 mt-0.5">
-              Đăng ký {new Date(en.enrolled_at).toLocaleDateString("vi-VN")}
-            </p>
-          </div>
-          <SecondaryBtn
-            size="sm"
-            loading={canceling === en.id}
-            className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
-            onClick={() => onCancel(en.id)}
-          >
-            Hủy
-          </SecondaryBtn>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function StudentDashboard() {
@@ -230,14 +174,12 @@ export default function StudentDashboard() {
 
   const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
   const [acceptedEnrollments, setAcceptedEnrollments] = useState<Enrollment[]>([]);
-  const [pendingEnrollments, setPendingEnrollments] = useState<Enrollment[]>([]);
   const [publishedCourses, setPublishedCourses] = useState<Course[]>([]);
 
   const [loadingEnrolled, setLoadingEnrolled] = useState(true);
   const [loadingDiscover, setLoadingDiscover] = useState(false);
 
   const [enrolling, setEnrolling] = useState<number | null>(null);
-  const [canceling, setCanceling] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -252,13 +194,11 @@ export default function StudentDashboard() {
   const loadAllEnrollments = useCallback(async () => {
     setLoadingEnrolled(true);
     try {
-      const [accepted, pending] = await Promise.all([
+      const [accepted] = await Promise.all([
         lmsService.getMyEnrollments("ACCEPTED"),
-        lmsService.getMyEnrollments("WAITING"),
       ]);
       setAcceptedEnrollments(accepted || []);
-      setPendingEnrollments(pending || []);
-      setAllEnrollments([...(accepted || []), ...(pending || [])]);
+      setAllEnrollments([...(accepted || [])]);
     } catch {
       setError("Không thể tải dữ liệu. Vui lòng thử lại.");
     } finally {
@@ -294,19 +234,6 @@ export default function StudentDashboard() {
       setError(e?.response?.data?.message || "Đăng ký thất bại.");
     } finally {
       setEnrolling(null);
-    }
-  };
-
-  const handleCancel = async (enrollmentId: number) => {
-    if (!confirm("Xác nhận hủy yêu cầu đăng ký?")) return;
-    setCanceling(enrollmentId);
-    try {
-      await lmsService.cancelEnrollment(enrollmentId);
-      await loadAllEnrollments();
-    } catch {
-      setError("Không thể hủy yêu cầu.");
-    } finally {
-      setCanceling(null);
     }
   };
 
@@ -372,8 +299,7 @@ export default function StudentDashboard() {
               <TabBar
                 tabs={[
                   { id: "my-courses" as Tab, label: "Khóa học của tôi", badge: acceptedEnrollments.length },
-                  { id: "discover"  as Tab, label: "Khám phá" },
-                  { id: "pending"   as Tab, label: "Chờ xác nhận", badge: pendingEnrollments.length },
+                  { id: "discover"  as Tab, label: "Khám phá" }
                 ]}
                 active={tab}
                 onChange={setTab}
@@ -425,16 +351,6 @@ export default function StudentDashboard() {
                 enrolling={enrolling}
                 enrolledIds={enrolledIds}
                 onEnroll={handleEnroll}
-              />
-            )}
-
-            {/* ── Pending ── */}
-            {tab === "pending" && (
-              loadingEnrolled ? <PageLoader /> :
-              <PendingList
-                enrollments={pendingEnrollments}
-                canceling={canceling}
-                onCancel={handleCancel}
               />
             )}
           </div>

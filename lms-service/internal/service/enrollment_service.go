@@ -47,7 +47,7 @@ func (s *EnrollmentService) EnrollCourse(ctx context.Context, courseID, studentI
 	enrollment := &models.Enrollment{
 		CourseID:  courseID,
 		StudentID: studentID,
-		Status:    models.EnrollmentWaiting,
+		Status:    models.EnrollmentAccepted,
 	}
 
 	result, err := s.enrollmentRepo.Create(ctx, enrollment)
@@ -207,11 +207,6 @@ func (s *EnrollmentService) CancelEnrollment(ctx context.Context, enrollmentID i
 
 	if enrollment.StudentID != studentID {
 		return fmt.Errorf("unauthorized")
-	}
-
-	// Can only cancel if status is WAITING
-	if enrollment.Status != models.EnrollmentWaiting {
-		return fmt.Errorf("can only cancel pending enrollments")
 	}
 
 	return s.enrollmentRepo.Delete(ctx, enrollmentID)

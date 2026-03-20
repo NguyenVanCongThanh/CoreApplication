@@ -25,12 +25,6 @@ interface DashboardStats {
   activeStudents: number;
 }
 
-interface PendingEnrollmentItem {
-  studentName: string;
-  courseName: string;
-  time: string;
-}
-
 // ─── Action card (grid item) ──────────────────────────────────────────────────
 
 function ActionItem({
@@ -162,7 +156,7 @@ export default function AdminDashboard() {
         {error && <Alert type="error">{error}</Alert>}
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 lg:grid-cols-3 gap-4">
           <StatCard
             label="Tổng khóa học"
             value={stats.totalCourses}

@@ -35,14 +35,14 @@ interface Learner {
   student_id: number;
   student_name: string;
   student_email: string;
-  status: "WAITING" | "ACCEPTED" | "REJECTED";
+  status: "ACCEPTED" | "REJECTED";
   enrolled_at: string;
 }
 
 function LearnersTab({ courseId }: { courseId: number }) {
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"ALL"|"WAITING"|"ACCEPTED"|"REJECTED">("ALL");
+  const [filter, setFilter] = useState<"ALL"|"ACCEPTED"|"REJECTED">("ALL");
   const [processing, setProcessing] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -74,7 +74,6 @@ function LearnersTab({ courseId }: { courseId: number }) {
   };
 
   const counts = {
-    waiting:  learners.filter(l => l.status === "WAITING").length,
     accepted: learners.filter(l => l.status === "ACCEPTED").length,
     rejected: learners.filter(l => l.status === "REJECTED").length,
   };
@@ -86,15 +85,12 @@ function LearnersTab({ courseId }: { courseId: number }) {
       {/* Mini stats */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Đã duyệt"    value={counts.accepted} icon={<CheckCircle2 className="w-4 h-4" />} accent="green" />
-        <StatCard label="Chờ duyệt"   value={counts.waiting}  icon={<HelpCircle className="w-4 h-4" />}   accent="orange" />
-        <StatCard label="Từ chối"     value={counts.rejected} icon={<XCircle className="w-4 h-4" />}      accent="red" />
       </div>
 
       {/* Filter tabs */}
       <TabBar
         tabs={[
           { id: "ALL",      label: "Tất cả",      badge: learners.length },
-          { id: "WAITING",  label: "Chờ duyệt",   badge: counts.waiting },
           { id: "ACCEPTED", label: "Đã duyệt",    badge: counts.accepted },
           { id: "REJECTED", label: "Từ chối" },
         ]}
@@ -117,21 +113,9 @@ function LearnersTab({ courseId }: { courseId: number }) {
                 <p className="text-xs text-slate-500 truncate">{l.student_email}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <Badge variant={l.status === "ACCEPTED" ? "green" : l.status === "WAITING" ? "yellow" : "red"}>
-                  {l.status === "ACCEPTED" ? "Đã duyệt" : l.status === "WAITING" ? "Chờ duyệt" : "Từ chối"}
+                <Badge variant={l.status === "ACCEPTED" ? "green" : "red"}>
+                  Đã duyệt
                 </Badge>
-                {l.status === "WAITING" && (
-                  <>
-                    <button onClick={() => accept(l.id)} disabled={processing === l.id}
-                      className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 flex items-center justify-center transition-colors border border-green-200 dark:border-green-800">
-                      {processing === l.id ? <Spinner className="w-4 h-4 border-2" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button onClick={() => reject(l.id)} disabled={processing === l.id}
-                      className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors border border-red-200 dark:border-red-800">
-                      <XCircle className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
               </div>
             </div>
           ))}
