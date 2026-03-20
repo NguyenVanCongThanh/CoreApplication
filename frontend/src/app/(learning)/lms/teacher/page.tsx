@@ -15,15 +15,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
 import {
-  BookOpen, Users, CheckCircle2, Clock,
+  BookOpen, Users, CheckCircle2,
   Plus, Settings, ChevronRight,
-  TrendingUp, AlertCircle, RefreshCw,
-  LogOut, Home, UserCheck
+  TrendingUp, RefreshCw,
+  LogOut, Home
 } from "lucide-react";
 import {
   StatCard, Card, SectionHeader,
   Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
-  EmptyState, PageLoader, Alert, Spinner
+  EmptyState, PageLoader, Alert
 } from "@/components/lms/shared";
 import { Course } from "@/types";
 import { getCookie } from "@/utils/cookies";
@@ -82,50 +82,6 @@ function ActionCard({
   );
 }
 
-// ─── Pending enrollment item ──────────────────────────────────────────────────
-
-function PendingItem({ item, processing, onAccept, onReject }: {
-  item: PendingEnrollment;
-  processing: number | null;
-  onAccept: (id: number, courseId: number) => void;
-  onReject: (id: number, courseId: number) => void;
-}) {
-  const busy = processing === item.id;
-  return (
-    <div className="flex items-center gap-4 py-3">
-      <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-slate-600 dark:text-slate-400">
-        {item.student_name.charAt(0).toUpperCase()}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{item.student_name}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-500 truncate">{item.course_title}</p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {busy ? (
-          <Spinner className="w-5 h-5 border-2" />
-        ) : (
-          <>
-            <button
-              onClick={() => onAccept(item.id, item.course_id)}
-              className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 flex items-center justify-center hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors border border-green-200 dark:border-green-800"
-              title="Chấp nhận"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onReject(item.id, item.course_id)}
-              className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors border border-red-200 dark:border-red-800"
-              title="Từ chối"
-            >
-              <AlertCircle className="w-4 h-4" />
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TeacherDashboard() {
@@ -162,21 +118,10 @@ export default function TeacherDashboard() {
       const draft = courses.filter(c => c.status === "DRAFT");
 
       // Load pending enrollments across all published courses (first 5 courses for quick preview)
-      let pendingItems: PendingEnrollment[] = [];
+      const pendingItems: PendingEnrollment[] = [];
       let totalStudents = 0;
       for (const course of published.slice(0, 10)) {
         try {
-          const learners = await lmsService.getCourseLearners(course.id, "WAITING");
-          if (learners) {
-            pendingItems = [...pendingItems, ...learners.map((l: any) => ({
-              id: l.id,
-              course_id: course.id,
-              course_title: course.title,
-              student_name: l.student_name,
-              student_email: l.student_email,
-              enrolled_at: l.enrolled_at,
-            }))];
-          }
           const accepted = await lmsService.getCourseLearners(course.id, "ACCEPTED");
           totalStudents += (accepted ?? []).length;
         } catch {}
@@ -215,17 +160,6 @@ export default function TeacherDashboard() {
         pendingEnrollments: Math.max(0, prev.pendingEnrollments - 1),
         totalStudents: prev.totalStudents + 1,
       }));
-    } catch { setError("Thao tác thất bại."); }
-    finally { setProcessing(null); }
-  };
-
-  const handleReject = async (enrollmentId: number, courseId: number) => {
-    if (!confirm("Từ chối yêu cầu này?")) return;
-    setProcessing(enrollmentId);
-    try {
-      await lmsService.rejectEnrollment(enrollmentId, courseId);
-      setPendingEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
-      setStats(prev => ({ ...prev, pendingEnrollments: Math.max(0, prev.pendingEnrollments - 1) }));
     } catch { setError("Thao tác thất bại."); }
     finally { setProcessing(null); }
   };
@@ -276,7 +210,7 @@ export default function TeacherDashboard() {
         {error && <Alert type="error">{error}</Alert>}
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 lg:grid-cols-3 gap-4">
           <StatCard
             label="Tổng khóa học"
             value={stats.totalCourses}
@@ -298,13 +232,6 @@ export default function TeacherDashboard() {
             icon={<Users className="w-5 h-5" />}
             accent="purple"
           />
-          <StatCard
-            label="Chờ duyệt"
-            value={stats.pendingEnrollments}
-            sub={stats.pendingEnrollments > 0 ? "cần xử lý" : "đã xử lý hết"}
-            icon={<Clock className="w-5 h-5" />}
-            accent={stats.pendingEnrollments > 0 ? "orange" : "green"}
-          />
         </div>
 
         {/* ── Quick actions ── */}
@@ -325,14 +252,6 @@ export default function TeacherDashboard() {
               onClick={() => router.push("/lms/teacher/courses")}
             />
             <ActionCard
-              icon={<UserCheck className="w-6 h-6 text-yellow-600" />}
-              title="Duyệt đăng ký"
-              description="Xử lý yêu cầu"
-              badge={stats.pendingEnrollments}
-              variant={stats.pendingEnrollments > 0 ? "warning" : "default"}
-              onClick={() => router.push("/lms/teacher/courses")}
-            />
-            <ActionCard
               icon={<TrendingUp className="w-6 h-6 text-green-600" />}
               title="Thống kê"
               description="Xem báo cáo chi tiết"
@@ -346,7 +265,7 @@ export default function TeacherDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
           {/* Recent courses (3/5) */}
-          <Card className="lg:col-span-3 p-6">
+          <Card className="lg:col-span-6 p-6">
             <SectionHeader
               title="Khóa học gần đây"
               action={
@@ -413,45 +332,6 @@ export default function TeacherDashboard() {
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Pending enrollments (2/5) */}
-          <Card className="lg:col-span-2 p-6">
-            <SectionHeader
-              title="Chờ duyệt"
-              subtitle={`${stats.pendingEnrollments} yêu cầu`}
-            />
-
-            {pendingEnrollments.length === 0 ? (
-              <EmptyState
-                icon={<CheckCircle2 className="w-10 h-10" />}
-                title="Đã xử lý hết"
-                description="Không có yêu cầu nào đang chờ."
-              />
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {pendingEnrollments.slice(0, 8).map(item => (
-                  <PendingItem
-                    key={item.id}
-                    item={item}
-                    processing={processing}
-                    onAccept={handleAccept}
-                    onReject={handleReject}
-                  />
-                ))}
-                {pendingEnrollments.length > 8 && (
-                  <div className="pt-3">
-                    <GhostBtn
-                      size="sm"
-                      className="w-full justify-center"
-                      onClick={() => router.push("/lms/teacher/courses")}
-                    >
-                      Xem thêm {pendingEnrollments.length - 8} yêu cầu
-                    </GhostBtn>
-                  </div>
-                )}
               </div>
             )}
           </Card>

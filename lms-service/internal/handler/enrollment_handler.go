@@ -23,7 +23,7 @@ func NewEnrollmentHandler(enrollmentService *service.EnrollmentService) *Enrollm
 
 // EnrollCourse godoc
 // @Summary Enroll in a course
-// @Description Student enrolls in a course (status will be WAITING until teacher accepts)
+// @Description Student enrolls in a course
 // @Tags Enrollment
 // @Accept json
 // @Produce json

@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _sanitize(text: str) -> str:
+    """
+    Safety net: strip null bytes and other PostgreSQL-incompatible control chars.
+    Primary sanitization happens in chunker.py; this is a second line of defense.
+    """
+    import re
+    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+
 @dataclass
 class RetrievedChunk:
     chunk_id: int
@@ -56,13 +65,13 @@ class RAGService:
         language: str = "vi",
     ) -> int:
         """Embed and store a single chunk. Returns chunk_id."""
+        chunk_text = _sanitize(chunk_text)
         chunk_hash = hashlib.sha256(f"{content_id}:{chunk_index}:{chunk_text}".encode()).hexdigest()
 
         embedding = await create_embedding(chunk_text)
         embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
 
         async with get_async_conn() as conn:
-            # Upsert — safe to re-run on retry
             row = await conn.fetchrow(
                 """
                 INSERT INTO document_chunks
@@ -90,6 +99,9 @@ class RAGService:
         Batch store for efficiency. Each chunk dict:
         {text, index, source_type, page_number?, start_time_sec?, end_time_sec?, language?}
         """
+        for chunk in chunks:
+            chunk["text"] = _sanitize(chunk["text"])
+
         texts = [c["text"] for c in chunks]
         embeddings = await create_embeddings_batch(texts)
 
@@ -205,7 +217,6 @@ class RAGService:
         Given a quiz question, find the most relevant chunks.
         Useful for error diagnosis when student answers wrong.
         """
-        # First check if question has a reference_chunk_id
         async with get_async_conn() as conn:
             row = await conn.fetchrow(
                 "SELECT question_text, node_id, reference_chunk_id FROM quiz_questions WHERE id = $1",
@@ -215,7 +226,6 @@ class RAGService:
         if not row:
             return []
 
-        # If there's a pinned reference chunk, fetch it directly + semantic search
         pinned_chunks: list[RetrievedChunk] = []
         if row["reference_chunk_id"]:
             async with get_async_conn() as conn:
@@ -243,7 +253,6 @@ class RAGService:
             top_k=top_k,
         )
 
-        # Merge: pinned first, then semantic (deduplicate)
         seen_ids = {c.chunk_id for c in pinned_chunks}
         result = list(pinned_chunks)
         for chunk in semantic:

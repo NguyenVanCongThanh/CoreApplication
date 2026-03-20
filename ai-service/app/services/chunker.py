@@ -25,6 +25,15 @@ class DocumentChunk:
     language: str = "vi"
 
 
+def sanitize_text(text: str) -> str:
+    """
+    Remove characters PostgreSQL UTF-8 cannot store.
+    - Null bytes (0x00): extracted by PyMuPDF from some PDFs
+    - Other non-printable control chars (keep \\n \\r \\t which are fine)
+    """
+    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+
 class PDFChunker:
     """
     Chunk PDF files page-by-page, then split large pages into smaller chunks.
@@ -57,15 +66,16 @@ class PDFChunker:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
         for page_num in range(len(doc)):
             page = doc[page_num]
-            text = page.get_text("text").strip()
+            text = sanitize_text(page.get_text("text").strip())
             if not text:
                 continue
 
             page_chunks = self._split_text(text)
             for chunk_text in page_chunks:
-                if chunk_text.strip():
+                chunk_text = sanitize_text(chunk_text.strip())
+                if chunk_text:
                     chunks.append(DocumentChunk(
-                        text=chunk_text.strip(),
+                        text=chunk_text,
                         index=chunk_index,
                         source_type="document",
                         page_number=page_num + 1,
@@ -83,16 +93,16 @@ class PDFChunker:
 
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
         for page_num, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            text = text.strip()
+            text = sanitize_text((page.extract_text() or "").strip())
             if not text:
                 continue
 
             page_chunks = self._split_text(text)
             for chunk_text in page_chunks:
-                if chunk_text.strip():
+                chunk_text = sanitize_text(chunk_text.strip())
+                if chunk_text:
                     chunks.append(DocumentChunk(
-                        text=chunk_text.strip(),
+                        text=chunk_text,
                         index=chunk_index,
                         source_type="document",
                         page_number=page_num + 1,
@@ -162,7 +172,7 @@ class VideoTranscriptChunker:
         current_end = segments[0]["end"]
 
         for seg in segments:
-            segment_text = seg.get("text", "").strip()
+            segment_text = sanitize_text(seg.get("text", "").strip())
             seg_start = seg.get("start", 0)
             seg_end = seg.get("end", seg_start)
 
@@ -177,7 +187,6 @@ class VideoTranscriptChunker:
                     language=detect_language(current_text),
                 ))
                 chunk_index += 1
-                # Overlap: start new chunk from (current_end - overlap)
                 overlap_start = max(current_start, seg_end - self.overlap)
                 current_text = segment_text
                 current_start = overlap_start
@@ -201,14 +210,12 @@ class VideoTranscriptChunker:
 
     def chunk_srt(self, srt_content: str) -> list[DocumentChunk]:
         """Parse SRT format and chunk by duration."""
-        # Parse SRT blocks: index, timecode, text
         blocks = re.split(r"\n\n+", srt_content.strip())
         segments = []
         for block in blocks:
             lines = block.strip().split("\n")
             if len(lines) < 2:
                 continue
-            # Find timecode line
             for line in lines:
                 match = re.match(
                     r"(\d{2}):(\d{2}):(\d{2}),(\d+)\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d+)",
@@ -219,7 +226,7 @@ class VideoTranscriptChunker:
                     start = int(h1)*3600 + int(m1)*60 + int(s1)
                     end = int(h2)*3600 + int(m2)*60 + int(s2)
                     text_lines = [l for l in lines if not l.isdigit() and "-->" not in l]
-                    text = " ".join(text_lines).strip()
+                    text = sanitize_text(" ".join(text_lines).strip())
                     if text:
                         segments.append({"start": start, "end": end, "text": text})
                     break
