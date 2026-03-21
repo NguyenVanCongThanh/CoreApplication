@@ -14,6 +14,10 @@ export interface DeepLink {
   start_time_sec?: number;
   end_time_sec?: number;
   url_fragment?: string; // '#page=5' or '#t=120'
+  file_url?: string;
+  title?: string;
+  content_type?: string;
+  snippet?: string;
 }
 
 export interface DiagnosisResult {
@@ -23,7 +27,7 @@ export interface DiagnosisResult {
   study_suggestion: string;
   confidence: number;
   source_chunk_id?: number;
-  deep_link?: DeepLink;
+  suggested_documents?: DeepLink[];
   language: string;
 }
 

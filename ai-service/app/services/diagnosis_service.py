@@ -27,7 +27,7 @@ class DiagnosisResult:
     study_suggestion: str
     confidence: float
     source_chunk_id: int | None
-    deep_link: dict | None        # {type, page_number | start_time_sec, content_id}
+    suggested_documents: list[dict]
     language: str
 
 
@@ -126,9 +126,34 @@ class DiagnosisService:
                 "confidence": 0.5,
             }
 
-        # ── 6. Build deep link from best chunk ────────────────────────────────
-        best_chunk = chunks[0] if chunks else None
-        deep_link = self._build_deep_link(best_chunk) if best_chunk else None
+        # ── 6. Build suggested documents from LLM indices ─────────────────────
+        indices = llm_result.get("relevant_source_indices", [])
+        if not isinstance(indices, list):
+            indices = []
+            
+        suggested_documents = []
+        seen_content_ids = set()
+        
+        for idx in indices:
+            if isinstance(idx, int) and 1 <= idx <= len(chunks):
+                chunk = chunks[idx - 1]
+                if chunk.content_id and chunk.content_id not in seen_content_ids:
+                    link = self._build_deep_link(chunk)
+                    # Include snippet for preview
+                    snip = chunk.chunk_text[:150] + "..." if len(chunk.chunk_text) > 150 else chunk.chunk_text
+                    link["snippet"] = snip
+                    suggested_documents.append(link)
+                    seen_content_ids.add(chunk.content_id)
+        
+        # Fallback to first chunk if LLM didn't return any but we had pinned chunks
+        if not suggested_documents and chunks:
+            chunk = chunks[0]
+            if chunk.content_id:
+                link = self._build_deep_link(chunk)
+                link["snippet"] = chunk.chunk_text[:150] + "..." if len(chunk.chunk_text) > 150 else chunk.chunk_text
+                suggested_documents.append(link)
+
+        best_chunk = chunks[indices[0] - 1] if indices and isinstance(indices[0], int) and 1 <= indices[0] <= len(chunks) else (chunks[0] if chunks else None)
 
         # ── 7. Persist diagnosis ──────────────────────────────────────────────
         diagnosis_id = await self._save_diagnosis(
@@ -150,7 +175,7 @@ class DiagnosisService:
             study_suggestion=llm_result.get("study_suggestion", ""),
             confidence=float(llm_result.get("confidence", 0.7)),
             source_chunk_id=best_chunk.chunk_id if best_chunk else None,
-            deep_link=deep_link,
+            suggested_documents=suggested_documents,
             language=language,
         )
 

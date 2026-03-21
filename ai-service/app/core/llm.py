@@ -193,9 +193,10 @@ def build_diagnosis_prompt(
             f"HỌC SINH TRẢ LỜI: {wrong_answer}\n\n"
             f"Phân tích TẠI SAO sinh viên chọn \"{wrong_answer}\" thay vì đáp án đúng. "
             f"Chỉ ra sự nhầm lẫn cụ thể giữa đáp án sinh viên chọn và đáp án đúng. "
+            f"Đánh giá các tài liệu tham khảo được cho (Đoạn 1, Đoạn 2,...). Trả về relevant_source_indices là mảng chứa các số thứ tự của các đoạn THỰC SỰ liên quan đến việc vá lỗ hổng kiến thức của học sinh. Trả về mảng rỗng [] nếu không có đoạn nào liên quan.\n"
             f"Trả về JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
-            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
+            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0, "relevant_source_indices": [1]}}'
         )
     else:
         user_msg = (
@@ -206,9 +207,10 @@ def build_diagnosis_prompt(
             f"STUDENT ANSWERED: {wrong_answer}\n\n"
             f"Analyze WHY student chose \"{wrong_answer}\" instead of correct answer. "
             f"Identify the specific confusion between the student's answer and the correct answer. "
+            f"Evaluate the provided reference materials ([Đoạn 1], [Đoạn 2],...). Return relevant_source_indices as an array of the indices of the segments that are ACTUALLY relevant to fixing the student's knowledge gap. Return an empty array [] if none are relevant.\n"
             f"Return JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
-            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
+            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0, "relevant_source_indices": [1]}}'
         )
     
     return [

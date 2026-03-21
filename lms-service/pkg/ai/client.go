@@ -76,13 +76,13 @@ type DiagnoseRequest struct {
 // DiagnoseResponse contains LLM explanation + deep link.
 type DiagnoseResponse struct {
 	Explanation     string                 `json:"explanation"`
-	GapType         string                 `json:"gap_type"`
-	KnowledgeGap    string                 `json:"knowledge_gap"`
-	StudySuggestion string                 `json:"study_suggestion"`
-	Confidence      float64                `json:"confidence"`
-	SourceChunkID   *int64                 `json:"source_chunk_id"`
-	DeepLink        map[string]interface{} `json:"deep_link"`
-	Language        string                 `json:"language"`
+	GapType         string                   `json:"gap_type"`
+	KnowledgeGap    string                   `json:"knowledge_gap"`
+	StudySuggestion string                   `json:"study_suggestion"`
+	Confidence      float64                  `json:"confidence"`
+	SourceChunkID   *int64                   `json:"source_chunk_id"`
+	SuggestedDocuments []map[string]interface{} `json:"suggested_documents"`
+	Language        string                   `json:"language"`
 }
 
 func (c *Client) DiagnoseError(ctx context.Context, req DiagnoseRequest) (*DiagnoseResponse, error) {

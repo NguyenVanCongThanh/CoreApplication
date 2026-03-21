@@ -41,7 +41,7 @@ class DiagnoseResponse(BaseModel):
     study_suggestion: str
     confidence: float
     source_chunk_id: Optional[int]
-    deep_link: Optional[dict]
+    suggested_documents: Optional[list[dict]] = None
     language: str
 
 
@@ -85,7 +85,7 @@ async def diagnose_error(body: DiagnoseRequest, request: Request):
         study_suggestion=result.study_suggestion,
         confidence=result.confidence,
         source_chunk_id=result.source_chunk_id,
-        deep_link=result.deep_link,
+        suggested_documents=result.suggested_documents,
         language=result.language,
     )
 
