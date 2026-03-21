@@ -215,6 +215,37 @@ func (s *AnalyticsService) VerifyQuizCourseOwnership(ctx context.Context, quizID
 	return s.VerifyCourseOwnership(ctx, courseID, userID, userRole)
 }
 
+func (s *AnalyticsService) GetCourseStudentWeaknesses(ctx context.Context, courseID, studentID int64) (*dto.StudentWeaknessOverview, error) {
+	nodes, err := s.analyticsRepo.GetStudentWeaknesses(ctx, studentID, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("GetStudentWeaknesses: %w", err)
+	}
+
+	var totalWrong, totalAttempt int
+	for _, n := range nodes {
+		totalWrong += n.WrongCount
+		totalAttempt += n.TotalAttempt
+	}
+
+	totalWrongPercent := 0.0
+	if totalAttempt > 0 {
+		totalWrongPercent = float64(totalWrong) / float64(totalAttempt) * 100
+	}
+
+	return &dto.StudentWeaknessOverview{
+		TotalWrongPercent: totalWrongPercent,
+		WeakNodes:         nodes,
+	}, nil
+}
+
+func (s *AnalyticsService) GetFlashcardStats(ctx context.Context, courseID, studentID int64) (*dto.FlashcardStatsResponse, error) {
+	stats, err := s.analyticsRepo.GetFlashcardStats(ctx, studentID, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFlashcardStats: %w", err)
+	}
+	return stats, nil
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 // nfv (null float value) returns 0 for invalid NullFloat64.

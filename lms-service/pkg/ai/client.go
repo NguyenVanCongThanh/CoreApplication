@@ -224,6 +224,32 @@ func (c *Client) GetReviewStats(ctx context.Context, studentID, courseID int64) 
 
 // ── Knowledge Nodes ────────────────────────────────────────────────────────────
 
+type GenerateFlashcardsRequest struct {
+	StudentID int64 `json:"student_id"`
+	NodeID    int64 `json:"node_id"`
+	CourseID  int64 `json:"course_id"`
+	Count     int   `json:"count"`
+}
+
+type AIFlashcard struct {
+	FrontText string `json:"front_text"`
+	BackText  string `json:"back_text"`
+}
+
+type GenerateFlashcardsResponse struct {
+	Flashcards []AIFlashcard `json:"flashcards"`
+}
+
+func (c *Client) GenerateFlashcards(ctx context.Context, req GenerateFlashcardsRequest) (*GenerateFlashcardsResponse, error) {
+	var resp GenerateFlashcardsResponse
+	if err := c.post(ctx, "/ai/flashcards/generate", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GenerateFlashcards: %w", err)
+	}
+	return &resp, nil
+}
+
+// ── Knowledge Nodes ────────────────────────────────────────────────────────────
+
 type CreateNodeRequest struct {
 	CourseID    int64   `json:"course_id"`
 	Name        string  `json:"name"`

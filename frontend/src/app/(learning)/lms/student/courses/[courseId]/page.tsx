@@ -29,6 +29,8 @@ import ContentViewer from "@/components/lms/student/ContentViewer";
 import { Badge, ContentTypeBadge, PageLoader, GhostBtn, ProgressBar } from "@/components/lms/shared";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
+import { WeaknessTracker } from "@/components/lms/student/WeaknessTracker";
+import { FlashcardWidget } from "@/components/lms/student/FlashcardWidget";
 import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
 import { SpacedRepetitionWidget } from "@/components/lms/student/SpacedRepetitionWidget";
 
@@ -740,8 +742,15 @@ export default function StudentCourseDetailPage() {
 
               {/* AI Heatmap */}
               <AIHeatmapSection courseId={id} role="student" />
-              {/* Spaced Repetition */}
+              
+              {/* Weakness Tracker */}
+              <WeaknessTracker courseId={id} />
+
+              {/* Spaced Repetition (Quiz) */}
               <SpacedRepetitionWidget courseId={id} />
+              
+              {/* Spaced Repetition (Flashcard) */}
+              <FlashcardWidget courseId={id} />
             </div>
           )}
 

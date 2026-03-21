@@ -269,3 +269,57 @@ def build_quiz_generation_prompt(
         {"role": "system", "content": SYSTEM_PROMPT_QUIZ_GEN[language]},
         {"role": "user", "content": user_msg},
     ]
+
+
+SYSTEM_PROMPT_FLASHCARD_GEN = {
+    "vi": (
+        "Bạn là chuyên gia tạo Flashcard học tập theo phương pháp Spaced Repetition. "
+        "Hãy tạo các flashcard ngắn gọn, tập trung vào khái niệm cốt lõi, "
+        "đặc biệt chú ý khắc phục các lỗi sai phổ biến của học sinh. "
+        "Chỉ trả về JSON hợp lệ theo đúng schema, không thêm text khác."
+    ),
+    "en": (
+        "You are an expert at creating study flashcards for Spaced Repetition. "
+        "Create concise flashcards focusing on core concepts, "
+        "paying special attention to correcting common student misconceptions. "
+        "Return ONLY valid JSON matching the requested schema exactly."
+    ),
+}
+
+def build_flashcard_generation_prompt(
+    context_chunks: list[str],
+    node_name: str,
+    wrong_answers_context: str,
+    count: int = 3,
+    language: str = "vi",
+) -> list[dict]:
+    context = "\n---\n".join(f"[Nguồn {i+1}] {c}" for i, c in enumerate(context_chunks))
+    
+    schema = (
+        '{"flashcards":['
+        '{"front_text":"[Câu hỏi ngắn gọn hoặc khái niệm]","back_text":"[Câu trả lời hoặc giải thích ngắn gọn]"},'
+        '{"front_text":"...","back_text":"..."}'
+        ']}'
+    )
+    
+    if language == "vi":
+        user_msg = (
+            f"TÀI LIỆU:\n{context}\n\n"
+            f"CHỦ ĐỀ: {node_name}\n"
+            f"LỖI SAI GẦN ĐÂY CỦA HỌC SINH (Hãy tập trung khắc phục):\n{wrong_answers_context}\n\n"
+            f"Số lượng flashcard cần tạo: {count}\n"
+            f"Tạo {count} flashcard. Trả về JSON:\n{schema}"
+        )
+    else:
+        user_msg = (
+            f"MATERIAL:\n{context}\n\n"
+            f"TOPIC: {node_name}\n"
+            f"RECENT STUDENT ERRORS (Focus on correcting these):\n{wrong_answers_context}\n\n"
+            f"Count to generate: {count}\n"
+            f"Create {count} flashcards. Return JSON:\n{schema}"
+        )
+    
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_FLASHCARD_GEN[language]},
+        {"role": "user", "content": user_msg},
+    ]

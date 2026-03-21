@@ -14,6 +14,7 @@ from app.core.database import init_async_pool, close_async_pool
 from app.api.endpoints.process import router as process_router
 from app.api.endpoints.diagnose import router as diagnose_router, nodes_router
 from app.api.endpoints.quiz_gen import router as quiz_router, sr_router
+from app.api.endpoints.flashcards import router as flashcards_router
 
 settings = get_settings()
 
@@ -80,3 +81,4 @@ app.include_router(diagnose_router, prefix="/ai")
 app.include_router(nodes_router, prefix="/ai")
 app.include_router(quiz_router, prefix="/ai")
 app.include_router(sr_router, prefix="/ai")
+app.include_router(flashcards_router, prefix="/ai")

@@ -72,3 +72,26 @@ type StudentQuizScore struct {
 	LastAttemptAt  *time.Time `json:"last_attempt_at,omitempty"`
 	Status         string     `json:"status"`
 }
+
+// StudentWeaknessOverview aggregates weak nodes for a student in a course
+type StudentWeaknessOverview struct {
+	TotalWrongPercent float64    `json:"total_wrong_percent"` // Overall percentage of mistakes
+	WeakNodes         []WeakNode `json:"weak_nodes"`
+}
+
+// WeakNode represents a specific knowledge node and the student's mastery level
+type WeakNode struct {
+	NodeID       int64   `json:"node_id"`
+	NodeTitle    string  `json:"node_title"`
+	WrongCount   int     `json:"wrong_count"`
+	TotalAttempt int     `json:"total_attempt"`
+	MasteryLevel float64 `json:"mastery_level"` // 0.0 to 1.0
+	StatusLevel  string  `json:"status_level"`  // "Rất tốt", "TB", "Yếu", "Cần cải thiện"
+}
+
+// FlashcardStatsResponse provides the Spaced Repetition (SM-2) stats
+type FlashcardStatsResponse struct {
+	TodayDueCount int `json:"today_due_count"`
+	UpcomingCount int `json:"upcoming_count"`
+	LearningCount int `json:"learning_count"`
+}
