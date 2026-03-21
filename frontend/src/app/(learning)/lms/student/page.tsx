@@ -81,7 +81,7 @@ function EnrolledCourseItem({
             {enrollment.teacher_name}
           </p>
         )}
-        <ProgressBar value={0} max={100} color="blue" showPercent={false} className="mt-2" />
+        <ProgressBar value={0} max={100} color="blue" showPercent={true} className="mt-2" />
       </div>
 
       {/* Arrow */}
