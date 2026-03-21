@@ -52,13 +52,17 @@ class DiagnosisService:
         # ── 1. Load question ──────────────────────────────────────────────────
         async with get_async_conn() as conn:
             q_row = await conn.fetchrow(
-                """SELECT qq.question_text, qq.node_id,
-                          STRING_AGG(qao.option_text, ' | ') FILTER (WHERE qao.is_correct) AS correct_answer,
-                          qq.explanation
-                   FROM quiz_questions qq
-                   LEFT JOIN quiz_answer_options qao ON qao.question_id = qq.id
-                   WHERE qq.id = $1
-                   GROUP BY qq.id""",
+                """SELECT qq.question_text, qq.node_id, qq.explanation,
+                    qq.question_type
+                    FROM quiz_questions qq
+                    WHERE qq.id = $1""",
+                question_id,
+            )
+            options_rows = await conn.fetch(
+                """SELECT option_text, is_correct
+                FROM quiz_answer_options
+                WHERE question_id = $1
+                ORDER BY order_index""",
                 question_id,
             )
 
@@ -66,7 +70,9 @@ class DiagnosisService:
             raise ValueError(f"Question {question_id} not found")
 
         question_text = q_row["question_text"]
-        correct_answer = q_row["correct_answer"] or q_row["explanation"] or ""
+        correct_answer = " | ".join(r["option_text"] for r in options_rows if r["is_correct"])
+        distractor_options = [r["option_text"] for r in options_rows if not r["is_correct"]]
+        all_options = [r["option_text"] for r in options_rows]
         node_id = q_row["node_id"]
 
         # ── 2. RAG retrieval ──────────────────────────────────────────────────
@@ -100,6 +106,7 @@ class DiagnosisService:
             question_text=question_text,
             wrong_answer=wrong_answer,
             correct_answer=correct_answer,
+            distractor_options=distractor_options,
             context_chunks=context_texts,
             language=language,
         )

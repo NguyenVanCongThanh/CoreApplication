@@ -255,8 +255,16 @@ func (s *CourseService) GetSection(ctx context.Context, sectionID int64, userID 
 		return nil, fmt.Errorf("failed to get course: %w", err)
 	}
 
-	if !section.IsPublished && role != models.RoleAdmin && course.CreatedBy != userID {
-		return nil, fmt.Errorf("unauthorized to view this section")
+	if !section.IsPublished && role != models.RoleAdmin && role != models.RoleTeacher && course.CreatedBy != userID {
+		// Check if student is enrolled
+		if role == models.RoleStudent {
+			enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, course.ID)
+			if enrollment == nil || enrollment.Status != models.EnrollmentAccepted {
+				return nil, fmt.Errorf("unauthorized to view this section")
+			}
+		} else {
+			return nil, fmt.Errorf("unauthorized to view this section")
+		}
 	}
 
 	return s.toSectionResponse(section), nil
@@ -287,12 +295,13 @@ func (s *CourseService) ListSections(ctx context.Context, courseID int64, userID
 
 	result := make([]*dto.SectionResponse, 0, len(sections))
 	for _, section := range sections {
+
 		// Allow viewing if:
 		// 1. Section is published, OR
-		// 2. User is course creator/admin, OR
+		// 2. User is course creator/admin/teacher, OR
 		// 3. Student is enrolled in the course
 		if !section.IsPublished {
-			if role == models.RoleAdmin || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
+			if role == models.RoleAdmin || role == models.RoleTeacher || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
 				result = append(result, s.toSectionResponse(section))
 			}
 		} else {
@@ -437,8 +446,16 @@ func (s *CourseService) GetContent(ctx context.Context, contentID int64, userID 
 		return nil, fmt.Errorf("failed to get course: %w", err)
 	}
 
-	if !content.IsPublished && role != models.RoleAdmin && course.CreatedBy != userID {
-		return nil, fmt.Errorf("unauthorized to view this content")
+	if !content.IsPublished && role != models.RoleAdmin && role != models.RoleTeacher && course.CreatedBy != userID {
+		// Check if student is enrolled
+		if role == models.RoleStudent {
+			enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, course.ID)
+			if enrollment == nil || enrollment.Status != models.EnrollmentAccepted {
+				return nil, fmt.Errorf("unauthorized to view this content")
+			}
+		} else {
+			return nil, fmt.Errorf("unauthorized to view this content")
+		}
 	}
 
 	return s.toContentResponse(content)
@@ -478,7 +495,7 @@ func (s *CourseService) ListContent(ctx context.Context, sectionID int64, userID
 		// 2. User is course creator/admin, OR
 		// 3. Student is enrolled in the course
 		if !content.IsPublished {
-			if role == models.RoleAdmin || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
+			if role == models.RoleAdmin || role == models.RoleTeacher || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
 				resp, err := s.toContentResponse(content)
 				if err != nil {
 					continue

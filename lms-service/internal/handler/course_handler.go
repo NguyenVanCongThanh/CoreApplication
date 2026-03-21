@@ -101,7 +101,7 @@ func (h *CourseHandler) GetCourse(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	course, err := h.courseService.GetCourse(c.Request.Context(), courseID, userID, role)
 	if err != nil {
@@ -150,7 +150,7 @@ func (h *CourseHandler) UpdateCourse(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.UpdateCourse(c.Request.Context(), courseID, &req, userID, role)
 	if err != nil {
@@ -191,7 +191,7 @@ func (h *CourseHandler) DeleteCourse(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.DeleteCourse(c.Request.Context(), courseID, userID, role)
 	if err != nil {
@@ -232,7 +232,7 @@ func (h *CourseHandler) PublishCourse(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.PublishCourse(c.Request.Context(), courseID, userID, role)
 	if err != nil {
@@ -326,7 +326,7 @@ func (h *CourseHandler) CreateSection(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	section, err := h.courseService.CreateSection(c.Request.Context(), courseID, &req, userID, role)
 	if err != nil {
@@ -366,7 +366,7 @@ func (h *CourseHandler) GetSection(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	section, err := h.courseService.GetSection(c.Request.Context(), sectionID, userID, role)
 	if err != nil {
@@ -461,7 +461,7 @@ func (h *CourseHandler) UpdateSection(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.UpdateSection(c.Request.Context(), sectionID, &req, userID, role)
 	if err != nil {
@@ -502,7 +502,7 @@ func (h *CourseHandler) DeleteSection(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.DeleteSection(c.Request.Context(), sectionID, userID, role)
 	if err != nil {
@@ -552,7 +552,7 @@ func (h *CourseHandler) CreateContent(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	content, err := h.courseService.CreateContent(c.Request.Context(), sectionID, &req, userID, role)
 	if err != nil {
@@ -592,7 +592,7 @@ func (h *CourseHandler) GetContent(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	content, err := h.courseService.GetContent(c.Request.Context(), contentID, userID, role)
 	if err != nil {
@@ -631,7 +631,7 @@ func (h *CourseHandler) ListContent(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	contents, err := h.courseService.ListContent(c.Request.Context(), sectionID, userID, role)
 	if err != nil {
@@ -676,7 +676,7 @@ func (h *CourseHandler) UpdateContent(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.UpdateContent(c.Request.Context(), contentID, &req, userID, role)
 	if err != nil {
@@ -717,7 +717,7 @@ func (h *CourseHandler) DeleteContent(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	role := c.GetString("user_role")
+	role := getRoleFromContext(c)
 
 	err = h.courseService.DeleteContent(c.Request.Context(), contentID, userID, role)
 	if err != nil {
