@@ -12,7 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import analyticsService, { WeaknessOverviewResponse, WeakNode } from "@/services/analyticsService";
 import flashcardService from "@/services/flashcardService";
-import { toast } from "react-hot-toast";
+import { FlashcardReviewModal } from "@/components/lms/student/FlashcardReviewModal";
+import toast from "react-hot-toast";
 
 interface Props {
   courseId: number;
@@ -30,6 +31,9 @@ export function WeaknessTracker({ courseId }: Props) {
   const [loading, setLoading] = useState(true);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
   const [error, setError] = useState("");
+
+  const [reviewNodeId, setReviewNodeId] = useState<number | null>(null);
+  const [reviewNodeName, setReviewNodeName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +66,16 @@ export function WeaknessTracker({ courseId }: Props) {
     } finally {
       setGeneratingFor(null);
     }
+  };
+
+  const openReviewModal = (node: WeakNode) => {
+    setReviewNodeId(node.node_id);
+    setReviewNodeName(node.node_name);
+  };
+
+  const closeReviewModal = () => {
+    setReviewNodeId(null);
+    setReviewNodeName("");
   };
 
   if (loading) {
@@ -146,33 +160,54 @@ export function WeaknessTracker({ courseId }: Props) {
               </div>
 
               {/* Action */}
-              <button
-                onClick={() => handleGenerateFlashcards(node)}
-                disabled={generatingFor === node.node_id}
-                className={cn(
-                  "flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border transition-all",
-                  generatingFor === node.node_id
-                    ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-                    : "bg-white dark:bg-slate-800 border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 active:scale-95 shadow-sm"
-                )}
-              >
-                {generatingFor === node.node_id ? (
-                  <>
-                    <Lightbulb className="w-4 h-4 animate-pulse" />
-                    Đang tạo thẻ...
-                  </>
-                ) : (
-                  <>
-                    <Brain className="w-4 h-4" />
-                    Tạo Flashcard học lại
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <button
+                  onClick={() => openReviewModal(node)}
+                  title="Mở modal xem tất cả flashcard của chủ đề này"
+                  className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 active:scale-95 shadow-sm transition-all"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span className="hidden sm:inline">Xem lại Flashcard</span>
+                </button>
+                
+                <button
+                  onClick={() => handleGenerateFlashcards(node)}
+                  disabled={generatingFor === node.node_id}
+                  className={cn(
+                    "flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border transition-all",
+                    generatingFor === node.node_id
+                      ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-white dark:bg-slate-800 border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 active:scale-95 shadow-sm"
+                  )}
+                >
+                  {generatingFor === node.node_id ? (
+                    <>
+                      <Lightbulb className="w-4 h-4 animate-pulse" />
+                      Đang tạo...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="w-4 h-4" />
+                      Tạo Flashcard
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
+
+      {/* Review Modal */}
+      {reviewNodeId !== null && (
+        <FlashcardReviewModal
+          courseId={courseId}
+          nodeId={reviewNodeId}
+          nodeName={reviewNodeName}
+          isOpen={true}
+          onClose={closeReviewModal}
+        />
+      )}
     </div>
   );
 }

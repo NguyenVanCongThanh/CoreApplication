@@ -33,6 +33,14 @@ export interface GenerateFlashcardsRequest {
   count: number;
 }
 
+export interface FlashcardWithRepetition extends FlashcardDueItem {
+  easiness_factor?: number;
+  interval_days?: number;
+  repetitions?: number;
+  last_reviewed_at?: string;
+  created_at: string;
+}
+
 class FlashcardService {
   /**
    * Generate highly personalized flashcards given a node
@@ -54,6 +62,14 @@ class FlashcardService {
    */
   async listDueFlashcards(courseId: number): Promise<{ data: FlashcardDueItem[] }> {
     const response = await lmsApiClient.get(`/courses/${courseId}/flashcards/due`);
+    return response.data;
+  }
+
+  /**
+   * List all flashcards for a specific node
+   */
+  async listFlashcardsByNode(courseId: number, nodeId: number): Promise<{ data: FlashcardWithRepetition[] }> {
+    const response = await lmsApiClient.get(`/courses/${courseId}/nodes/${nodeId}/flashcards`);
     return response.data;
   }
 

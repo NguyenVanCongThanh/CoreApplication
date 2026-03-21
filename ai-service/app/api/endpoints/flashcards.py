@@ -26,6 +26,7 @@ class GenerateFlashcardsRequest(BaseModel):
     course_id: int
     count: int = Field(default=3, ge=1, le=10)
     language: str = "vi"
+    existing_fronts: Optional[list[str]] = None
 
 
 @router.post("/generate")
@@ -118,6 +119,7 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
             wrong_answers_context=wrong_answers_context,
             count=body.count,
             language=body.language,
+            existing_fronts=body.existing_fronts,
         )
 
         result = await chat_complete_json(

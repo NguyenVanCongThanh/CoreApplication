@@ -92,3 +92,33 @@ func (h *FlashcardHandler) ReviewFlashcard(c *gin.Context) {
 
 	c.JSON(http.StatusOK, dto.NewDataResponse(result))
 }
+
+// ListFlashcardsByNode GET /api/v1/courses/:courseId/nodes/:nodeId/flashcards
+func (h *FlashcardHandler) ListFlashcardsByNode(c *gin.Context) {
+	studentID := c.MustGet("user_id").(int64)
+	courseID, err := strconv.ParseInt(c.Param("courseId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_course_id", "Invalid course ID"))
+		return
+	}
+	nodeID, err := strconv.ParseInt(c.Param("nodeId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_node_id", "Invalid node ID"))
+		return
+	}
+
+	// Verify course access
+	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID); err != nil {
+		c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Bạn không có quyền truy cập khóa học này"))
+		return
+	}
+
+	results, err := h.flashcardService.ListFlashcardsByNode(c.Request.Context(), studentID, courseID, nodeID)
+	if err != nil {
+		logger.Error("Failed to list flashcards by node", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(results))
+}

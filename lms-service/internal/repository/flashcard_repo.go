@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"example/hello/internal/models"
 )
@@ -124,4 +125,36 @@ func (r *FlashcardRepository) UpdateRepetition(ctx context.Context, rep *models.
 		rep.EasinessFactor, rep.IntervalDays, rep.Repetitions, rep.QualityLast, rep.NextReviewDate,
 		rep.ID, rep.StudentID,
 	).Scan(&rep.UpdatedAt)
+}
+
+// ListFlashcardsByNode returns ALL flashcards for a student+course+node regardless of status or due date.
+// Joined with flashcard_repetitions to include SM-2 state for display purposes.
+func (r *FlashcardRepository) ListFlashcardsByNode(ctx context.Context, studentID, courseID, nodeID int64) ([]models.FlashcardWithRepetition, error) {
+	query := `
+		SELECT
+			f.id, f.course_id, f.node_id, f.student_id, f.front_text, f.back_text, f.source_diagnosis_id, f.status, f.created_at, f.updated_at,
+			fr.id AS repetition_id, fr.easiness_factor, fr.interval_days, fr.repetitions, fr.quality_last, fr.next_review_date, fr.last_reviewed_at
+		FROM flashcards f
+		LEFT JOIN flashcard_repetitions fr ON fr.flashcard_id = f.id AND fr.student_id = f.student_id
+		WHERE f.student_id = $1 AND f.course_id = $2 AND f.node_id = $3
+		ORDER BY f.created_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, studentID, courseID, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("FlashcardRepo.ListFlashcardsByNode: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.FlashcardWithRepetition
+	for rows.Next() {
+		var item models.FlashcardWithRepetition
+		if err := rows.Scan(
+			&item.ID, &item.CourseID, &item.NodeID, &item.StudentID, &item.FrontText, &item.BackText, &item.SourceDiagnosisID, &item.Status, &item.CreatedAt, &item.UpdatedAt,
+			&item.RepetitionID, &item.EasinessFactor, &item.IntervalDays, &item.Repetitions, &item.QualityLast, &item.NextReviewDate, &item.LastReviewedAt,
+		); err != nil {
+			return nil, fmt.Errorf("FlashcardRepo.ListFlashcardsByNode scan: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }

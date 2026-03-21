@@ -225,10 +225,11 @@ func (c *Client) GetReviewStats(ctx context.Context, studentID, courseID int64) 
 // ── Knowledge Nodes ────────────────────────────────────────────────────────────
 
 type GenerateFlashcardsRequest struct {
-	StudentID int64 `json:"student_id"`
-	NodeID    int64 `json:"node_id"`
-	CourseID  int64 `json:"course_id"`
-	Count     int   `json:"count"`
+	StudentID      int64    `json:"student_id"`
+	NodeID         int64    `json:"node_id"`
+	CourseID       int64    `json:"course_id"`
+	Count          int      `json:"count"`
+	ExistingFronts []string `json:"existing_fronts,omitempty"`
 }
 
 type AIFlashcard struct {

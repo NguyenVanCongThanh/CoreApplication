@@ -292,6 +292,7 @@ def build_flashcard_generation_prompt(
     wrong_answers_context: str,
     count: int = 3,
     language: str = "vi",
+    existing_fronts: list[str] | None = None,
 ) -> list[dict]:
     context = "\n---\n".join(f"[Nguồn {i+1}] {c}" for i, c in enumerate(context_chunks))
     
@@ -302,21 +303,31 @@ def build_flashcard_generation_prompt(
         ']}'
     )
     
+    existing_avoidance = ""
+    if existing_fronts:
+        existing_list = "\n".join(f"- {front}" for front in existing_fronts[:10])
+        if language == "vi":
+            existing_avoidance = f"\nTRÁNH TRÙNG LẶP VỚI CÁC FLASHCARD HIỆN CÓ (Bạn phải tạo nội dung HOÀN TOÀN MỚI):\n{existing_list}\n"
+        else:
+            existing_avoidance = f"\nDO NOT DUPLICATE THESE EXISTING FLASHCARDS (You must create ENTIRELY NEW content):\n{existing_list}\n"
+    
     if language == "vi":
         user_msg = (
             f"TÀI LIỆU:\n{context}\n\n"
             f"CHỦ ĐỀ: {node_name}\n"
-            f"LỖI SAI GẦN ĐÂY CỦA HỌC SINH (Hãy tập trung khắc phục):\n{wrong_answers_context}\n\n"
-            f"Số lượng flashcard cần tạo: {count}\n"
-            f"Tạo {count} flashcard. Trả về JSON:\n{schema}"
+            f"LỖI SAI GẦN ĐÂY CỦA HỌC SINH (Hãy tập trung khắc phục):\n{wrong_answers_context}\n"
+            f"{existing_avoidance}\n"
+            f"Số lượng flashcard cần tạo mới: {count}\n"
+            f"Tạo {count} flashcard MỚI. Trả về JSON:\n{schema}"
         )
     else:
         user_msg = (
             f"MATERIAL:\n{context}\n\n"
             f"TOPIC: {node_name}\n"
-            f"RECENT STUDENT ERRORS (Focus on correcting these):\n{wrong_answers_context}\n\n"
+            f"RECENT STUDENT ERRORS (Focus on correcting these):\n{wrong_answers_context}\n"
+            f"{existing_avoidance}\n"
             f"Count to generate: {count}\n"
-            f"Create {count} flashcards. Return JSON:\n{schema}"
+            f"Create {count} NEW flashcards. Return JSON:\n{schema}"
         )
     
     return [

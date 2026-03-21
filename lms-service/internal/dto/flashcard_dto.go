@@ -18,8 +18,13 @@ type FlashcardResponse struct {
 	BackText          string     `json:"back_text"`
 	SourceDiagnosisID *int64     `json:"source_diagnosis_id,omitempty"`
 	Status            string     `json:"status"`
-	NextReviewDate    *time.Time `json:"next_review_date,omitempty"` // from repetition
+	NextReviewDate    *time.Time `json:"next_review_date,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
+	// SM-2 repetition metadata (included when listing all flashcards for review)
+	EasinessFactor *float64   `json:"easiness_factor,omitempty"`
+	IntervalDays   *int       `json:"interval_days,omitempty"`
+	Repetitions    *int       `json:"repetitions,omitempty"`
+	LastReviewedAt *time.Time `json:"last_reviewed_at,omitempty"`
 }
 
 // ReviewFlashcardRequest represents the student's self-assessed quality of recalling the flashcard

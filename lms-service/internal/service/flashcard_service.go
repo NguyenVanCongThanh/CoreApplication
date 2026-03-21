@@ -26,12 +26,24 @@ func NewFlashcardService(flashcardRepo *repository.FlashcardRepository, aiClient
 
 // GenerateFlashcards calls the AI service to create new flashcards
 func (s *FlashcardService) GenerateFlashcards(ctx context.Context, studentID, courseID, nodeID int64, req dto.GenerateFlashcardsRequest) ([]dto.FlashcardResponse, error) {
+	// Fetch existing flashcards to avoid generating duplicates
+	existingCards, err := s.flashcardRepo.ListFlashcardsByNode(ctx, studentID, courseID, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch existing flashcards for generation context: %w", err)
+	}
+
+	var existingFronts []string
+	for _, c := range existingCards {
+		existingFronts = append(existingFronts, c.FrontText)
+	}
+
 	// Call AI Service
 	aiReq := ai.GenerateFlashcardsRequest{
-		StudentID: studentID,
-		NodeID:    nodeID,
-		CourseID:  courseID,
-		Count:     req.Count,
+		StudentID:      studentID,
+		NodeID:         nodeID,
+		CourseID:       courseID,
+		Count:          req.Count,
+		ExistingFronts: existingFronts,
 	}
 
 	aiResp, err := s.aiClient.GenerateFlashcards(ctx, aiReq)
@@ -152,4 +164,51 @@ func (s *FlashcardService) ReviewFlashcard(ctx context.Context, studentID, flash
 		Repetitions:    rep.Repetitions,
 		NextReviewDate: rep.NextReviewDate,
 	}, nil
+}
+
+// ListFlashcardsByNode returns ALL flashcards for a student+course+node (browsable review)
+func (s *FlashcardService) ListFlashcardsByNode(ctx context.Context, studentID, courseID, nodeID int64) ([]dto.FlashcardResponse, error) {
+	rows, err := s.flashcardRepo.ListFlashcardsByNode(ctx, studentID, courseID, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("FlashcardService.ListFlashcardsByNode: %w", err)
+	}
+
+	var results []dto.FlashcardResponse
+	for _, r := range rows {
+		item := dto.FlashcardResponse{
+			ID:        r.ID,
+			CourseID:  r.CourseID,
+			NodeID:    r.NodeID,
+			FrontText: r.FrontText,
+			BackText:  r.BackText,
+			Status:    r.Status,
+			CreatedAt: r.CreatedAt,
+		}
+		if r.NextReviewDate.Valid {
+			v := r.NextReviewDate.Time
+			item.NextReviewDate = &v
+		}
+		if r.SourceDiagnosisID.Valid {
+			v := r.SourceDiagnosisID.Int64
+			item.SourceDiagnosisID = &v
+		}
+		if r.EasinessFactor.Valid {
+			v := r.EasinessFactor.Float64
+			item.EasinessFactor = &v
+		}
+		if r.IntervalDays.Valid {
+			v := int(r.IntervalDays.Int32)
+			item.IntervalDays = &v
+		}
+		if r.Repetitions.Valid {
+			v := int(r.Repetitions.Int32)
+			item.Repetitions = &v
+		}
+		if r.LastReviewedAt.Valid {
+			v := r.LastReviewedAt.Time
+			item.LastReviewedAt = &v
+		}
+		results = append(results, item)
+	}
+	return results, nil
 }
