@@ -193,9 +193,10 @@ def build_diagnosis_prompt(
             f"HỌC SINH TRẢ LỜI: {wrong_answer}\n\n"
             f"Phân tích TẠI SAO sinh viên chọn \"{wrong_answer}\" thay vì đáp án đúng. "
             f"Chỉ ra sự nhầm lẫn cụ thể giữa đáp án sinh viên chọn và đáp án đúng. "
+            f"Đánh giá các tài liệu tham khảo được cho (Đoạn 1, Đoạn 2,...). Trả về relevant_source_indices là mảng chứa các số thứ tự của các đoạn THỰC SỰ liên quan đến việc vá lỗ hổng kiến thức của học sinh. Trả về mảng rỗng [] nếu không có đoạn nào liên quan.\n"
             f"Trả về JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
-            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
+            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0, "relevant_source_indices": [1]}}'
         )
     else:
         user_msg = (
@@ -206,9 +207,10 @@ def build_diagnosis_prompt(
             f"STUDENT ANSWERED: {wrong_answer}\n\n"
             f"Analyze WHY student chose \"{wrong_answer}\" instead of correct answer. "
             f"Identify the specific confusion between the student's answer and the correct answer. "
+            f"Evaluate the provided reference materials ([Đoạn 1], [Đoạn 2],...). Return relevant_source_indices as an array of the indices of the segments that are ACTUALLY relevant to fixing the student's knowledge gap. Return an empty array [] if none are relevant.\n"
             f"Return JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
-            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
+            f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0, "relevant_source_indices": [1]}}'
         )
     
     return [
@@ -267,5 +269,70 @@ def build_quiz_generation_prompt(
     
     return [
         {"role": "system", "content": SYSTEM_PROMPT_QUIZ_GEN[language]},
+        {"role": "user", "content": user_msg},
+    ]
+
+
+SYSTEM_PROMPT_FLASHCARD_GEN = {
+    "vi": (
+        "Bạn là chuyên gia tạo Flashcard học tập theo phương pháp Spaced Repetition. "
+        "Hãy tạo các flashcard ngắn gọn, tập trung vào khái niệm cốt lõi, "
+        "đặc biệt chú ý khắc phục các lỗi sai phổ biến của học sinh. "
+        "Chỉ trả về JSON hợp lệ theo đúng schema, không thêm text khác."
+    ),
+    "en": (
+        "You are an expert at creating study flashcards for Spaced Repetition. "
+        "Create concise flashcards focusing on core concepts, "
+        "paying special attention to correcting common student misconceptions. "
+        "Return ONLY valid JSON matching the requested schema exactly."
+    ),
+}
+
+def build_flashcard_generation_prompt(
+    context_chunks: list[str],
+    node_name: str,
+    wrong_answers_context: str,
+    count: int = 3,
+    language: str = "vi",
+    existing_fronts: list[str] | None = None,
+) -> list[dict]:
+    context = "\n---\n".join(f"[Nguồn {i+1}] {c}" for i, c in enumerate(context_chunks))
+    
+    schema = (
+        '{"flashcards":['
+        '{"front_text":"[Câu hỏi ngắn gọn hoặc khái niệm]","back_text":"[Câu trả lời hoặc giải thích ngắn gọn]"},'
+        '{"front_text":"...","back_text":"..."}'
+        ']}'
+    )
+    
+    existing_avoidance = ""
+    if existing_fronts:
+        existing_list = "\n".join(f"- {front}" for front in existing_fronts[:10])
+        if language == "vi":
+            existing_avoidance = f"\nTRÁNH TRÙNG LẶP VỚI CÁC FLASHCARD HIỆN CÓ (Bạn phải tạo nội dung HOÀN TOÀN MỚI):\n{existing_list}\n"
+        else:
+            existing_avoidance = f"\nDO NOT DUPLICATE THESE EXISTING FLASHCARDS (You must create ENTIRELY NEW content):\n{existing_list}\n"
+    
+    if language == "vi":
+        user_msg = (
+            f"TÀI LIỆU:\n{context}\n\n"
+            f"CHỦ ĐỀ: {node_name}\n"
+            f"LỖI SAI GẦN ĐÂY CỦA HỌC SINH (Hãy tập trung khắc phục):\n{wrong_answers_context}\n"
+            f"{existing_avoidance}\n"
+            f"Số lượng flashcard cần tạo mới: {count}\n"
+            f"Tạo {count} flashcard MỚI. Trả về JSON:\n{schema}"
+        )
+    else:
+        user_msg = (
+            f"MATERIAL:\n{context}\n\n"
+            f"TOPIC: {node_name}\n"
+            f"RECENT STUDENT ERRORS (Focus on correcting these):\n{wrong_answers_context}\n"
+            f"{existing_avoidance}\n"
+            f"Count to generate: {count}\n"
+            f"Create {count} NEW flashcards. Return JSON:\n{schema}"
+        )
+    
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_FLASHCARD_GEN[language]},
         {"role": "user", "content": user_msg},
     ]

@@ -29,8 +29,8 @@ import ContentViewer from "@/components/lms/student/ContentViewer";
 import { Badge, ContentTypeBadge, PageLoader, GhostBtn, ProgressBar } from "@/components/lms/shared";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
-import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
-import { SpacedRepetitionWidget } from "@/components/lms/student/SpacedRepetitionWidget";
+import { WeaknessTracker } from "@/components/lms/student/WeaknessTracker";
+import { FlashcardWidget } from "@/components/lms/student/FlashcardWidget";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 
@@ -376,6 +376,7 @@ export default function StudentCourseDetailPage() {
     setStatsLoading(true);
     try {
       const res = await analyticsService.getMyQuizScores(id);
+      console.log(res)
       setQuizScores(Array.isArray(res?.data) ? res.data : (res as any) ?? []);
       setStatsLoaded(true);
     } catch {
@@ -736,12 +737,12 @@ export default function StudentCourseDetailPage() {
                     ))}
                   </div>
                 )}
-              </section>
-
-              {/* AI Heatmap */}
-              <AIHeatmapSection courseId={id} role="student" />
-              {/* Spaced Repetition */}
-              <SpacedRepetitionWidget courseId={id} />
+              </section>              
+              {/* Weakness Tracker */}
+              <WeaknessTracker courseId={id} />
+              
+              {/* Spaced Repetition (Flashcard) */}
+              <FlashcardWidget courseId={id} />
             </div>
           )}
 

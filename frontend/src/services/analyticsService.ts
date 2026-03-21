@@ -75,6 +75,27 @@ export interface WrongAnswerStat {
   wrong_rate: number;
 }
 
+export interface WeakNode {
+  node_id: number;
+  node_name: string;
+  total_attempt: number;
+  mastery_level: number;
+  status_level: "Rất tốt" | "TB" | "Yếu" | "Cần cải thiện";
+  wrong_count: number;
+}
+
+export interface WeaknessOverviewResponse {
+  course_id: number;
+  total_wrong_percent: number;
+  weak_nodes: WeakNode[];
+}
+
+export interface FlashcardStatsResponse {
+  today_due_count: number;
+  upcoming_count: number;
+  learning_count: number;
+}
+
 class AnalyticsService {
   // ─── Teacher endpoints ──────────────────────────────────────────────────
 
@@ -107,6 +128,18 @@ class AnalyticsService {
   /** Get student's own quiz scores in a course */
   async getMyQuizScores(courseId: number): Promise<{ data: StudentQuizScore[] }> {
     const response = await lmsApiClient.get(`/courses/${courseId}/my-quiz-scores`);
+    return response.data;
+  }
+
+  /** Get student's weakness overview */
+  async getMyWeaknesses(courseId: number): Promise<{ data: WeaknessOverviewResponse }> {
+    const response = await lmsApiClient.get(`/courses/${courseId}/analytics/weaknesses`);
+    return response.data;
+  }
+
+  /** Get flashcard spaced repetition stats */
+  async getFlashcardStats(courseId: number): Promise<{ data: FlashcardStatsResponse }> {
+    const response = await lmsApiClient.get(`/courses/${courseId}/analytics/flashcard-stats`);
     return response.data;
   }
 }

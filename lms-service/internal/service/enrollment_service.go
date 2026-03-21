@@ -212,6 +212,29 @@ func (s *EnrollmentService) CancelEnrollment(ctx context.Context, enrollmentID i
 	return s.enrollmentRepo.Delete(ctx, enrollmentID)
 }
 
+// VerifyAccess checks if a user has access to a course (enrolled via ACCEPTED status, or is creator)
+func (s *EnrollmentService) VerifyAccess(ctx context.Context, userID, courseID int64) error {
+	// First check if they are the course creator
+	course, err := s.courseRepo.GetByID(ctx, courseID)
+	if err != nil {
+		return fmt.Errorf("course not found: %w", err)
+	}
+	if course.CreatedBy == userID {
+		return nil
+	}
+	
+	// Check if enrolled and ACCEPTED
+	enrollment, err := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, courseID)
+	if err != nil {
+		return fmt.Errorf("student not enrolled")
+	}
+	if enrollment.Status != models.EnrollmentAccepted {
+		return fmt.Errorf("enrollment is %s, not ACCEPTED", enrollment.Status)
+	}
+
+	return nil
+}
+
 // Helper functions
 
 func toEnrollmentResponse(e *models.Enrollment) *dto.EnrollmentResponse {

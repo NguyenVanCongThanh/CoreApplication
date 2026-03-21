@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"example/hello/internal/dto"
+	"example/hello/internal/repository"
 	"example/hello/pkg/ai"
 	"example/hello/pkg/logger"
 
@@ -16,12 +17,13 @@ import (
 
 // AIHandler handles all AI-related HTTP endpoints.
 type AIHandler struct {
-	aiClient *ai.Client
+	aiClient   *ai.Client
+	courseRepo *repository.CourseRepository
 }
 
 // NewAIHandler creates a new AIHandler.
-func NewAIHandler(aiClient *ai.Client) *AIHandler {
-	return &AIHandler{aiClient: aiClient}
+func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository) *AIHandler {
+	return &AIHandler{aiClient: aiClient, courseRepo: courseRepo}
 }
 
 // ── Phase 1: Error Diagnosis ──────────────────────────────────────────────────
@@ -63,6 +65,25 @@ func (h *AIHandler) DiagnoseWrongAnswer(c *gin.Context) {
 		logger.Error("AI diagnosis failed", err)
 		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", "Diagnosis unavailable"))
 		return
+	}
+
+	// Enrich suggested documents with File URL and Title
+	if result.SuggestedDocuments != nil {
+		for i, doc := range result.SuggestedDocuments {
+			if contentIDVal, ok := doc["content_id"].(float64); ok {
+				contentID := int64(contentIDVal)
+				content, err := h.courseRepo.GetContentByID(c.Request.Context(), contentID)
+				if err == nil && content != nil {
+					// Add file info
+					if content.FilePath.Valid {
+						doc["file_url"] = "/api/v1/files/serve/" + content.FilePath.String
+					}
+					doc["title"] = content.Title
+					doc["content_type"] = content.Type
+					result.SuggestedDocuments[i] = doc
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, dto.NewDataResponse(result))

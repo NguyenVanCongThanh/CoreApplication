@@ -216,3 +216,59 @@ func (h *AnalyticsHandler) GetMyQuizScores(c *gin.Context) {
 
 	c.JSON(http.StatusOK, data)
 }
+
+// GetStudentWeaknesses godoc
+// @Summary      Get the student's weak knowledge nodes
+// @Description  Returns weak nodes and overall error percentage for a student in a course
+// @Tags         Analytics
+// @Produce      json
+// @Param        courseId path int true "Course ID"
+// @Security     BearerAuth
+// @Success      200 {object} dto.StudentWeaknessOverview
+// @Failure      400 {object} dto.ErrorResponse
+// @Failure      500 {object} dto.ErrorResponse
+// @Router       /courses/{courseId}/analytics/weaknesses [get]
+func (h *AnalyticsHandler) GetStudentWeaknesses(c *gin.Context) {
+	courseID, ok := getCourseIDParam(c)
+	if !ok {
+		return
+	}
+
+	userID := c.MustGet("user_id").(int64)
+
+	data, err := h.analyticsService.GetCourseStudentWeaknesses(c.Request.Context(), courseID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", "Failed to retrieve student weaknesses"))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(data))
+}
+
+// GetFlashcardStats godoc
+// @Summary      Get Spaced Repetition (SM-2) stats for flashcards
+// @Description  Returns counts of due, upcoming, and total learning flashcards for a student
+// @Tags         Analytics
+// @Produce      json
+// @Param        courseId path int true "Course ID"
+// @Security     BearerAuth
+// @Success      200 {object} dto.FlashcardStatsResponse
+// @Failure      400 {object} dto.ErrorResponse
+// @Failure      500 {object} dto.ErrorResponse
+// @Router       /courses/{courseId}/analytics/flashcard-stats [get]
+func (h *AnalyticsHandler) GetFlashcardStats(c *gin.Context) {
+	courseID, ok := getCourseIDParam(c)
+	if !ok {
+		return
+	}
+
+	userID := c.MustGet("user_id").(int64)
+
+	data, err := h.analyticsService.GetFlashcardStats(c.Request.Context(), courseID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", "Failed to retrieve flashcard stats"))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(data))
+}

@@ -19,7 +19,7 @@ import {
   X, Sparkles, BookOpen, Video, AlertCircle,
   ChevronRight, Brain, Lightbulb, Target
 } from "lucide-react";
-import aiService, { DiagnosisResult } from "@/services/aiService";
+import aiService, { DiagnosisResult, DeepLink } from "@/services/aiService";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -65,6 +65,7 @@ export default function AIDiagnosisModal({
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [error, setError] = useState("");
+  const [selectedDoc, setSelectedDoc] = useState<DeepLink | null>(null);
 
   useEffect(() => {
     aiService
@@ -77,13 +78,6 @@ export default function AIDiagnosisModal({
   const gapCfg = result
     ? (GAP_COLORS[result.gap_type] ?? GAP_COLORS.unknown)
     : GAP_COLORS.unknown;
-
-  const deepLinkHref = (() => {
-    const dl = result?.deep_link;
-    if (!dl) return null;
-    const base = `/lms/student/courses`;
-    return dl.url_fragment ?? null;
-  })();
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -170,35 +164,78 @@ export default function AIDiagnosisModal({
                 </div>
               </div>
 
-              {/* Deep link to source */}
-              {result.deep_link && (
-                <div className="flex items-start gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-                  {result.deep_link.source_type === "video"
-                    ? <Video className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                    : <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  }
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
-                      Nguồn tài liệu
-                    </p>
-                    {result.deep_link.source_type === "document" && result.deep_link.page_number && (
-                      <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">
-                        Trang {result.deep_link.page_number} của tài liệu
-                      </p>
-                    )}
-                    {result.deep_link.source_type === "video" && result.deep_link.start_time_sec !== undefined && (
-                      <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">
-                        Video tại {Math.floor(result.deep_link.start_time_sec / 60)}:
-                        {String(result.deep_link.start_time_sec % 60).padStart(2, "0")}
-                      </p>
-                    )}
-                    {deepLinkHref && (
-                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-mono">
-                        {deepLinkHref}
-                      </p>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-600 flex-shrink-0" />
+              {/* Deep links to source */}
+              {result.suggested_documents && result.suggested_documents.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                    Tài liệu gợi ý ôn tập
+                  </p>
+                  {result.suggested_documents.map((doc, idx) => {
+                    const dlHref = doc.file_url ? `${doc.file_url}${doc.url_fragment || ""}` : null;
+                    return (
+                      <div key={idx} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <div 
+                          className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          onClick={() => setSelectedDoc(selectedDoc === doc ? null : doc)}
+                        >
+                          {doc.source_type === "video"
+                            ? <Video className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                            : <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                          }
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                              {doc.title || `Tài liệu ${idx + 1}`}
+                            </p>
+                            
+                            {doc.source_type === "document" && doc.page_number && (
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">
+                                Trang {doc.page_number}
+                              </p>
+                            )}
+                            {doc.source_type === "video" && doc.start_time_sec !== undefined && (
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">
+                                Tại {Math.floor(doc.start_time_sec / 60)}:{String(doc.start_time_sec % 60).padStart(2, "0")}
+                              </p>
+                            )}
+
+                            {doc.snippet && (
+                              <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 line-clamp-2 italic">
+                                {doc.snippet}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronRight className={cn(
+                            "w-4 h-4 text-slate-400 dark:text-slate-600 transition-transform flex-shrink-0 mt-0.5",
+                            selectedDoc === doc && "rotate-90"
+                          )} />
+                        </div>
+
+                        {/* Embedded Viewer */}
+                        {selectedDoc === doc && dlHref && (
+                          <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 p-2">
+                             {doc.source_type === "document" ? (
+                               <iframe 
+                                 src={dlHref} 
+                                 className="w-full h-[60vh] rounded-xl bg-white border border-slate-200 dark:border-slate-800"
+                               />
+                             ) : (
+                               <video 
+                                 src={dlHref} 
+                                 controls 
+                                 autoPlay
+                                 className="w-full max-h-[60vh] bg-black rounded-xl"
+                               />
+                             )}
+                             <p className="text-center text-xs text-slate-500 mt-2">
+                               <a href={dlHref} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                 Mở trong tab mới
+                               </a>
+                             </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

@@ -76,13 +76,13 @@ type DiagnoseRequest struct {
 // DiagnoseResponse contains LLM explanation + deep link.
 type DiagnoseResponse struct {
 	Explanation     string                 `json:"explanation"`
-	GapType         string                 `json:"gap_type"`
-	KnowledgeGap    string                 `json:"knowledge_gap"`
-	StudySuggestion string                 `json:"study_suggestion"`
-	Confidence      float64                `json:"confidence"`
-	SourceChunkID   *int64                 `json:"source_chunk_id"`
-	DeepLink        map[string]interface{} `json:"deep_link"`
-	Language        string                 `json:"language"`
+	GapType         string                   `json:"gap_type"`
+	KnowledgeGap    string                   `json:"knowledge_gap"`
+	StudySuggestion string                   `json:"study_suggestion"`
+	Confidence      float64                  `json:"confidence"`
+	SourceChunkID   *int64                   `json:"source_chunk_id"`
+	SuggestedDocuments []map[string]interface{} `json:"suggested_documents"`
+	Language        string                   `json:"language"`
 }
 
 func (c *Client) DiagnoseError(ctx context.Context, req DiagnoseRequest) (*DiagnoseResponse, error) {
@@ -220,6 +220,33 @@ func (c *Client) GetReviewStats(ctx context.Context, studentID, courseID int64) 
 		return nil, fmt.Errorf("ai.GetReviewStats: %w", err)
 	}
 	return resp, nil
+}
+
+// ── Knowledge Nodes ────────────────────────────────────────────────────────────
+
+type GenerateFlashcardsRequest struct {
+	StudentID      int64    `json:"student_id"`
+	NodeID         int64    `json:"node_id"`
+	CourseID       int64    `json:"course_id"`
+	Count          int      `json:"count"`
+	ExistingFronts []string `json:"existing_fronts,omitempty"`
+}
+
+type AIFlashcard struct {
+	FrontText string `json:"front_text"`
+	BackText  string `json:"back_text"`
+}
+
+type GenerateFlashcardsResponse struct {
+	Flashcards []AIFlashcard `json:"flashcards"`
+}
+
+func (c *Client) GenerateFlashcards(ctx context.Context, req GenerateFlashcardsRequest) (*GenerateFlashcardsResponse, error) {
+	var resp GenerateFlashcardsResponse
+	if err := c.post(ctx, "/ai/flashcards/generate", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GenerateFlashcards: %w", err)
+	}
+	return &resp, nil
 }
 
 // ── Knowledge Nodes ────────────────────────────────────────────────────────────

@@ -260,20 +260,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Find node_id via question
-    WITH q AS (
-        SELECT qq.node_id, qa.student_id,
-               sc2.id AS course_content_id
-        FROM quiz_student_answers qsa
-        JOIN quiz_questions qq ON qq.id = NEW.question_id
-        JOIN quiz_attempts qa ON qa.id = NEW.attempt_id
-        JOIN quizzes qz ON qz.id = qa.quiz_id
-        JOIN section_content sc ON sc.id = qz.content_id
-        JOIN course_sections cs ON cs.id = sc.section_id
-        JOIN courses c ON c.id = cs.course_id
-        WHERE qsa.id = NEW.id
-        LIMIT 1
-    )
+    -- Update knowledge progress if question is linked to a knowledge node
     INSERT INTO student_knowledge_progress (student_id, node_id, course_id, total_attempts, correct_count, wrong_count, mastery_level, last_tested_at)
     SELECT
         qa.student_id,

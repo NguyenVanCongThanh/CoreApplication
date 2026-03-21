@@ -102,6 +102,8 @@ func main() {
 	progressRepo := repository.NewProgressRepository(db)
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 
+	flashcardRepo := repository.NewFlashcardRepository(db)
+
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
@@ -112,6 +114,7 @@ func main() {
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
 	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo)
+	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient)
 
 	// Initialize handlers
 	userHandler := handler.NewUserHandler(userService)
@@ -123,7 +126,8 @@ func main() {
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
-	aiHandler := handler.NewAIHandler(aiClient)
+	aiHandler := handler.NewAIHandler(aiClient, courseRepo)
+	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -223,10 +227,23 @@ func main() {
 
 				// ── Analytics (Student) ───────────────────────────────────
 				courses.GET("/:courseId/my-quiz-scores", analyticsHandler.GetMyQuizScores)
+				courses.GET("/:courseId/analytics/weaknesses", analyticsHandler.GetStudentWeaknesses)
+				courses.GET("/:courseId/analytics/flashcard-stats", analyticsHandler.GetFlashcardStats)
+
+				// ── Flashcards (Student) ──────────────────────────────────
+				courses.POST("/:courseId/nodes/:nodeId/flashcards/generate", flashcardHandler.GenerateFlashcards)
+				courses.GET("/:courseId/flashcards/due", flashcardHandler.ListDueFlashcards)
+				courses.GET("/:courseId/nodes/:nodeId/flashcards", flashcardHandler.ListFlashcardsByNode)
 
 				// ── Progress tracking (Student) ───────────────────────────
 				courses.GET("/:courseId/my-progress", progressHandler.GetMyProgress)
 				courses.GET("/:courseId/progress-detail", progressHandler.GetMyProgressDetail)
+			}
+
+			// FLASHCARD ROUTE (Outside course root context)
+			flashcards := auth.Group("/flashcards")
+			{
+				flashcards.POST("/:flashcardId/review", flashcardHandler.ReviewFlashcard)
 			}
 
 			// SECTION MANAGEMENT
