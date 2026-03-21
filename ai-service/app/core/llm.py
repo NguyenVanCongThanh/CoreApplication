@@ -177,18 +177,23 @@ def build_diagnosis_prompt(
     question_text: str,
     wrong_answer: str,
     correct_answer: str,
+    distractor_options: list[str],
     context_chunks: list[str],
     language: str = "vi",
 ) -> list[dict]:
     context = "\n---\n".join(f"[Đoạn {i+1}] {c}" for i, c in enumerate(context_chunks))
+    distractors_text = "\n".join(f"  - {d}" for d in distractor_options) if distractor_options else "Không có"
     
     if language == "vi":
         user_msg = (
             f"TÀI LIỆU THAM KHẢO:\n{context}\n\n---\n"
             f"CÂU HỎI: {question_text}\n"
             f"ĐÁP ÁN ĐÚNG: {correct_answer}\n"
+            f"CÁC ĐÁP ÁN NHIỄU:\n{distractors_text}\n"
             f"HỌC SINH TRẢ LỜI: {wrong_answer}\n\n"
-            f"Phân tích lỗi và trả về JSON:\n"
+            f"Phân tích TẠI SAO sinh viên chọn \"{wrong_answer}\" thay vì đáp án đúng. "
+            f"Chỉ ra sự nhầm lẫn cụ thể giữa đáp án sinh viên chọn và đáp án đúng. "
+            f"Trả về JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
             f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
         )
@@ -197,8 +202,11 @@ def build_diagnosis_prompt(
             f"REFERENCE MATERIAL:\n{context}\n\n---\n"
             f"QUESTION: {question_text}\n"
             f"CORRECT ANSWER: {correct_answer}\n"
+            f"DISTRACTOR OPTIONS:\n{distractors_text}\n"
             f"STUDENT ANSWERED: {wrong_answer}\n\n"
-            f"Analyze the error and return JSON:\n"
+            f"Analyze WHY student chose \"{wrong_answer}\" instead of correct answer. "
+            f"Identify the specific confusion between the student's answer and the correct answer. "
+            f"Return JSON:\n"
             f'{{"explanation": "...","gap_type": "misconception | missing_prerequisite | careless | other",'
             f'"knowledge_gap": "...","study_suggestion": "...","confidence": 0.0}}'
         )
