@@ -200,7 +200,7 @@ export default function AIDiagnosisModal({
 
                             {doc.snippet && (
                               <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 line-clamp-2 italic">
-                                "{doc.snippet}"
+                                {doc.snippet}
                               </p>
                             )}
                           </div>
