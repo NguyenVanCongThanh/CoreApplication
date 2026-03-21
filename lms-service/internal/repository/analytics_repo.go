@@ -8,8 +8,6 @@ import (
 	"example/hello/internal/dto"
 )
 
-// ─── Raw row types ─────────────────────────────────────────────────────────────
-
 type QuizPerformanceRow struct {
 	QuizID         int64
 	QuizTitle      string
@@ -70,8 +68,6 @@ type StudentQuizScoreRow struct {
 	Status        string
 }
 
-// ─── Repository ───────────────────────────────────────────────────────────────
-
 type AnalyticsRepository struct {
 	db *sql.DB
 }
@@ -85,9 +81,7 @@ func NewAnalyticsRepository(db *sql.DB) *AnalyticsRepository {
 func (r *AnalyticsRepository) GetCourseQuizAnalytics(ctx context.Context, courseID int64) ([]QuizPerformanceRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			q.id                                                                        AS quiz_id,
-			q.title                                                                     AS quiz_title,
-			q.content_id,
+			q.id, q.title, q.content_id,
 			COUNT(DISTINCT qa.id)                                                       AS total_attempts,
 			COUNT(DISTINCT qa.student_id)                                               AS unique_students,
 			AVG(qa.earned_points)                                                       AS avg_score,
@@ -101,11 +95,10 @@ func (r *AnalyticsRepository) GetCourseQuizAnalytics(ctx context.Context, course
 		JOIN section_content sc ON q.content_id = sc.id
 		JOIN course_sections cs ON sc.section_id = cs.id
 		LEFT JOIN quiz_attempts qa
-			ON qa.quiz_id = q.id
-			AND qa.status IN ('SUBMITTED', 'GRADED')
+			ON qa.quiz_id = q.id AND qa.status IN ('SUBMITTED', 'GRADED')
 		WHERE cs.course_id = $1
 		GROUP BY q.id, q.title, q.content_id, q.passing_score
-		ORDER BY cs.order_index ASC, sc.order_index ASC
+		ORDER BY MIN(cs.order_index) ASC, MIN(sc.order_index) ASC
 	`, courseID)
 	if err != nil {
 		return nil, err
@@ -134,22 +127,15 @@ func (r *AnalyticsRepository) GetQuizAllAttempts(ctx context.Context, quizID int
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			qa.student_id,
-			u.full_name          AS student_name,
-			u.email              AS student_email,
-			q.id                 AS quiz_id,
-			q.title              AS quiz_title,
+			u.full_name, u.email,
+			q.id, q.title,
 			qa.attempt_number,
-			qa.earned_points,
-			q.total_points,
-			qa.percentage,
-			qa.is_passed,
-			qa.status,
-			qa.submitted_at
+			qa.earned_points, q.total_points,
+			qa.percentage, qa.is_passed, qa.status, qa.submitted_at
 		FROM quiz_attempts qa
-		JOIN users   u ON u.id  = qa.student_id
-		JOIN quizzes q ON q.id  = qa.quiz_id
-		WHERE qa.quiz_id = $1
-		  AND qa.status IN ('SUBMITTED', 'GRADED')
+		JOIN users   u ON u.id = qa.student_id
+		JOIN quizzes q ON q.id = qa.quiz_id
+		WHERE qa.quiz_id = $1 AND qa.status IN ('SUBMITTED', 'GRADED')
 		ORDER BY u.full_name ASC, qa.attempt_number DESC
 	`, quizID)
 	if err != nil {
@@ -179,18 +165,16 @@ func (r *AnalyticsRepository) GetQuizAllAttempts(ctx context.Context, quizID int
 func (r *AnalyticsRepository) GetQuizWrongAnswerStats(ctx context.Context, quizID int64) ([]WrongAnswerRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			qq.id                                                                        AS question_id,
-			qq.question_text,
-			qq.question_type,
-			COUNT(*)                                                                     AS total_answers,
-			COUNT(*) FILTER (WHERE qsa.is_correct = FALSE)                              AS wrong_count,
+			qq.id, qq.question_text, qq.question_type,
+			COUNT(*)                                               AS total_answers,
+			COUNT(*) FILTER (WHERE qsa.is_correct = FALSE)        AS wrong_count,
 			COALESCE(
 				COUNT(*) FILTER (WHERE qsa.is_correct = FALSE)::FLOAT
 				/ NULLIF(COUNT(*), 0) * 100
-			, 0)                                                                         AS wrong_rate
+			, 0)                                                   AS wrong_rate
 		FROM quiz_student_answers qsa
-		JOIN quiz_questions qq ON qq.id  = qsa.question_id
-		JOIN quiz_attempts  qa ON qa.id  = qsa.attempt_id
+		JOIN quiz_questions qq ON qq.id = qsa.question_id
+		JOIN quiz_attempts  qa ON qa.id = qsa.attempt_id
 		WHERE qq.quiz_id = $1
 		  AND qa.status IN ('SUBMITTED', 'GRADED')
 		  AND qsa.is_correct IS NOT NULL
@@ -223,31 +207,30 @@ func (r *AnalyticsRepository) GetCourseStudentProgressOverview(ctx context.Conte
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			e.student_id,
-			u.full_name                                                                  AS student_name,
-			u.email                                                                      AS student_email,
-			COUNT(DISTINCT sc.id) FILTER (WHERE sc.is_mandatory = TRUE)                 AS total_mandatory,
-			COUNT(DISTINCT cp.content_id) FILTER (WHERE sc.is_mandatory = TRUE
-			                                        AND cp.id IS NOT NULL)               AS completed_content,
+			u.full_name, u.email,
+			COUNT(DISTINCT sc.id) FILTER (WHERE sc.is_mandatory = TRUE)    AS total_mandatory,
+			COUNT(DISTINCT cp.content_id) FILTER (
+				WHERE sc.is_mandatory = TRUE AND cp.id IS NOT NULL
+			)                                                                AS completed_content,
 			COALESCE(
-				COUNT(DISTINCT cp.content_id) FILTER (WHERE sc.is_mandatory = TRUE
-				                                         AND cp.id IS NOT NULL)::FLOAT
+				COUNT(DISTINCT cp.content_id) FILTER (
+					WHERE sc.is_mandatory = TRUE AND cp.id IS NOT NULL
+				)::FLOAT
 				/ NULLIF(COUNT(DISTINCT sc.id) FILTER (WHERE sc.is_mandatory = TRUE), 0) * 100
-			, 0)                                                                         AS progress_percent,
-			AVG(qa.percentage)                                                           AS quiz_avg_score,
-			GREATEST(MAX(cp.completed_at), MAX(qa.submitted_at))                        AS last_activity
+			, 0)                                                             AS progress_percent,
+			AVG(qa.percentage)                                               AS quiz_avg_score,
+			GREATEST(MAX(cp.completed_at), MAX(qa.submitted_at))            AS last_activity
 		FROM enrollments e
 		JOIN users u ON u.id = e.student_id
 		JOIN course_sections cs ON cs.course_id = $1
 		JOIN section_content sc ON sc.section_id = cs.id
 		LEFT JOIN content_progress cp
-			ON cp.content_id = sc.id
-			AND cp.student_id = e.student_id
+			ON cp.content_id = sc.id AND cp.student_id = e.student_id
 		LEFT JOIN quiz_attempts qa
 			ON qa.student_id = e.student_id
 			AND qa.status IN ('SUBMITTED', 'GRADED')
 			AND qa.quiz_id IN (
-				SELECT q2.id
-				FROM quizzes q2
+				SELECT q2.id FROM quizzes q2
 				JOIN section_content sc2 ON sc2.id = q2.content_id
 				JOIN course_sections cs2 ON cs2.id = sc2.section_id
 				WHERE cs2.course_id = $1
@@ -281,32 +264,34 @@ func (r *AnalyticsRepository) GetCourseStudentProgressOverview(ctx context.Conte
 func (r *AnalyticsRepository) GetStudentQuizScores(ctx context.Context, courseID, studentID int64) ([]StudentQuizScoreRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			q.id                                                                         AS quiz_id,
-			q.title                                                                      AS quiz_title,
-			MAX(qa.percentage)                                                           AS best_pct,
-			MAX(qa.earned_points)                                                        AS best_points,
+			q.id, q.title,
+			MAX(qa.percentage)      AS best_pct,
+			MAX(qa.earned_points)   AS best_points,
 			q.total_points,
-			COUNT(qa.id)                                                                 AS attempts_count,
-			BOOL_OR(qa.is_passed)                                                        AS is_passed,
+			COUNT(qa.id)            AS attempts_count,
+			BOOL_OR(COALESCE(qa.is_passed, FALSE)) AS is_passed,
 			q.passing_score,
-			MAX(qa.submitted_at)                                                         AS last_attempt_at,
+			MAX(qa.submitted_at)    AS last_attempt_at,
 			CASE
-				WHEN COUNT(qa.id) = 0                                                    THEN 'not_started'
-				WHEN SUM(CASE WHEN qa.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) > 0     THEN 'in_progress'
-				WHEN BOOL_OR(qa.is_passed)                                               THEN 'passed'
+				WHEN COUNT(qa.id) = 0
+					THEN 'not_started'
+				WHEN SUM(CASE WHEN qa.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) > 0
+					THEN 'in_progress'
+				WHEN BOOL_OR(COALESCE(qa.is_passed, FALSE))
+					THEN 'passed'
 				WHEN COUNT(qa.id) FILTER (WHERE qa.status IN ('SUBMITTED','GRADED')) > 0
-				     AND NOT BOOL_OR(COALESCE(qa.is_passed, FALSE))                      THEN 'failed'
+					AND NOT BOOL_OR(COALESCE(qa.is_passed, FALSE))
+					THEN 'failed'
 				ELSE 'submitted'
-			END                                                                          AS status
+			END AS status
 		FROM quizzes q
 		JOIN section_content sc ON sc.id = q.content_id
 		JOIN course_sections cs ON cs.id = sc.section_id
 		LEFT JOIN quiz_attempts qa
-			ON qa.quiz_id = q.id
-			AND qa.student_id = $2
+			ON qa.quiz_id = q.id AND qa.student_id = $2
 		WHERE cs.course_id = $1
 		GROUP BY q.id, q.title, q.total_points, q.passing_score
-		ORDER BY cs.order_index ASC, sc.order_index ASC
+		ORDER BY MIN(cs.order_index) ASC, MIN(sc.order_index) ASC
 	`, courseID, studentID)
 	if err != nil {
 		return nil, err
@@ -346,12 +331,11 @@ func (r *AnalyticsRepository) GetQuizCourseID(ctx context.Context, quizID int64)
 	return courseID, err
 }
 
-// GetStudentWeaknesses returns the student's mastery level per knowledge node for a course.
 func (r *AnalyticsRepository) GetStudentWeaknesses(ctx context.Context, studentID, courseID int64) ([]dto.WeakNode, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			skp.node_id,
-			kn.title AS node_title,
+			kn.name AS node_title,
 			skp.wrong_count,
 			skp.total_attempts,
 			skp.mastery_level,
@@ -391,8 +375,8 @@ func (r *AnalyticsRepository) GetFlashcardStats(ctx context.Context, studentID, 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE next_review_date <= CURRENT_DATE) AS today_due_count,
-			COUNT(*) FILTER (WHERE next_review_date > CURRENT_DATE) AS upcoming_count,
-			COUNT(*) AS learning_count
+			COUNT(*) FILTER (WHERE next_review_date > CURRENT_DATE)  AS upcoming_count,
+			COUNT(*)                                                  AS learning_count
 		FROM flashcard_repetitions
 		WHERE student_id = $1 AND course_id = $2
 	`, studentID, courseID).Scan(
@@ -406,5 +390,4 @@ func (r *AnalyticsRepository) GetFlashcardStats(ctx context.Context, studentID, 
 	return &stats, nil
 }
 
-// keep compiler happy if time is imported but only used indirectly
 var _ = time.Time{}

@@ -55,15 +55,19 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
     async with get_async_conn() as conn:
         mistakes = await conn.fetch(
             """
-            SELECT error_data->>'knowledge_gap' AS gap
-            FROM student_knowledge_progress
+            SELECT explanation AS gap
+            FROM ai_diagnoses
             WHERE student_id = $1 AND node_id = $2
+            AND explanation IS NOT NULL AND explanation != ''
+            ORDER BY created_at DESC
+            LIMIT 3
             """,
             body.student_id, body.node_id
         )
-    
-        if mistakes and mistakes[0] and mistakes[0]["gap"]:
-            wrong_answers_context = mistakes[0]["gap"]
+        if mistakes:
+            wrong_answers_context = "\n".join(
+                r["gap"] for r in mistakes if r["gap"]
+            )
         
         # If no explicit AI gap generated, fetch raw wrong answers
         if not wrong_answers_context:

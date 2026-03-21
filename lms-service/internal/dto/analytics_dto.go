@@ -82,7 +82,7 @@ type StudentWeaknessOverview struct {
 // WeakNode represents a specific knowledge node and the student's mastery level
 type WeakNode struct {
 	NodeID       int64   `json:"node_id"`
-	NodeTitle    string  `json:"node_title"`
+	NodeTitle    string  `json:"node_name"`
 	WrongCount   int     `json:"wrong_count"`
 	TotalAttempt int     `json:"total_attempt"`
 	MasteryLevel float64 `json:"mastery_level"` // 0.0 to 1.0

@@ -109,7 +109,7 @@ export function WeaknessTracker({ courseId }: Props) {
         </div>
         <div className="text-right">
           <div className="text-2xl font-black text-slate-900 dark:text-slate-50">
-            {data.total_wrong_percentage}%
+            {data.total_wrong_percent}%
           </div>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
             Sai sót chung
@@ -130,17 +130,17 @@ export function WeaknessTracker({ courseId }: Props) {
                     {node.node_name}
                   </h4>
                   <span className={cn("text-xs px-2.5 py-0.5 rounded-full font-semibold border", colorClass)}>
-                    {node.mastery_level}
+                    {node.status_level}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
-                    <strong>{node.total_wrong}</strong> lỗi sai
+                    <strong>{node.wrong_count}</strong> lỗi sai
                   </span>
                   <span className="flex items-center gap-1">
                     <TrendingDown className="w-3.5 h-3.5 text-slate-400" />
-                    <strong>{node.wrong_rate}%</strong> tỷ lệ sai
+                    <strong>{(node.wrong_count / node.total_attempt) * 100}%</strong> tỷ lệ sai
                   </span>
                 </div>
               </div>

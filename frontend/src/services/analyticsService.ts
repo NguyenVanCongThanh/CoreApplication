@@ -78,14 +78,15 @@ export interface WrongAnswerStat {
 export interface WeakNode {
   node_id: number;
   node_name: string;
-  total_wrong: number;
-  mastery_level: "Rất tốt" | "TB" | "Yếu" | "Cần cải thiện";
-  wrong_rate: number;
+  total_attempt: number;
+  mastery_level: number;
+  status_level: "Rất tốt" | "TB" | "Yếu" | "Cần cải thiện";
+  wrong_count: number;
 }
 
 export interface WeaknessOverviewResponse {
   course_id: number;
-  total_wrong_percentage: number;
+  total_wrong_percent: number;
   weak_nodes: WeakNode[];
 }
 

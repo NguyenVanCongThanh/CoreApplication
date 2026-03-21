@@ -62,7 +62,7 @@ function HeatCell({ node }: { node: HeatmapNode }) {
         <p className="text-white font-semibold text-xs leading-tight truncate">
           {node.name_vi ?? node.node_name}
         </p>
-        <p className="text-white/80 text-xs mt-1 font-mono">{node.wrong_rate}% sai</p>
+        <p className="text-white/80 text-xs mt-1 font-mono">{node.total_wrong / node.total_attempts}% sai</p>
       </div>
 
       {/* Tooltip */}
