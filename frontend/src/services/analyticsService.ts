@@ -91,8 +91,8 @@ export interface WeaknessOverviewResponse {
 }
 
 export interface FlashcardStatsResponse {
-  today_due: number;
-  upcoming: number;
+  today_due_count: number;
+  upcoming_count: number;
   learning_count: number;
 }
 

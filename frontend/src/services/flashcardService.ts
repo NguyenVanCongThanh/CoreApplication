@@ -20,9 +20,13 @@ export interface FlashcardRepetition {
 }
 
 export interface FlashcardDueItem {
-  flashcard: Flashcard;
-  repetition: FlashcardRepetition;
-  node_name?: string;
+  id: number;
+  course_id: number;
+  node_id: number;
+  front_text: string;
+  back_text: string;
+  status: string;
+  next_review_date: string;
 }
 
 export interface GenerateFlashcardsRequest {

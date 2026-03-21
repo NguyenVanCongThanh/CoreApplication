@@ -31,7 +31,6 @@ import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
 import { WeaknessTracker } from "@/components/lms/student/WeaknessTracker";
 import { FlashcardWidget } from "@/components/lms/student/FlashcardWidget";
-import { SpacedRepetitionWidget } from "@/components/lms/student/SpacedRepetitionWidget";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 
@@ -741,9 +740,6 @@ export default function StudentCourseDetailPage() {
               </section>              
               {/* Weakness Tracker */}
               <WeaknessTracker courseId={id} />
-
-              {/* Spaced Repetition (Quiz) */}
-              <SpacedRepetitionWidget courseId={id} />
               
               {/* Spaced Repetition (Flashcard) */}
               <FlashcardWidget courseId={id} />

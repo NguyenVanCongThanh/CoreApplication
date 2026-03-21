@@ -49,6 +49,7 @@ export function FlashcardWidget({ courseId }: Props) {
         analyticsService.getFlashcardStats(courseId),
         flashcardService.listDueFlashcards(courseId),
       ]);
+      console.log(sRes, cardsRes)
       setStats(sRes.data);
       setDueCards(cardsRes.data || []);
     } catch (e: any) {
@@ -67,7 +68,7 @@ export function FlashcardWidget({ courseId }: Props) {
     if (!item) return;
     setSubmitting(true);
     try {
-      await flashcardService.reviewFlashcard(item.flashcard.id, quality);
+      await flashcardService.reviewFlashcard(item.id, quality);
       if (current + 1 >= dueCards.length) {
         setDone(true);
         await load();
@@ -124,7 +125,7 @@ export function FlashcardWidget({ courseId }: Props) {
   // ── Idle state ───────────────────────────────────────────────────────────
 
   if (session === "idle") {
-    const dueToday = stats?.today_due ?? 0;
+    const dueToday = stats?.today_due_count ?? 0;
 
     return (
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -147,13 +148,13 @@ export function FlashcardWidget({ courseId }: Props) {
             {
               icon: <Clock className="w-4 h-4 text-red-500" />,
               label: "Hôm nay",
-              value: stats?.today_due ?? 0,
-              accent: (stats?.today_due ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "",
+              value: stats?.today_due_count ?? 0,
+              accent: (stats?.today_due_count ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "",
             },
             {
               icon: <Calendar className="w-4 h-4 text-blue-500" />,
               label: "Sắp tới",
-              value: stats?.upcoming ?? 0,
+              value: stats?.upcoming_count ?? 0,
               accent: "",
             },
             {
@@ -248,9 +249,9 @@ export function FlashcardWidget({ courseId }: Props) {
             Thẻ {current + 1} / {dueCards.length}
           </p>
         </div>
-        {item?.node_name && (
+        {item?.node_id && (
           <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full truncate max-w-[150px]">
-            {item.node_name}
+            {item.node_id}
           </span>
         )}
         <button
@@ -265,7 +266,7 @@ export function FlashcardWidget({ courseId }: Props) {
       <div className="flex-1 px-5 py-6 flex flex-col items-center justify-center relative perspective-1000">
         <AnimatePresence mode="wait">
           <motion.div
-            key={item?.flashcard.id + (isFlipped ? "-back" : "-front")}
+            key={item?.id + (isFlipped ? "-back" : "-front")}
             initial={{ rotateY: isFlipped ? -90 : 90, opacity: 0 }}
             animate={{ rotateY: 0, opacity: 1 }}
             exit={{ rotateY: isFlipped ? 90 : -90, opacity: 0 }}
@@ -285,7 +286,7 @@ export function FlashcardWidget({ courseId }: Props) {
                   Đáp án
                 </p>
                 <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-slate-100 leading-relaxed max-h-[220px] overflow-y-auto">
-                  {item?.flashcard.back_text}
+                  {item?.back_text}
                 </div>
               </>
             ) : (
@@ -294,7 +295,7 @@ export function FlashcardWidget({ courseId }: Props) {
                   Câu hỏi / Khái niệm
                 </p>
                 <div className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-50 leading-snug">
-                  {item?.flashcard.front_text}
+                  {item?.front_text}
                 </div>
                 <div className="mt-8 flex items-center gap-2 text-sm text-slate-400">
                   <Rotate3d className="w-4 h-4" />

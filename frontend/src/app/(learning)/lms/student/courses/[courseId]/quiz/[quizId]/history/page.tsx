@@ -253,38 +253,40 @@ export default function QuizHistoryPage() {
             </Button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {attempts.map((attempt) => (
               <div
                 key={attempt.id}
-                className="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow"
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-4">
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-slate-50">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    {/* Header row */}
+                    <div className="flex items-center gap-3 mb-4 flex-wrap">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50">
                         Lần làm #{attempt.attempt_number}
                       </h3>
                       {getStatusBadge(attempt)}
                     </div>
 
+                    {/* Meta grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Calendar className="w-4 h-4" />
+                      <div className="flex items-start gap-2">
+                        <Calendar className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-500">Bắt đầu</p>
-                          <p className="text-sm font-medium">
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                             {formatDate(attempt.started_at)}
                           </p>
                         </div>
                       </div>
 
                       {attempt.submitted_at && (
-                        <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                          <Clock className="w-4 h-4" />
+                        <div className="flex items-start gap-2">
+                          <Clock className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
                           <div>
                             <p className="text-xs text-slate-500 dark:text-slate-500">Thời gian làm</p>
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                               {formatDuration(attempt.time_spent_seconds)}
                             </p>
                           </div>
@@ -297,43 +299,56 @@ export default function QuizHistoryPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
+                    {/* Stats row */}
+                    <div className="flex items-center gap-6 flex-wrap text-sm text-slate-600 dark:text-slate-400">
                       <span>
-                        Đã trả lời: <strong>{attempt.answered_questions}</strong> câu
+                        Đã trả lời:{" "}
+                        <strong className="text-slate-900 dark:text-slate-100">
+                          {attempt.answered_questions}
+                        </strong>{" "}
+                        câu
                       </span>
                       <span>
-                        Đúng: <strong className="text-green-600">{attempt.correct_answers}</strong>
+                        Đúng:{" "}
+                        <strong className="text-green-600 dark:text-green-400">
+                          {attempt.correct_answers}
+                        </strong>
                       </span>
                       {attempt.passing_score !== null && (
                         <span>
-                          Chuẩn đầu ra: <strong>{attempt.passing_score.toFixed(0)}%</strong>
+                          Chuẩn đầu ra:{" "}
+                          <strong className="text-slate-900 dark:text-slate-100">
+                            {attempt.passing_score.toFixed(0)}%
+                          </strong>
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="ml-4">
-                    {attempt.status !== "IN_PROGRESS" && (
-                      <Button
+                  {/* Action */}
+                  <div className="flex-shrink-0">
+                    {attempt.status !== "IN_PROGRESS" ? (
+                      <button
                         onClick={() =>
-                          router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/result/${attempt.id}`)
+                          router.push(
+                            `/lms/student/courses/${courseId}/quiz/${quizId}/result/${attempt.id}`
+                          )
                         }
-                        variant="outline"
-                        size="lg"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-sm font-medium transition-all active:scale-95"
                       >
-                        <Eye className="w-4 h-4 mr-2" />
+                        <Eye className="w-4 h-4" />
                         Xem chi tiết
-                      </Button>
-                    )}
-                    {attempt.status === "IN_PROGRESS" && (
-                      <Button
-                        onClick={() => router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/take`)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                        size="lg"
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          router.push(`/lms/student/courses/${courseId}/quiz/${quizId}/take`)
+                        }
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all active:scale-95 shadow-sm"
                       >
-                        <Play className="w-4 h-4 mr-2" />
+                        <Play className="w-4 h-4" />
                         Tiếp tục
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </div>
