@@ -455,7 +455,7 @@ export default function StudentCourseDetailPage() {
     if (completedIds.has(contentId) || markingComplete) return;
     setMarkingComplete(true);
     try {
-      const res = await progressService.markContentComplete(contentId);
+      await progressService.markContentComplete(contentId);
       setCompletedIds(prev => new Set([...prev, contentId]));
       await loadProgress(); // refresh summary
     } catch {

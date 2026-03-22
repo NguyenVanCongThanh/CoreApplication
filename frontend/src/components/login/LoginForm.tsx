@@ -27,10 +27,21 @@ export default function LoginForm() {
     
     setLoading(true);
     try {
-      const { token, name, email: userEmail, role, userId, maxAge } = await userService.login(email, password);
-      document.cookie = `authToken=${token}; path=/; max-age=${maxAge / 1000}; SameSite=Strict;`;
-      setUser({ id: userId, name, email: userEmail, role });
+      const result = await (await import("next-auth/react")).signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error("Email hoặc mật khẩu không chính xác.");
+      }
+
+      const data = await userService.login(email, password);
+      setUser({ id: data.userId, name: data.name, email: data.email, role: data.role });
+      
       router.push("/dashboard");
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Đăng nhập thất bại. Vui lòng thử lại.");
     } finally {

@@ -1,13 +1,12 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import lmsService from "@/services/lmsService";
 import ForumPostDetail from "@/components/lms/forum/ForumPostDetail";
 
 export default function PostDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const postId = parseInt(params.postId as string);
   
   const [roles, setRoles] = useState<string[]>([]);

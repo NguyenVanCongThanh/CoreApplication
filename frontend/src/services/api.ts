@@ -9,12 +9,27 @@ export class ApiClient {
   }
 
   private async getHeaders(): Promise<HeadersInit> {
-    const token = await getAuthToken();
     return {
       "Content-Type": "application/json",
       Accept: "*/*",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
+  }
+
+  private async handleResponse<T>(response: Response, endpoint: string): Promise<T> {
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        const { signOut } = await import("next-auth/react");
+        signOut({ callbackUrl: "/login" });
+      }
+      throw new Error("Unauthorized (401)");
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Request to ${endpoint} failed (${response.status})${text ? `: ${text}` : ""}`);
+    }
+
+    return response.json();
   }
 
   async get<T>(endpoint: string): Promise<T> {
@@ -23,11 +38,7 @@ export class ApiClient {
       headers: await this.getHeaders(),
       credentials: "include",
     });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`GET ${endpoint} failed (${response.status})${text ? `: ${text}` : ""}`);
-    }
-    return response.json();
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async post<T>(endpoint: string, data: unknown): Promise<T> {
@@ -37,11 +48,7 @@ export class ApiClient {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || `POST ${endpoint} failed (${response.status})`);
-    }
-    return response.json();
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async patch<T>(endpoint: string, data: unknown): Promise<T> {
@@ -51,11 +58,7 @@ export class ApiClient {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || `PATCH ${endpoint} failed (${response.status})`);
-    }
-    return response.json();
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async put<T>(endpoint: string, data: unknown): Promise<T> {
@@ -65,11 +68,7 @@ export class ApiClient {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || `PUT ${endpoint} failed (${response.status})`);
-    }
-    return response.json();
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async delete(endpoint: string): Promise<void> {
@@ -78,6 +77,11 @@ export class ApiClient {
       headers: await this.getHeaders(),
       credentials: "include",
     });
+    if (response.status === 401) {
+       const { signOut } = await import("next-auth/react");
+       signOut({ callbackUrl: "/login" });
+       return;
+    }
     if (!response.ok) {
       throw new Error(`DELETE ${endpoint} failed (${response.status})`);
     }
@@ -91,15 +95,10 @@ export class ApiClient {
       headers: {
         Accept: "*/*",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        // Không set Content-Type → browser tự thêm multipart/form-data + boundary
       },
       body: formData,
     });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Upload ${endpoint} failed (${response.status})${text ? `: ${text}` : ""}`);
-    }
-    return response.json();
+    return this.handleResponse<T>(response, endpoint);
   }
 }
 

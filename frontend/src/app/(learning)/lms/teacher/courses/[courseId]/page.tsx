@@ -15,7 +15,7 @@ import { AIQuizGenPanel } from "@/components/lms/teacher/AIQuizGenPanel";
 import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
-  Trash2, Eye, CheckCircle2, XCircle,
+  Trash2, Eye, CheckCircle2,
   Edit3, Upload, Play, FileText, HelpCircle, File,
   MessageSquare, Megaphone, Image as ImageIcon
 } from "lucide-react";
@@ -43,7 +43,6 @@ function LearnersTab({ courseId }: { courseId: number }) {
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL"|"ACCEPTED"|"REJECTED">("ALL");
-  const [processing, setProcessing] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,23 +54,6 @@ function LearnersTab({ courseId }: { courseId: number }) {
   }, [courseId, filter]);
 
   useEffect(() => { load(); }, [filter]);
-
-  const accept = async (enrollmentId: number) => {
-    setProcessing(enrollmentId);
-    try {
-      await lmsService.acceptEnrollment(enrollmentId, courseId);
-      setLearners(prev => prev.map(l => l.id === enrollmentId ? { ...l, status: "ACCEPTED" } : l));
-    } finally { setProcessing(null); }
-  };
-
-  const reject = async (enrollmentId: number) => {
-    if (!confirm("Từ chối yêu cầu này?")) return;
-    setProcessing(enrollmentId);
-    try {
-      await lmsService.rejectEnrollment(enrollmentId, courseId);
-      setLearners(prev => prev.map(l => l.id === enrollmentId ? { ...l, status: "REJECTED" } : l));
-    } finally { setProcessing(null); }
-  };
 
   const counts = {
     accepted: learners.filter(l => l.status === "ACCEPTED").length,
@@ -179,7 +161,8 @@ function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
   const toggle = (id: number) => {
     setExpanded(prev => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      const done = n.has(id) ? n.delete(id) : n.add(id);
+      if (done) return n;
       return n;
     });
   };

@@ -18,11 +18,6 @@ import { Course, Enrollment } from "@/types";
 
 type Tab = "my-courses" | "discover";
 
-interface CourseWithProgress extends Enrollment {
-  progress?: number;
-  last_accessed?: string;
-}
-
 // ─── Stats row ────────────────────────────────────────────────────────────────
 
 function LearningStats({ enrollments }: { enrollments: Enrollment[] }) {

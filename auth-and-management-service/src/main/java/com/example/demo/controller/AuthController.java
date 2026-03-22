@@ -30,28 +30,81 @@ public class AuthController {
     @Value("${jwt.expirationMs}")
     private long expirationMs;
 
+    @Value("${jwt.refreshExpirationMs:604800000}")
+    private long refreshExpirationMs;
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         User user = authService.authenticate(request);
 
         String token = authService.generateToken(user);
+        String refreshToken = authService.generateRefreshToken(user);
 
-        ResponseCookie cookie = ResponseCookie.from("authToken", token)
+        ResponseCookie authCookie = ResponseCookie.from("authToken", token)
                 .httpOnly(true)
-                .secure(false)
+                .secure(false) // Set to true in production
                 .path("/")
-                .maxAge(expirationMs)
+                .maxAge(expirationMs / 1000)
+                .sameSite("Strict")
+                .build();
+
+        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken)
+                .httpOnly(true)
+                .secure(false) // Set to true in production
+                .path("/")
+                .maxAge(refreshExpirationMs / 1000)
                 .sameSite("Strict")
                 .build();
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .header(HttpHeaders.SET_COOKIE, authCookie.toString())
+                .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
                 .body(Map.of(
-                        "token", token,
                         "userId", user.getId(),
                         "name", user.getName(),
                         "email", user.getEmail(),
-                        "role", user.getRole().name()
+                        "role", user.getRole().name(),
+                        "expiresIn", expirationMs
+                ));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody Map<String, String> request, 
+                                   @CookieValue(name = "refreshToken", required = false) String refreshTokenFromCookie) {
+        
+        String refreshToken = refreshTokenFromCookie != null ? refreshTokenFromCookie : request.get("refreshToken");
+        
+        if (refreshToken == null || !authService.validateToken(refreshToken)) {
+            return ResponseEntity.status(401).body(Map.of("message", "Invalid refresh token"));
+        }
+
+        String email = authService.extractEmail(refreshToken);
+        User user = userService.getUserByEmail(email);
+        
+        String newToken = authService.generateToken(user);
+        String newRefreshToken = authService.generateRefreshToken(user);
+
+        ResponseCookie authCookie = ResponseCookie.from("authToken", newToken)
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .maxAge(expirationMs / 1000)
+                .sameSite("Strict")
+                .build();
+
+        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", newRefreshToken)
+                .httpOnly(true)
+                .secure(false)
+                .path("/")
+                .maxAge(refreshExpirationMs / 1000)
+                .sameSite("Strict")
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, authCookie.toString())
+                .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
+                .body(Map.of(
+                        "expiresIn", expirationMs
                 ));
     }
 

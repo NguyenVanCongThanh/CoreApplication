@@ -22,6 +22,9 @@ public class JwtService {
     @Value("${jwt.expirationMs}")
     private long expirationMs;
 
+    @Value("${jwt.refreshExpirationMs:604800000}") // Default 7 days
+    private long refreshExpirationMs;
+
     @PostConstruct
     public void init() {
         this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes());
@@ -35,6 +38,16 @@ public class JwtService {
                 .claim("roles", roles)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public String generateRefreshToken(Long userId, String email) {
+        return Jwts.builder()
+                .subject(email)
+                .claim("user_id", userId)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
                 .signWith(secretKey)
                 .compact();
     }

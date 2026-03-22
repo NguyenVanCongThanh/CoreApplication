@@ -96,7 +96,6 @@ export default function TeacherDashboard() {
   });
   const [recentCourses, setRecentCourses] = useState<Course[]>([]);
   const [pendingEnrollments, setPendingEnrollments] = useState<PendingEnrollment[]>([]);
-  const [processing, setProcessing] = useState<number | null>(null);
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -147,22 +146,6 @@ export default function TeacherDashboard() {
       setLoading(false);
     }
   }, []);
-
-  // ── Enrollment actions ────────────────────────────────────────────────────
-
-  const handleAccept = async (enrollmentId: number, courseId: number) => {
-    setProcessing(enrollmentId);
-    try {
-      await lmsService.acceptEnrollment(enrollmentId, courseId);
-      setPendingEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
-      setStats(prev => ({
-        ...prev,
-        pendingEnrollments: Math.max(0, prev.pendingEnrollments - 1),
-        totalStudents: prev.totalStudents + 1,
-      }));
-    } catch { setError("Thao tác thất bại."); }
-    finally { setProcessing(null); }
-  };
 
   if (loading) return <PageLoader message="Đang tải dashboard..." />;
 
