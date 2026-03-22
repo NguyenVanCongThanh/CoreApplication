@@ -97,8 +97,23 @@ def process_document_task(
         file_bytes = _download_file(file_url)
 
         # ── Extract chunks based on content type ────────────────────────────
+        from app.services.chunker import (
+            PDFChunker, VideoTranscriptChunker, 
+            DocxChunker, PptxChunker, ExcelChunker,
+            DocumentChunk, detect_language
+        )
+
         if "pdf" in content_type.lower() or file_url.endswith(".pdf"):
             chunker = PDFChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
+            chunks = chunker.chunk_bytes(file_bytes)
+        elif any(ext in file_url.lower() for ext in (".docx", ".doc")):
+            chunker = DocxChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
+            chunks = chunker.chunk_bytes(file_bytes)
+        elif any(ext in file_url.lower() for ext in (".pptx", ".ppt")):
+            chunker = PptxChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
+            chunks = chunker.chunk_bytes(file_bytes)
+        elif any(ext in file_url.lower() for ext in (".xlsx", ".xls")):
+            chunker = ExcelChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
             chunks = chunker.chunk_bytes(file_bytes)
         elif any(ext in file_url.lower() for ext in (".mp4", ".webm", ".mov", ".avi", "video")):
             # For video, we need a transcript first
@@ -115,7 +130,6 @@ def process_document_task(
             chunker = PDFChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
             # Treat as single-page document
             raw_chunks = chunker._split_text(text)
-            from app.services.chunker import DocumentChunk, detect_language
             chunks = [
                 DocumentChunk(
                     text=c, index=i, source_type="document",

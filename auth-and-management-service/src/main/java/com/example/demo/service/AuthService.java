@@ -70,6 +70,8 @@ public class AuthService {
         // ADMIN gets additional ADMIN role
         if (userRole == UserRole.ROLE_ADMIN) {
             roles.add("ADMIN");
+        } else if (userRole == UserRole.ROLE_MANAGER) {
+            roles.add("MANAGER");
         }
         
         return roles;
