@@ -1,5 +1,4 @@
 import axios from "axios";
-import { getAuthToken, clearAuthToken } from "@/utils/tokenManager";
 
 const LMS_API_URL =
   process.env.NEXT_PUBLIC_LMS_API_URL || "http://localhost:8081/api/v1";
@@ -10,21 +9,13 @@ export const lmsApiClient = axios.create({
   withCredentials: true,
 });
 
-lmsApiClient.interceptors.request.use(async (config) => {
-  const token = await getAuthToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 lmsApiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      clearAuthToken();
+      const { signOut } = await import("next-auth/react");
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        signOut({ callbackUrl: "/login" });
       }
     }
     return Promise.reject(error);

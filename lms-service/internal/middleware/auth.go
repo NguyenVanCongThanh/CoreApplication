@@ -23,23 +23,31 @@ type Claims struct {
 // AuthMiddleware validates JWT token and sets user info in context
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Get token from Authorization header
+		// Get token from Authorization header or Cookie
+		var tokenString string
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Missing authorization header"))
+		
+		if authHeader != "" {
+			// Check if it's a Bearer token
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// Fallback to Cookie if header is missing or invalid
+		if tokenString == "" {
+			cookie, err := c.Cookie("authToken")
+			if err == nil {
+				tokenString = cookie
+			}
+		}
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Missing authorization header or cookie"))
 			c.Abort()
 			return
 		}
-
-		// Check if it's a Bearer token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Invalid authorization header format"))
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 
 		// Parse and validate token
 		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {

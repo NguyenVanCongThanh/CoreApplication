@@ -28,14 +28,15 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     try {
+      const { signOut } = await import("next-auth/react");
       userService.logout();
+      signOut({ callbackUrl: "/login" });
     } catch (err) {
       console.error("Logout error:", err);
-      document.cookie = "authToken=; path=/; max-age=0";
+      // Fallback
+      clearAuthToken();
+      router.push("/login");
     }
-    clearAuthToken();
-    router.push("/login");
-    router.refresh();
   };
 
   const navItems = [

@@ -43,6 +43,18 @@ public class AuthService {
         return jwtService.generateToken(user.getId(), user.getEmail(), roles);
     }
 
+    public String generateRefreshToken(User user) {
+        return jwtService.generateRefreshToken(user.getId(), user.getEmail());
+    }
+
+    public boolean validateToken(String token) {
+        return jwtService.validateToken(token);
+    }
+
+    public String extractEmail(String token) {
+        return jwtService.extractEmail(token);
+    }
+
     /**
      * Determine roles for LMS:
      * - All users: TEACHER + STUDENT

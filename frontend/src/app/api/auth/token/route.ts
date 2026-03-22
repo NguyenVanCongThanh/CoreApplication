@@ -1,9 +1,13 @@
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export async function GET() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("authToken")?.value ?? null;
+export async function GET(req: NextRequest) {
+  const tokenData = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
+  
+  const token = tokenData?.accessToken ?? null;
 
   return NextResponse.json(
     { token },

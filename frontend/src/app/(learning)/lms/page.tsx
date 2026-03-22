@@ -50,7 +50,7 @@ export default function LMSRoleSelection() {
         return await getAuthToken();
       };
 
-      const token = checkToken();
+      checkToken();
 
       // Get user info from token or API
       const userNameCookie = getCookie("userName") || "";
