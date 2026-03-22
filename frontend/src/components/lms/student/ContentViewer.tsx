@@ -218,6 +218,7 @@ function DocumentRenderer({ content }: { content: ContentItem }) {
   if (!docUrl) return <EmptyState message="Tài liệu chưa được tải lên." />;
 
   const isPdf = docUrl.toLowerCase().includes(".pdf");
+  const isOfficeDoc = /\.(docx|pptx|xlsx|doc|ppt|xls)$/i.test(docUrl);
   const fileName = content.metadata?.file_name || content.title;
   const fileSize = content.metadata?.file_size ? formatFileSize(content.metadata.file_size) : null;
   const downloadUrl = docUrl.replace("/serve/", "/download/");
@@ -227,7 +228,7 @@ function DocumentRenderer({ content }: { content: ContentItem }) {
       {/* File info card */}
       <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl">
         <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl flex items-center justify-center flex-shrink-0 text-lg">
-          {isPdf ? "📄" : "📋"}
+          {isPdf ? "📄" : isOfficeDoc ? "📊" : "📋"}
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-slate-900 dark:text-slate-50 truncate">{fileName}</p>
@@ -257,9 +258,25 @@ function DocumentRenderer({ content }: { content: ContentItem }) {
           />
         </div>
       )}
-      {isPdf && iframeError && (
+
+      {/* Office Document Embed */}
+      {isOfficeDoc && !iframeError && (
+        <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800">
+          <iframe
+            src={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(docUrl)}`}
+            className="w-full h-[600px]"
+            title={fileName}
+            frameBorder="0"
+          />
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400 text-center">
+            Bản xem trước được cung cấp bởi Microsoft Office Online. Nếu không hiển thị, vui lòng tải xuống để xem.
+          </div>
+        </div>
+      )}
+
+      {(isPdf || isOfficeDoc) && iframeError && (
         <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl text-sm text-amber-700 dark:text-amber-400">
-          Không thể hiển thị PDF trực tiếp. Vui lòng tải xuống để xem.
+          Không thể hiển thị tài liệu trực tiếp. Vui lòng tải xuống để xem.
         </div>
       )}
     </div>

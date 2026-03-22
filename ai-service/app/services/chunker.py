@@ -145,6 +145,118 @@ class PDFChunker:
         return chunks
 
 
+class DocxChunker(PDFChunker):
+    """Chunk Word (.docx) files."""
+
+    def chunk_bytes(self, docx_bytes: bytes) -> list[DocumentChunk]:
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(docx_bytes))
+            full_text = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    full_text.append(para.text.strip())
+            
+            # Also extract from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            full_text.append(cell.text.strip())
+
+            text = "\n".join(full_text)
+            raw_chunks = self._split_text(text)
+            
+            return [
+                DocumentChunk(
+                    text=sanitize_text(c),
+                    index=i,
+                    source_type="document",
+                    page_number=1, # docx doesn't easily provide page numbers
+                    language=detect_language(c)
+                )
+                for i, c in enumerate(raw_chunks)
+            ]
+        except Exception as e:
+            logger.error(f"Error chunking docx: {e}")
+            return []
+
+
+class PptxChunker(PDFChunker):
+    """Chunk PowerPoint (.pptx) files."""
+
+    def chunk_bytes(self, pptx_bytes: bytes) -> list[DocumentChunk]:
+        try:
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(pptx_bytes))
+            chunks: list[DocumentChunk] = []
+            chunk_index = 0
+
+            for i, slide in enumerate(prs.slides):
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        slide_text.append(shape.text.strip())
+                
+                # Also notes
+                if slide.has_notes_slide:
+                    notes = slide.notes_slide.notes_text_frame.text.strip()
+                    if notes:
+                        slide_text.append(notes)
+                
+                text = "\n".join(slide_text)
+                if not text:
+                    continue
+
+                slide_chunks = self._split_text(text)
+                for c_text in slide_chunks:
+                    chunks.append(DocumentChunk(
+                        text=sanitize_text(c_text),
+                        index=chunk_index,
+                        source_type="document",
+                        page_number=i + 1,  # slide number as page number
+                        language=detect_language(c_text)
+                    ))
+                    chunk_index += 1
+            return chunks
+        except Exception as e:
+            logger.error(f"Error chunking pptx: {e}")
+            return []
+
+
+class ExcelChunker(PDFChunker):
+    """Chunk Excel (.xlsx, .xls) files."""
+
+    def chunk_bytes(self, excel_bytes: bytes) -> list[DocumentChunk]:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
+            full_text = []
+            for sheet in wb.worksheets:
+                full_text.append(f"Sheet: {sheet.title}")
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = [str(cell) for cell in row if cell is not None]
+                    if row_text:
+                        full_text.append(" | ".join(row_text))
+            
+            text = "\n".join(full_text)
+            raw_chunks = self._split_text(text)
+            
+            return [
+                DocumentChunk(
+                    text=sanitize_text(c),
+                    index=i,
+                    source_type="document",
+                    page_number=1,
+                    language=detect_language(c)
+                )
+                for i, c in enumerate(raw_chunks)
+            ]
+        except Exception as e:
+            logger.error(f"Error chunking excel: {e}")
+            return []
+
+
 class VideoTranscriptChunker:
     """
     Chunk video transcripts with timestamp metadata.
