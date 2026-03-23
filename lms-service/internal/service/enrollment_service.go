@@ -212,8 +212,13 @@ func (s *EnrollmentService) CancelEnrollment(ctx context.Context, enrollmentID i
 	return s.enrollmentRepo.Delete(ctx, enrollmentID)
 }
 
-// VerifyAccess checks if a user has access to a course (enrolled via ACCEPTED status, or is creator)
-func (s *EnrollmentService) VerifyAccess(ctx context.Context, userID, courseID int64) error {
+// VerifyAccess checks if a user has access to a course (enrolled via ACCEPTED status, or is creator, or is ADMIN)
+func (s *EnrollmentService) VerifyAccess(ctx context.Context, userID, courseID int64, role string) error {
+	// Admin bypass
+	if role == "ADMIN" {
+		return nil
+	}
+
 	// First check if they are the course creator
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {

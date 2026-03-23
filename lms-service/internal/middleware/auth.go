@@ -88,12 +88,25 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 		
+		// Normalize all roles
+		normalizedRoles := make([]string, len(claims.Roles))
+		for i, r := range claims.Roles {
+			normalizedRoles[i] = normalizeRole(r)
+		}
+
 		// Set user info in context
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
-		c.Set("user_roles", claims.Roles)
-		// Set first role for backward compatibility
-		c.Set("user_role", claims.Roles[0])
+		c.Set("user_roles", normalizedRoles)
+
+		primaryRole := normalizedRoles[0]
+		for _, r := range normalizedRoles {
+			if r == "ADMIN" {
+				primaryRole = "ADMIN"
+				break
+			}
+		}
+		c.Set("user_role", primaryRole)
 
 		c.Next()
 	}
@@ -224,12 +237,18 @@ func OptionalAuth(jwtSecret string) gin.HandlerFunc {
 		}
 
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+			// Normalize roles
+			normalizedRoles := make([]string, len(claims.Roles))
+			for i, r := range claims.Roles {
+				normalizedRoles[i] = normalizeRole(r)
+			}
+
 			c.Set("user_id", claims.UserID)
 			c.Set("user_email", claims.Email)
-			c.Set("user_roles", claims.Roles)
+			c.Set("user_roles", normalizedRoles)
 			// Set first role for backward compatibility
-			if len(claims.Roles) > 0 {
-				c.Set("user_role", claims.Roles[0])
+			if len(normalizedRoles) > 0 {
+				c.Set("user_role", normalizedRoles[0])
 			}
 		}
 
