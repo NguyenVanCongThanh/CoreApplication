@@ -36,7 +36,8 @@ func (h *FlashcardHandler) GenerateFlashcards(c *gin.Context) {
 	}
 
 	// Verify course access
-	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID); err != nil {
+	userRole := c.MustGet("user_role").(string)
+	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID, userRole); err != nil {
 		c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Bạn không có quyền truy cập khóa học này"))
 		return
 	}
@@ -57,7 +58,8 @@ func (h *FlashcardHandler) ListDueFlashcards(c *gin.Context) {
 	courseID, _ := strconv.ParseInt(c.Param("courseId"), 10, 64)
 
 	// Verify course access
-	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID); err != nil {
+	userRole := c.MustGet("user_role").(string)
+	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID, userRole); err != nil {
 		c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Bạn không có quyền truy cập khóa học này"))
 		return
 	}
@@ -108,7 +110,8 @@ func (h *FlashcardHandler) ListFlashcardsByNode(c *gin.Context) {
 	}
 
 	// Verify course access
-	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID); err != nil {
+	userRole := c.MustGet("user_role").(string)
+	if err := h.enrollmentSvc.VerifyAccess(c.Request.Context(), studentID, courseID, userRole); err != nil {
 		c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Bạn không có quyền truy cập khóa học này"))
 		return
 	}
