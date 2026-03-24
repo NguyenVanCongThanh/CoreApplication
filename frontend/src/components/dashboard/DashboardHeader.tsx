@@ -9,10 +9,14 @@ interface DashboardHeaderProps {
   notificationCount?: number;
 }
 
-export function DashboardHeader({ notificationCount = 4 }: DashboardHeaderProps) {
+export function DashboardHeader({
+  notificationCount = 10,
+}: DashboardHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full
-                    pb-6 border-b border-slate-200 dark:border-slate-800">
+    <div
+      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full
+                    pb-6 border-b border-slate-200 dark:border-slate-800"
+    >
       <div>
         <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
           Dashboard
@@ -53,9 +57,11 @@ export function DashboardHeader({ notificationCount = 4 }: DashboardHeaderProps)
             <Bell className="h-5 w-5" />
           </Button>
           {notificationCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center
+            <span
+              className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center
                              bg-red-500 text-white text-[10px] font-bold rounded-full leading-none
-                             pointer-events-none">
+                             pointer-events-none"
+            >
               {notificationCount > 9 ? "9+" : notificationCount}
             </span>
           )}

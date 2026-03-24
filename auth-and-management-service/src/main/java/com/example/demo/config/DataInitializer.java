@@ -22,24 +22,54 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
 
-        if (userRepository.count() == 0) {
-            if (userRepository.count() == 0) {
-                User admin = User.builder()
-                        .name("Nguyễn Phúc Nhân")
-                        .email("phucnhan289@gmail.com")
-                        .password(passwordEncoder.encode("hehehe"))
-                        .role(UserRole.ROLE_ADMIN)
-                        .team(UserTeam.RESEARCH)
-                        .code("2312438")
-                        .type(UserType.DT)
-                        .totalScore(10000)
-                        .active(true)
-                        .build();
-
-                userRepository.save(admin);
-
-                System.out.println("Default users inserted: admin, manager, user");
-            }
+        // Tạo admin nếu chưa tồn tại
+        if (!userRepository.existsByEmail("admin@example.com")) {
+            User admin = User.builder()
+                    .name("Nguyễn Phúc Nhân")
+                    .email("admin@example.com")
+                    .password(passwordEncoder.encode("admin123"))
+                    .role(UserRole.ROLE_ADMIN)
+                    .team(UserTeam.RESEARCH)
+                    .code("ADMIN001")
+                    .type(UserType.DT)
+                    .totalScore(10000)
+                    .active(true)
+                    .build();
+            userRepository.save(admin);
         }
+
+        // Tạo manager nếu chưa tồn tại
+        if (!userRepository.existsByEmail("manager@example.com")) {
+            User manager = User.builder()
+                    .name("Trần Thị Lan")
+                    .email("manager@example.com")
+                    .password(passwordEncoder.encode("manager123"))
+                    .role(UserRole.ROLE_MANAGER)
+                    .team(UserTeam.ENGINEER)
+                    .code("MANAGER001")
+                    .type(UserType.DT)
+                    .totalScore(5000)
+                    .active(true)
+                    .build();
+            userRepository.save(manager);
+        }
+
+        // Tạo user nếu chưa tồn tại
+        if (!userRepository.existsByEmail("user@example.com")) {
+            User user = User.builder()
+                    .name("Lê Văn Bình")
+                    .email("user@example.com")
+                    .password(passwordEncoder.encode("user123"))
+                    .role(UserRole.ROLE_USER)
+                    .team(UserTeam.MEDIA)
+                    .code("USER001")
+                    .type(UserType.DT)
+                    .totalScore(1000)
+                    .active(true)
+                    .build();
+            userRepository.save(user);
+        }
+
+        System.out.println("DataInitializer: Default users ensured");
     }
 }

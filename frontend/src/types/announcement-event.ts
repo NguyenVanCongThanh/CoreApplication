@@ -1,4 +1,5 @@
 import { Task } from "./task";
+import STATUS_MAP from "../constants/status";
 
 // ─── Announcement ───────────────────────────────────────────────────────────
 
@@ -7,7 +8,11 @@ export type Announcement = {
   title: string;
   content: string;
   images: string[];
-  status: "PENDING" | "APPROVED" | "DENIED" | "EXPIRED";
+  // status: "PENDING" | "APPROVED" | "DENIED" | "EXPIRED";
+  status: Extract<
+    keyof typeof STATUS_MAP,
+    "PENDING" | "APPROVED" | "DENIED" | "EXPIRED"
+  >;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string;

@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Announcement, ModalMode, ANNOUNCEMENT_STATUSES, STATUS_COLORS } from "@/types";
-import { INPUT_BASE, LABEL_BASE } from "./modalStyles";
+import { INPUT_BASE, LABEL_BASE } from "../../../constants/modalStyles";
 
 interface AnnouncementModalProps {
   open: boolean;
@@ -47,14 +47,16 @@ export function AnnouncementModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl
+      <DialogContent
+        className="max-w-xl
                                 bg-white dark:bg-slate-900
                                 border border-slate-200 dark:border-slate-800
-                                shadow-xl rounded-2xl">
+                                shadow-xl rounded-2xl"
+      >
         <DialogHeader className="pb-4 border-b border-slate-100 dark:border-slate-800">
-          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
+          {/* <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
             Thông báo
-          </p>
+          </p> */}
           <DialogTitle className="text-2xl font-bold text-slate-900 dark:text-slate-50">
             {TITLE_MAP[mode]}
           </DialogTitle>
@@ -65,7 +67,9 @@ export function AnnouncementModal({
             <Label className={LABEL_BASE}>Tiêu đề</Label>
             <input
               value={announcement.title || ""}
-              onChange={(e) => onChange({ ...announcement, title: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...announcement, title: e.target.value })
+              }
               disabled={isViewMode}
               placeholder="Nhập tiêu đề thông báo..."
               className={INPUT_BASE}
@@ -76,7 +80,9 @@ export function AnnouncementModal({
             <Label className={LABEL_BASE}>Nội dung</Label>
             <textarea
               value={announcement.content || ""}
-              onChange={(e) => onChange({ ...announcement, content: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...announcement, content: e.target.value })
+              }
               disabled={isViewMode}
               placeholder="Nhập nội dung chi tiết..."
               rows={4}
@@ -96,7 +102,10 @@ export function AnnouncementModal({
               onChange={(e) =>
                 onChange({
                   ...announcement,
-                  images: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  images: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
                 })
               }
               disabled={isViewMode}
@@ -110,22 +119,33 @@ export function AnnouncementModal({
             {!isViewMode ? (
               <Select
                 value={announcement.status || "PENDING"}
-                onValueChange={(v) => onChange({ ...announcement, status: v as any })}
+                onValueChange={(v) =>
+                  onChange({ ...announcement, status: v as any })
+                }
               >
-                <SelectTrigger className="rounded-xl
+                <SelectTrigger
+                  className="rounded-xl
                                           border border-slate-300 dark:border-slate-700
                                           bg-slate-50 dark:bg-slate-800
                                           text-slate-900 dark:text-slate-100
-                                          focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                          focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900
-                                          border border-slate-200 dark:border-slate-800 rounded-xl">
+                <SelectContent
+                  className="bg-white dark:bg-slate-900
+                                          border border-slate-200 dark:border-slate-800 rounded-xl"
+                >
                   {ANNOUNCEMENT_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}
-                                className="focus:bg-slate-100 dark:focus:bg-slate-800">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium
-                                        ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}>
+                    <SelectItem
+                      key={status}
+                      value={status}
+                      className="focus:bg-slate-100 dark:focus:bg-slate-800"
+                    >
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-xs font-medium
+                                        ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}
+                      >
                         {status}
                       </span>
                     </SelectItem>
@@ -133,8 +153,10 @@ export function AnnouncementModal({
                 </SelectContent>
               </Select>
             ) : (
-              <span className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold
-                                ${STATUS_COLORS[announcement.status as keyof typeof STATUS_COLORS]}`}>
+              <span
+                className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold
+                                ${STATUS_COLORS[announcement.status as keyof typeof STATUS_COLORS]}`}
+              >
                 {announcement.status}
               </span>
             )}
