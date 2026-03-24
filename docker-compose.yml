@@ -494,7 +494,7 @@ services:
       - "service.name=ai-service"
 
     volumes:
-      - ai_model_cache:/root/.cache/fastembed
+      - ai_model_cache:/app/.cache/fastembed
 
   ai-worker:
     build:
@@ -505,7 +505,7 @@ services:
     restart: unless-stopped
  
     # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2 --pool=threads
  
     environment:
       APP_ENV: ${APP_ENV:-production}
@@ -555,7 +555,7 @@ services:
       - "service.name=ai-worker"
 
     volumes:
-      - ai_model_cache:/root/.cache/fastembed
+      - ai_model_cache:/app/.cache/fastembed
 
   # MinIO: Object Storage
   minio:
