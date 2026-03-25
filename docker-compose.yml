@@ -505,7 +505,7 @@ services:
     restart: unless-stopped
  
     # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1 --pool=threads
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
  
     environment:
       APP_ENV: ${APP_ENV:-production}
