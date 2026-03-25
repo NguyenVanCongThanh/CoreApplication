@@ -54,99 +54,103 @@ type FileUploadResponse struct {
 // @Failure 500 {object} dto.ErrorResponse "Internal server error"
 // @Router /files/upload [post]
 func (h *FileHandler) UploadFile(c *gin.Context) {
-	// Get file from request
-	file, err := c.FormFile("file")
+	reader, err := c.Request.MultipartReader()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_file", "No file uploaded"))
+		logger.Error("Failed to create multipart reader", err)
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_request", "Failed to process multipart form"))
 		return
 	}
 
-	// Get file type
-	fileType := c.PostForm("type")
-	if fileType == "" {
-		fileType = "document"
-	}
+	var fileType string = "document" // default
+	var uploadedResponse *FileUploadResponse
 
-	// Validate file extension
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !isValidFileType(fileType, file.Filename) {
-		c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"invalid_file_type", 
-			fmt.Sprintf("File type %s is not allowed for %s uploads. Got: %s", ext, fileType, file.Filename),
-		))
-		return
-	}
-
-	// Check file size from config
-	maxFileSize := h.config.MaxSize
-	if file.Size > maxFileSize {
-		c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"file_too_large", 
-			fmt.Sprintf("File size %.2f MB exceeds maximum of %.2f MB", 
-				float64(file.Size)/(1024*1024), float64(maxFileSize)/(1024*1024)),
-		))
-		return
-	}
-
-	// Log upload attempt
-	logger.Info(fmt.Sprintf("Processing file upload: %s (%.2f MB, type: %s)", 
-		file.Filename, float64(file.Size)/(1024*1024), fileType))
-
-	// Open file
-	src, err := file.Open()
-	if err != nil {
-		logger.Error("Failed to open uploaded file", err)
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", "Failed to process file"))
-		return
-	}
-	defer src.Close()
-
-	// Generate unique filename
-	fileID := uuid.New().String()
-	timestamp := time.Now().Format("20060102150405")
-	
-	// Clean original filename (remove special characters)
-	cleanName := cleanFilename(file.Filename)
-	nameWithoutExt := strings.TrimSuffix(cleanName, ext)
-	
-	// Create stored filename: type/YYYYMMDDHHMMSS_uuid_originalname.ext
-	storedFilename := fmt.Sprintf("%s/%s_%s_%s%s", fileType, timestamp, fileID[:8], nameWithoutExt, ext)
-
-	// Detect content type từ extension để lưu đúng metadata (quan trọng với MinIO)
-	contentType := getContentType(file.Filename)
-
-	// Stream trực tiếp từ multipart reader vào storage — không buffer vào RAM
-	_, err = h.storage.Upload(c.Request.Context(), storedFilename, src, file.Size, contentType)
-	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to upload file %s to storage (size: %d, type: %s)", 
-			file.Filename, file.Size, fileType), err)
-		
-		// Trả về lỗi chi tiết hơn nếu có thể
-		errMsg := "Failed to upload file"
-		if strings.Contains(err.Error(), "context canceled") {
-			errMsg = "Upload timed out or connection lost"
+	// Đọc từng part (field) trong multipart form
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			logger.Error("Error reading multipart part", err)
+			c.JSON(http.StatusBadRequest, dto.NewErrorResponse("upload_error", "Error reading file stream"))
+			return
 		}
-		
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("upload_failed", errMsg))
+
+		formName := part.FormName()
+		if formName == "type" {
+			// Đọc giá trị type (video, document, image)
+			typeBuf := make([]byte, 100)
+			n, _ := part.Read(typeBuf)
+			fileType = strings.TrimSpace(string(typeBuf[:n]))
+			part.Close()
+		} else if formName == "file" {
+			// Đây là file chính
+			filename := part.FileName()
+			if filename == "" {
+				part.Close()
+				continue
+			}
+
+			// Validate file extension
+			ext := strings.ToLower(filepath.Ext(filename))
+			if !isValidFileType(fileType, filename) {
+				part.Close()
+				c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
+					"invalid_file_type", 
+					fmt.Sprintf("File type %s is not allowed for %s uploads.", ext, fileType),
+				))
+				return
+			}
+
+			// Generate unique filename
+			fileID := uuid.New().String()
+			timestamp := time.Now().Format("20060102150405")
+			cleanName := cleanFilename(filename)
+			nameWithoutExt := strings.TrimSuffix(cleanName, ext)
+			storedFilename := fmt.Sprintf("%s/%s_%s_%s%s", fileType, timestamp, fileID[:8], nameWithoutExt, ext)
+			contentType := getContentType(filename)
+
+			// Stream trực tiếp từ part reader vào storage provider
+			logger.Info(fmt.Sprintf("Streaming upload started: %s (type: %s)", filename, fileType))
+			
+			// Với streaming, ta dùng size = -1 để lưu ý storage provider xử lý stream
+			fileSize := int64(-1) 
+
+			_, err = h.storage.Upload(c.Request.Context(), storedFilename, part, fileSize, contentType)
+			if err != nil {
+				part.Close()
+				logger.Error(fmt.Sprintf("Streaming upload failed for %s", filename), err)
+				
+				errMsg := "Failed to upload file"
+				if strings.Contains(err.Error(), "context canceled") {
+					errMsg = "Upload timed out or connection lost (30s limit?)"
+				}
+				c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("upload_failed", errMsg))
+				return
+			}
+			
+			// Thành công
+			uploadedResponse = &FileUploadResponse{
+				FileID:   fileID,
+				FileName: filename,
+				FileURL:  fmt.Sprintf("/files/%s", storedFilename),
+				FilePath: storedFilename,
+				FileSize: 0, // Kích thước khó xác định khi stream
+				FileType: fileType,
+			}
+			
+			part.Close()
+		} else {
+			part.Close()
+		}
+	}
+
+	if uploadedResponse == nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_file", "No file found in request"))
 		return
 	}
 
-	// Generate public URL (full URL)
-	publicURL := fmt.Sprintf("/files/%s", storedFilename)
-	
-	logger.Info(fmt.Sprintf("File uploaded successfully: %s -> %s", file.Filename, storedFilename))
-
-	// Return response
-	response := FileUploadResponse{
-		FileID:   fileID,
-		FileName: file.Filename,
-		FileURL:  publicURL,
-		FilePath: storedFilename,
-		FileSize: file.Size,
-		FileType: fileType,
-	}
-
-	c.JSON(http.StatusOK, dto.NewDataResponse(response))
+	c.JSON(http.StatusOK, dto.NewDataResponse(uploadedResponse))
 }
 
 // ServeFile godoc
