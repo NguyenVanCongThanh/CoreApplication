@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode"
 
+	"example/hello/internal/config"
 	"example/hello/internal/dto"
 	"example/hello/pkg/logger"
 	"example/hello/pkg/storage"
@@ -18,11 +19,13 @@ import (
 
 type FileHandler struct {
 	storage storage.Storage
+	config  config.UploadConfig
 }
 
-func NewFileHandler(storage storage.Storage) *FileHandler {
+func NewFileHandler(storage storage.Storage, cfg config.UploadConfig) *FileHandler {
 	return &FileHandler{
 		storage: storage,
+		config:  cfg,
 	}
 }
 
@@ -74,12 +77,13 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Check file size (max 100MB)
-	const maxFileSize = 100 * 1024 * 1024
+	// Check file size from config
+	maxFileSize := h.config.MaxSize
 	if file.Size > maxFileSize {
 		c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
 			"file_too_large", 
-			fmt.Sprintf("File size %.2f MB exceeds maximum of 100MB", float64(file.Size)/(1024*1024)),
+			fmt.Sprintf("File size %.2f MB exceeds maximum of %.2f MB", 
+				float64(file.Size)/(1024*1024), float64(maxFileSize)/(1024*1024)),
 		))
 		return
 	}
@@ -114,8 +118,16 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	// Stream trực tiếp từ multipart reader vào storage — không buffer vào RAM
 	_, err = h.storage.Upload(c.Request.Context(), storedFilename, src, file.Size, contentType)
 	if err != nil {
-		logger.Error("Failed to upload file to storage", err)
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("upload_failed", "Failed to upload file"))
+		logger.Error(fmt.Sprintf("Failed to upload file %s to storage (size: %d, type: %s)", 
+			file.Filename, file.Size, fileType), err)
+		
+		// Trả về lỗi chi tiết hơn nếu có thể
+		errMsg := "Failed to upload file"
+		if strings.Contains(err.Error(), "context canceled") {
+			errMsg = "Upload timed out or connection lost"
+		}
+		
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("upload_failed", errMsg))
 		return
 	}
 
