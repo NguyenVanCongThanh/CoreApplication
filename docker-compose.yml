@@ -484,10 +484,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
 
     labels:
       - "service.type=ai"
@@ -505,7 +505,7 @@ services:
     restart: unless-stopped
  
     # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2 --pool=threads
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1 --pool=threads
  
     environment:
       APP_ENV: ${APP_ENV:-production}
@@ -545,10 +545,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 3G
+          memory: 2G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
  
     labels:
       - "service.type=worker"
