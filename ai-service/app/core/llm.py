@@ -37,6 +37,14 @@ def get_embed_model() -> TextEmbedding:
     return _embed_model
 
 
+def warm_up_models():
+    """Trigger model loading and initial setup."""
+    logger.info(f"Warming up models: {settings.embedding_model}")
+    get_embed_model()
+    get_groq_client()
+    logger.info("Models warmed up.")
+
+
 # ── Embedding (FastEmbed — local, no server needed) ───────────────────────────
 
 async def create_embedding(text: str) -> list[float]:

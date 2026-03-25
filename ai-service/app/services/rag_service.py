@@ -103,7 +103,14 @@ class RAGService:
             chunk["text"] = _sanitize(chunk["text"])
 
         texts = [c["text"] for c in chunks]
-        embeddings = await create_embeddings_batch(texts)
+        
+        # Process in smaller sub-batches to avoid memory spikes
+        batch_size = 16
+        embeddings = []
+        for i in range(0, len(texts), batch_size):
+            sub_batch = texts[i : i + batch_size]
+            sub_embeddings = await create_embeddings_batch(sub_batch)
+            embeddings.extend(sub_embeddings)
 
         chunk_ids: list[int] = []
         async with get_async_conn() as conn:

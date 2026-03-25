@@ -484,17 +484,17 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
 
     labels:
       - "service.type=ai"
       - "service.name=ai-service"
 
     volumes:
-      - ai_model_cache:/root/.cache/fastembed
+      - ai_model_cache:/app/.cache/fastembed
 
   ai-worker:
     build:
@@ -545,17 +545,17 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 3G
+          memory: 2G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
  
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
 
     volumes:
-      - ai_model_cache:/root/.cache/fastembed
+      - ai_model_cache:/app/.cache/fastembed
 
   # MinIO: Object Storage
   minio:

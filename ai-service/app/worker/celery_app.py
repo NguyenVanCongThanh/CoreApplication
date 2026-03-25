@@ -41,6 +41,7 @@ celery_app.conf.update(
     enable_utc=True,
     worker_prefetch_multiplier=1,  # prevent memory overload on large PDFs
     task_acks_late=True,
+    worker_cancel_long_running_tasks_on_connection_loss=True,
 )
 
 
@@ -160,7 +161,7 @@ def process_document_task(
                 }
                 for c in chunks
             ]
-            # Initialize async pool for this task
+            # Must init pool for each task because asyncio.run creates a new loop
             from app.core.database import init_async_pool, close_async_pool
             await init_async_pool()
             try:
@@ -186,20 +187,24 @@ def process_document_task(
 
 
 def _download_file(url: str) -> bytes:
-    """Download file from URL (MinIO presigned URL or direct path)."""
+    """Download file from MinIO and return bytes. 
+    Uses streaming to reduce peak memory during download.
+    """
     client = Minio(
         os.getenv("MINIO_ENDPOINT"),
         access_key=os.getenv("MINIO_ACCESS_KEY"),
         secret_key=os.getenv("MINIO_SECRET_KEY"),
         secure=False
     )
-
     bucket = os.getenv("MINIO_BUCKET")
-
+    
     response = client.get_object(bucket, url)
-
     try:
-        return response.read()
+        # Read in chunks to avoid single large allocation spike
+        buf = io.BytesIO()
+        for chunk in response.stream(1 * 1024 * 1024): # 1MB chunks
+            buf.write(chunk)
+        return buf.getvalue()
     finally:
         response.close()
         response.release_conn()
