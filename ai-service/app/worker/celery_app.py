@@ -185,6 +185,60 @@ def process_document_task(
         _mark_job(job_id, "failed", error=str(exc))
         raise self.retry(exc=exc)
 
+@celery_app.task(
+    bind=True,
+    name="tasks.auto_index",
+    max_retries=2,
+    default_retry_delay=30,
+    soft_time_limit=600,
+    time_limit=660,
+)
+def auto_index_task(
+    self,
+    content_id: int,
+    course_id: int,
+    file_url: str,
+    content_type: str,
+):
+    """
+    Celery task: Auto-index tài liệu → tạo knowledge nodes → build graph.
+    Được enqueue bởi /ai/auto-index endpoint.
+    """
+    logger.info(f"auto_index_task start: content_id={content_id}")
+    try:
+        result = run_async(_async_auto_index(
+            content_id=content_id,
+            course_id=course_id,
+            file_url=file_url,
+            content_type=content_type,
+        ))
+        return result
+    except Exception as exc:
+        logger.error(f"auto_index_task failed content_id={content_id}: {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=30)
+ 
+ 
+async def _async_auto_index(
+    content_id: int,
+    course_id: int,
+    file_url: str,
+    content_type: str,
+) -> dict:
+    """Async wrapper dùng riêng asyncpg pool."""
+    from app.core.database import init_async_pool, close_async_pool
+    from app.services.auto_index_service import auto_index_service
+ 
+    await init_async_pool()
+    try:
+        return await auto_index_service.auto_index(
+            content_id=content_id,
+            course_id=course_id,
+            file_url=file_url,
+            content_type=content_type,
+        )
+    finally:
+        await close_async_pool()
+
 
 def _download_file(url: str) -> bytes:
     """Download file from MinIO and return bytes. 

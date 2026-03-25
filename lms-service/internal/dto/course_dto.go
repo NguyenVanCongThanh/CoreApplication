@@ -101,4 +101,5 @@ type ContentResponse struct {
 	CreatedBy   int64                  `json:"created_by"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
+	AIIndexStatus string               `json:"ai_index_status,omitempty"`	
 }
