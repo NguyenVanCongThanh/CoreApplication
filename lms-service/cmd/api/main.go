@@ -120,7 +120,7 @@ func main() {
 	userHandler := handler.NewUserHandler(userService)
 	courseHandler := handler.NewCourseHandler(courseService)
 	enrollmentHandler := handler.NewEnrollmentHandler(enrollmentService)
-	fileHandler := handler.NewFileHandler(storageProvider)
+	fileHandler := handler.NewFileHandler(storageProvider, cfg.Upload)
 	syncHandler := handler.NewUserSyncHandler(userSyncService, syncSecret)
 	quizHandler := handler.NewQuizHandler(quizService, storageProvider)
 	forumHandler := handler.NewForumHandler(forumService)
@@ -135,6 +135,7 @@ func main() {
 	}
 
 	router := gin.New()
+	router.MaxMultipartMemory = 64 << 20 // 64 MB
 	router.Use(gin.Recovery())
 	router.Use(middleware.Logger())
 	router.Use(middleware.CORS(cfg.CORS))
@@ -437,9 +438,9 @@ func main() {
 		Addr:              fmt.Sprintf(":%s", cfg.App.Port),
 		Handler:           router,
 		ReadHeaderTimeout: 20 * time.Second,
-		ReadTimeout:       5 * time.Minute,
-		WriteTimeout:      5 * time.Minute,
-		IdleTimeout:       120 * time.Second,
+		ReadTimeout:       cfg.Server.ReadTimeout,  // Sử dụng từ config (10 phút)
+		WriteTimeout:      cfg.Server.WriteTimeout, // Sử dụng từ config (10 phút)
+		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
 	// Graceful shutdown
