@@ -269,6 +269,9 @@ func main() {
 				// ── Progress tracking (Student) ───────────────────────────
 				content.POST("/:contentId/complete", progressHandler.MarkComplete)
 				content.POST("/:contentId/process", aiHandler.TriggerDocumentProcess)
+
+				content.POST("/:contentId/ai-index", aiHandler.TriggerContentAutoIndex)
+				content.GET("/:contentId/ai-index-status", aiHandler.GetContentAutoIndexStatus)
 			}
 
 			// ENROLLMENT MANAGEMENT
@@ -417,6 +420,8 @@ func main() {
 			
 				aiCourses.GET("/reviews/stats",
 					aiHandler.GetReviewStats)
+
+				aiCourses.GET("/knowledge-graph", aiHandler.GetCourseKnowledgeGraph)
 			}
 			
 			// Quiz draft review (outside course context)

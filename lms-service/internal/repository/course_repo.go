@@ -442,7 +442,7 @@ func (r *CourseRepository) GetContentByID(ctx context.Context, id int64) (*model
 	query := `
 		SELECT id, section_id, type, title, description, order_index, metadata,
 		       is_published, is_mandatory, file_path, file_size, file_type,
-		       created_by, created_at, updated_at
+		       created_by, created_at, updated_at, COALESCE(ai_index_status,'not_indexed') as ai_index_status
 		FROM section_content
 		WHERE id = $1
 	`
@@ -464,6 +464,7 @@ func (r *CourseRepository) GetContentByID(ctx context.Context, id int64) (*model
 		&content.CreatedBy,
 		&content.CreatedAt,
 		&content.UpdatedAt,
+		&content.AIIndexStatus,
 	)
 
 	if err != nil {
@@ -478,7 +479,7 @@ func (r *CourseRepository) ListContentBySection(ctx context.Context, sectionID i
 	query := `
 		SELECT id, section_id, type, title, description, order_index, metadata,
 		       is_published, is_mandatory, file_path, file_size, file_type,
-		       created_by, created_at, updated_at
+		       created_by, created_at, updated_at, COALESCE(ai_index_status,'not_indexed') as ai_index_status
 		FROM section_content
 		WHERE section_id = $1
 		ORDER BY order_index ASC
@@ -509,6 +510,7 @@ func (r *CourseRepository) ListContentBySection(ctx context.Context, sectionID i
 			&content.CreatedBy,
 			&content.CreatedAt,
 			&content.UpdatedAt,
+			&content.AIIndexStatus,
 		)
 		if err != nil {
 			return nil, err
@@ -585,4 +587,29 @@ func metadataToJSON(metadata map[string]interface{}) ([]byte, error) {
 		return json.Marshal(map[string]interface{}{})
 	}
 	return json.Marshal(metadata)
+}
+
+// UpdateContentAIIndexStatus cập nhật trạng thái ai index của content.
+func (r *CourseRepository) UpdateContentAIIndexStatus(
+	ctx context.Context,
+	contentID int64,
+	status string,
+) error {
+	query := `UPDATE section_content SET ai_index_status = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, status, contentID)
+	return err
+}
+ 
+// GetContentAIIndexStatus lấy trạng thái index và file_path của content.
+func (r *CourseRepository) GetContentAIIndexStatus(
+	ctx context.Context,
+	contentID int64,
+) (status string, filePath string, err error) {
+	query := `
+		SELECT COALESCE(ai_index_status,'not_indexed'), COALESCE(file_path,'')
+		FROM section_content WHERE id = $1
+	`
+	row := r.db.QueryRowContext(ctx, query, contentID)
+	err = row.Scan(&status, &filePath)
+	return
 }

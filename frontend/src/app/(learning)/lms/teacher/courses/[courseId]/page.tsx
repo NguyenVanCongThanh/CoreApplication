@@ -13,6 +13,8 @@ import { OverviewTab } from "@/components/lms/teacher/OverviewTab";
 import { StudentsTab } from "@/components/lms/teacher/StudentTab";
 import { AIQuizGenPanel } from "@/components/lms/teacher/AIQuizGenPanel";
 import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
+import { AIIndexButton } from "@/components/lms/teacher/AIIndexButton";
+import { KnowledgeGraphPanel } from "@/components/lms/teacher/KnowledgeGraphPanel";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
   Trash2, Eye, CheckCircle2,
@@ -228,6 +230,7 @@ function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
           {sections.map((sec, i) => {
             const isExpanded = expanded.has(sec.id);
             const contents = sectionContents[sec.id] ?? [];
+            console.log(contents)
             const isLoadingC = loadingContent[sec.id];
 
             return (
@@ -311,6 +314,17 @@ function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
                             <p className="flex-1 text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{c.title}</p>
                             <ContentTypeBadge type={c.type} />
                             {c.is_mandatory && <Badge variant="yellow">Bắt buộc</Badge>}
+
+                            {/* AI Index Button */}
+                            <div className="ml-2">
+                              <AIIndexButton
+                                contentId={c.id}
+                                contentType={c.type}
+                                filePath={c.metadata?.file_path || null}
+                                initialStatus={c.ai_index_status || "not_indexed"}
+                                onIndexed={() => reloadSectionContent(sec.id)}
+                              />
+                            </div>
 
                             {/* Content actions (hidden until hover) */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -562,7 +576,14 @@ export default function TeacherCourseDetailPage() {
             )}
             {tab === "ai" && (
               <div className="space-y-8">
-                <AIQuizGenPanel courseId={id} />
+                <section>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 mb-4">Lược đồ kiến thức (Knowledge Graph)</h3>
+                  <KnowledgeGraphPanel courseId={id} />
+                </section>
+
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
+                  <AIQuizGenPanel courseId={id} />
+                </div>
                 <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
                   <AIHeatmapSection courseId={id} role="teacher" />
                 </div>

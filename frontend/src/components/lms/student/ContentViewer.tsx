@@ -26,7 +26,7 @@ export interface ContentItem {
   title: string;
   description?: string;
   metadata?: Record<string, any>;
-  file_path?: string;
+  file_path?: string | null;
   file_type?: string;
   is_mandatory?: boolean;
 }
@@ -45,7 +45,7 @@ const API_URL = process.env.NEXT_PUBLIC_LMS_API_URL ?? "";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function buildFileUrl(filePath?: string): string {
+function buildFileUrl(filePath?: string | null): string {
   if (!filePath) return "";
   if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
   return `${API_URL}/files/serve/${filePath}`;

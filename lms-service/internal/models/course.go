@@ -56,6 +56,7 @@ type SectionContent struct {
 	CreatedBy   int64          `json:"created_by" db:"created_by"`
 	CreatedAt   time.Time      `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at" db:"updated_at"`
+	AIIndexStatus sql.NullString `json:"ai_index_status" db:"ai_index_status"`
 }
 
 // Course status constants

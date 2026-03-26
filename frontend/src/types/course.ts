@@ -49,6 +49,8 @@ export interface Content {
   is_mandatory: boolean;
   metadata?: Record<string, any>;
   updated_at?: any;
+  file_path?: string | null;
+  ai_index_status?: "not_indexed" | "processing" | "indexed" | "failed";
 }
 
 export interface ContentItem {

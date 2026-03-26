@@ -4,6 +4,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -459,4 +461,165 @@ func (h *AIHandler) TriggerDocumentProcess(c *gin.Context) {
         return
     }
     c.JSON(http.StatusAccepted, dto.NewDataResponse(result))
+}
+
+// TriggerContentAutoIndex godoc
+// @Summary      Trigger auto-index for a content document
+// @Description  Giáo viên click nút "Index" → AI tự động tạo knowledge nodes.
+//               Trả về ngay; frontend poll /content/:id/ai-index-status.
+// @Tags         AI - Auto Index
+// @Accept       json
+// @Produce      json
+// @Param        contentId path int true "Content ID"
+// @Security     BearerAuth
+// @Success      202 {object} map[string]interface{}
+// @Router       /content/{contentId}/ai-index [post]
+func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
+	contentID, err := strconv.ParseInt(c.Param("contentId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_id", "Invalid content ID"))
+		return
+	}
+ 
+	userID := c.MustGet("user_id").(int64)
+	userRole := c.GetString("user_role")
+ 
+	// Lấy content để verify quyền và lấy file_path
+	content, err := h.courseRepo.GetContentByID(c.Request.Context(), contentID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Auto-index: Content %d not found", contentID), err)
+		c.JSON(http.StatusNotFound, dto.NewErrorResponse("not_found", "Content not found"))
+		return
+	}
+ 
+	// Log content details for debugging
+	logger.Info(fmt.Sprintf("Auto-index debug: ContentID=%d, Type=%s, FilePath.Valid=%v, FilePath.String='%s'", 
+		contentID, content.Type, content.FilePath.Valid, content.FilePath.String))
+
+	// Chỉ TEACHER hoặc ADMIN mới được index
+	if userRole != "ADMIN" {
+		// Verify ownership qua section → course
+		section, sErr := h.courseRepo.GetSectionByID(c.Request.Context(), content.SectionID)
+		if sErr != nil {
+			logger.Error(fmt.Sprintf("Auto-index: Section %d fetch failed", content.SectionID), sErr)
+			c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", sErr.Error()))
+			return
+		}
+		course, cErr := h.courseRepo.GetByID(c.Request.Context(), section.CourseID)
+		if cErr != nil {
+			logger.Error(fmt.Sprintf("Auto-index: Course %d fetch failed", section.CourseID), cErr)
+			c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", cErr.Error()))
+			return
+		}
+		if course.CreatedBy != userID {
+			logger.Warn(fmt.Sprintf("Auto-index: User %d not authorized for course %d", userID, course.ID))
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Only course owner can index documents"))
+			return
+		}
+	}
+ 
+	// Kiểm tra content có file không
+	finalFilePath := ""
+	finalFileType := "application/pdf"
+
+	if content.FilePath.Valid && content.FilePath.String != "" {
+		finalFilePath = content.FilePath.String
+		if content.FileType.Valid {
+			finalFileType = content.FileType.String
+		}
+	} else if len(content.Metadata) > 0 {
+		// Fallback: Thử lấy từ metadata JSON
+		var meta map[string]interface{}
+		if err := json.Unmarshal(content.Metadata, &meta); err == nil {
+			if path, ok := meta["file_path"].(string); ok && path != "" {
+				finalFilePath = path
+				logger.Info(fmt.Sprintf("Auto-index fallback: Using file_path from metadata for content %d: %s", contentID, path))
+			}
+			if ftype, ok := meta["file_type"].(string); ok && ftype != "" {
+				finalFileType = ftype
+			}
+		}
+	}
+
+	if finalFilePath == "" {
+		// Thêm log để biết chính xác lỗi 400 từ đây
+		logger.Warn(fmt.Sprintf("Auto-index fail: Content %d (Type: %s) has no file_path in column or metadata", 
+			contentID, content.Type))
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("no_file", "Content has no file to index"))
+		return
+	}
+ 
+	// Xác định courseID từ section
+	section, _ := h.courseRepo.GetSectionByID(c.Request.Context(), content.SectionID)
+	course, _ := h.courseRepo.GetByID(c.Request.Context(), section.CourseID)
+ 
+	// Gọi AI service
+	resp, err := h.aiClient.AutoIndex(c.Request.Context(), ai.AutoIndexRequest{
+		ContentID:   contentID,
+		CourseID:    course.ID,
+		FileURL:     finalFilePath,
+		ContentType: finalFileType,
+	})
+	if err != nil {
+		logger.Error("Auto-index trigger failed", err)
+		// Vẫn trả về thông báo lỗi nhưng không fail request
+		c.JSON(http.StatusServiceUnavailable, dto.NewErrorResponse("ai_unavailable", err.Error()))
+		return
+	}
+ 
+	c.JSON(http.StatusAccepted, dto.NewDataResponse(map[string]interface{}{
+		"job_id":     resp.JobID,
+		"content_id": contentID,
+		"status":     resp.Status,
+	}))
+}
+ 
+// GetContentAutoIndexStatus godoc
+// @Summary      Get auto-index status for a content item
+// @Tags         AI - Auto Index
+// @Produce      json
+// @Param        contentId path int true "Content ID"
+// @Security     BearerAuth
+// @Router       /content/{contentId}/ai-index-status [get]
+func (h *AIHandler) GetContentAutoIndexStatus(c *gin.Context) {
+	contentID, err := strconv.ParseInt(c.Param("contentId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_id", "Invalid content ID"))
+		return
+	}
+ 
+	status, err := h.aiClient.GetAutoIndexStatus(c.Request.Context(), contentID)
+	if err != nil {
+		// Fallback: đọc thẳng từ DB nếu AI service không available
+		dbStatus, _, dbErr := h.courseRepo.GetContentAIIndexStatus(c.Request.Context(), contentID)
+		if dbErr != nil {
+			c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", dbErr.Error()))
+			return
+		}
+		c.JSON(http.StatusOK, dto.NewDataResponse(map[string]string{
+			"status": dbStatus,
+		}))
+		return
+	}
+ 
+	c.JSON(http.StatusOK, dto.NewDataResponse(status))
+}
+ 
+// GetCourseKnowledgeGraph godoc
+// @Summary      Get knowledge graph for a course
+// @Tags         AI - Auto Index
+// @Produce      json
+// @Param        courseId path int true "Course ID"
+// @Security     BearerAuth
+// @Router       /courses/{courseId}/ai/knowledge-graph [get]
+func (h *AIHandler) GetCourseKnowledgeGraph(c *gin.Context) {
+	courseID, _ := strconv.ParseInt(c.Param("courseId"), 10, 64)
+ 
+	graph, err := h.aiClient.GetKnowledgeGraph(c.Request.Context(), courseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		return
+	}
+ 
+	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
 }

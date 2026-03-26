@@ -417,6 +417,19 @@ func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req 
 		CreatedBy:   userID,
 	}
 
+	// Sync file info from metadata if present
+	if req.Metadata != nil {
+		if path, ok := req.Metadata["file_path"].(string); ok {
+			content.FilePath = sql.NullString{String: path, Valid: true}
+		}
+		if size, ok := req.Metadata["file_size"].(float64); ok {
+			content.FileSize = sql.NullInt64{Int64: int64(size), Valid: true}
+		}
+		if ftype, ok := req.Metadata["file_type"].(string); ok {
+			content.FileType = sql.NullString{String: ftype, Valid: true}
+		}
+	}
+
 	created, err := s.courseRepo.CreateContent(ctx, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create content: %w", err)
@@ -564,6 +577,19 @@ func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req 
 		updates["is_mandatory"] = *req.IsMandatory
 	}
 
+	// Sync file info from metadata updates if present
+	if req.Metadata != nil {
+		if path, ok := (*req.Metadata)["file_path"].(string); ok {
+			updates["file_path"] = path
+		}
+		if size, ok := (*req.Metadata)["file_size"].(float64); ok {
+			updates["file_size"] = int64(size)
+		}
+		if ftype, ok := (*req.Metadata)["file_type"].(string); ok {
+			updates["file_type"] = ftype
+		}
+	}
+
 	if len(updates) == 0 {
 		return fmt.Errorf("no fields to update")
 	}
@@ -680,6 +706,9 @@ func (s *CourseService) toContentResponse(content *models.SectionContent) (*dto.
 	}
 	if content.FileType.Valid {
 		resp.FileType = content.FileType.String
+	}
+	if content.AIIndexStatus.Valid {
+		resp.AIIndexStatus = content.AIIndexStatus.String
 	}
 
 	// Parse metadata
