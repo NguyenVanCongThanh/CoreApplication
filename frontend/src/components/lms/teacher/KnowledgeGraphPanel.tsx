@@ -38,10 +38,15 @@ interface KnowledgeGraphPanelProps {
   onNodeClick?: (nodeId: number) => void;
 }
 
-const EDGE_COLORS: Record<string, string> = {
-  prerequisite: "#E85D24",   // warm: "cần học trước"
-  extends:      "#185FA5",   // blue: "mở rộng"
-  related:      "#8B8A82",   // gray: "liên quan"
+const EDGE_COLORS = {
+  prerequisite: { line: "#F97316", arrow: "#FB923C", text: "#FB923C" }, // orange: "cần học trước"
+  extends:      { line: "#3B82F6", arrow: "#60A5FA", text: "#60A5FA" }, // blue: "mở rộng"
+  related:      { line: "#94A3B8", arrow: "#CBD5E1", text: "#CBD5E1" }, // gray: "liên quan"
+};
+
+const NODE_COLORS = {
+  auto:    { light: "#7C3AED", dark: "#A78BFA", glow: "rgba(124, 58, 237, 0.2)" }, // violet
+  manual:  { light: "#059669", dark: "#34D399", glow: "rgba(5, 150, 105, 0.2)" }, // emerald
 };
 
 export function KnowledgeGraphPanel({ courseId, onNodeClick }: KnowledgeGraphPanelProps) {
@@ -152,41 +157,98 @@ export function KnowledgeGraphPanel({ courseId, onNodeClick }: KnowledgeGraphPan
         const a = nodeMap.get(edge.source);
         const b = nodeMap.get(edge.target);
         if (!a || !b) continue;
+
+        const colors = EDGE_COLORS[edge.relation_type as keyof typeof EDGE_COLORS] || EDGE_COLORS.related;
+        const opacity = 0.4 + edge.strength * 0.4;
+        const isPrereq = edge.relation_type === "prerequisite";
+
         ctx!.beginPath();
-        ctx!.moveTo(a.x!, a.y!);
-        ctx!.lineTo(b.x!, b.y!);
-        ctx!.strokeStyle = EDGE_COLORS[edge.relation_type] ?? "#888";
-        ctx!.globalAlpha = 0.3 + edge.strength * 0.4;
-        ctx!.lineWidth = edge.relation_type === "prerequisite" ? 2 : 1.2;
+        ctx!.strokeStyle = colors.line;
+        ctx!.globalAlpha = opacity;
+        ctx!.lineWidth = isPrereq ? 2.5 : 1.5;
+
         if (edge.relation_type === "related") {
-          ctx!.setLineDash([4, 4]);
+          ctx!.setLineDash([6, 4]);
         } else {
           ctx!.setLineDash([]);
         }
+
+        ctx!.moveTo(a.x!, a.y!);
+        ctx!.lineTo(b.x!, b.y!);
         ctx!.stroke();
+
+        // Draw Arrow for Prerequisite or Extends
+        if (isPrereq || edge.relation_type === "extends") {
+          const r = 8 + Math.min(b.chunk_count, 20) * 0.6 + 4; // Node radius + padding
+          const dx = b.x! - a.x!;
+          const dy = b.y! - a.y!;
+          const angle = Math.atan2(dy, dx);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          // Position arrowhead at the boundary of the target node
+          const arrowX = b.x! - r * Math.cos(angle);
+          const arrowY = b.y! - r * Math.sin(angle);
+
+          ctx!.save();
+          ctx!.translate(arrowX, arrowY);
+          ctx!.rotate(angle);
+          ctx!.beginPath();
+          ctx!.moveTo(0, 0);
+          ctx!.lineTo(-8, -5);
+          ctx!.lineTo(-8, 5);
+          ctx!.closePath();
+          ctx!.fillStyle = colors.arrow;
+          ctx!.fill();
+          ctx!.restore();
+        }
+
         ctx!.setLineDash([]);
         ctx!.globalAlpha = 1;
       }
 
       // Nodes
       for (const n of ns) {
+        const isHovered = n === hoveredNode;
         const r = 8 + Math.min(n.chunk_count, 20) * 0.6;
+        const colors = n.auto_generated ? NODE_COLORS.auto : NODE_COLORS.manual;
+        const mainColor = isDark ? colors.dark : colors.light;
+
+        // Glow on hover
+        if (isHovered) {
+          ctx!.beginPath();
+          ctx!.arc(n.x!, n.y!, r + 6, 0, Math.PI * 2);
+          ctx!.fillStyle = colors.glow;
+          ctx!.fill();
+        }
+
+        // Gradient build
+        const grad = ctx!.createRadialGradient(n.x!, n.y!, r * 0.2, n.x!, n.y!, r);
+        grad.addColorStop(0, isDark ? "#fff" : mainColor);
+        grad.addColorStop(1, mainColor);
+
         ctx!.beginPath();
         ctx!.arc(n.x!, n.y!, r, 0, Math.PI * 2);
-        ctx!.fillStyle = n.auto_generated
-          ? isDark ? "#534AB7" : "#7F77DD"   // purple: auto-generated
-          : isDark ? "#0F6E56" : "#1D9E75";  // teal: manual
+        ctx!.fillStyle = grad;
         ctx!.fill();
-        ctx!.strokeStyle = isDark ? "#CECBF6" : "#3C3489";
-        ctx!.lineWidth = n === hoveredNode ? 2.5 : 1;
+
+        ctx!.strokeStyle = isDark ? "#fff" : "#312E81";
+        ctx!.lineWidth = isHovered ? 3 : 1.5;
         ctx!.stroke();
 
-        // Label (truncated)
-        const label = (n.name_vi || n.name).slice(0, 18);
-        ctx!.fillStyle = isDark ? "#E8E6DC" : "#2C2C2A";
-        ctx!.font = "11px sans-serif";
+        // Label
+        const label = (n.name_vi || n.name).slice(0, 22);
+        ctx!.font = isHovered ? "600 12px Inter, sans-serif" : "500 11px Inter, sans-serif";
         ctx!.textAlign = "center";
-        ctx!.fillText(label, n.x!, n.y! + r + 12);
+
+        // Label bg for readability
+        const textWidth = ctx!.measureText(label).width;
+        ctx!.globalAlpha = 0.7;
+        ctx!.fillStyle = isDark ? "#0F172A" : "#F8FAFC";
+        ctx!.fillRect(n.x! - textWidth/2 - 4, n.y! + r + 6, textWidth + 8, 16);
+        ctx!.globalAlpha = 1;
+
+        ctx!.fillStyle = isDark ? "#F8FAFC" : "#1E293B";
+        ctx!.fillText(label, n.x!, n.y! + r + 18);
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -230,20 +292,20 @@ export function KnowledgeGraphPanel({ courseId, onNodeClick }: KnowledgeGraphPan
   return (
     <div className="space-y-3">
       {/* Stats bar */}
-      <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-        <span>{nodes.length} nodes</span>
-        <span>{edges.length} edges</span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-purple-500 inline-block"/>purple = auto
+      <div className="flex items-center gap-4 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{nodes.length} nodes</span>
+        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{edges.length} edges</span>
+        <span className="flex items-center gap-1.5 ml-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.4)]"/> Auto-generated
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-teal-600 inline-block"/>teal = manual
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shadow-[0_0_8px_rgba(5,150,105,0.4)]"/> Manual node
         </span>
         <button
           onClick={fetchGraph}
-          className="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          className="ml-auto text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors uppercase tracking-wider"
         >
-          Refresh
+          Refresh Graph
         </button>
       </div>
 
@@ -275,11 +337,23 @@ export function KnowledgeGraphPanel({ courseId, onNodeClick }: KnowledgeGraphPan
       </div>
 
       {/* Edge legend */}
-      <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-        {Object.entries(EDGE_COLORS).map(([type, color]) => (
-          <span key={type} className="flex items-center gap-1.5">
-            <span className="w-5 h-px inline-block" style={{ background: color, height: "2px" }}/>
-            {type} ({edgeCounts[type as keyof typeof edgeCounts]})
+      <div className="flex items-center gap-6 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-1">
+        {Object.entries(EDGE_COLORS).map(([type, colors]) => (
+          <span key={type} className="flex items-center gap-2 group transition-colors hover:text-slate-600 dark:hover:text-slate-300">
+            <span
+              className="w-8 h-0.5 rounded-full relative"
+              style={{ background: colors.line }}
+            >
+              {type !== "related" && (
+                <span
+                  className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rotate-45 border-t-2 border-r-2"
+                  style={{ borderColor: colors.line }}
+                />
+              )}
+            </span>
+            <span>
+              {type} <span className="opacity-50 font-normal">({edgeCounts[type as keyof typeof edgeCounts]})</span>
+            </span>
           </span>
         ))}
       </div>
