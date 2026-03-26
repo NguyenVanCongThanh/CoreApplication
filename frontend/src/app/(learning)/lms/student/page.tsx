@@ -10,10 +10,18 @@ import {
   LogOut, Home
 } from "lucide-react";
 import {
-  StatCard, Card, TabBar, CourseCard,
-  ProgressBar, Badge, PrimaryBtn,GhostBtn,
-  EmptyState, PageLoader, Alert
-} from "@/components/lms/shared";
+  StatCard,
+  Card,
+  TabBar,
+  CourseCard,
+  ProgressBar,
+  Badge,
+  PrimaryBtn,
+  GhostBtn,
+  EmptyState,
+  PageLoader,
+  Alert,
+} from "@/features/lms/shared";
 import { Course, Enrollment } from "@/types";
 
 type Tab = "my-courses" | "discover";

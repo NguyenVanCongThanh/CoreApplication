@@ -2,15 +2,15 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
-import { StatsCards } from "@/components/dashboard/StatsCards";
-import { SectionHeader } from "@/components/dashboard/SectionHeader";
-import { AnnouncementList } from "@/components/dashboard/announcement/AnnouncementList";
-import { EventList } from "@/components/dashboard/event/EventList";
-import { ShowMoreButton } from "@/components/dashboard/ShowMoreButton";
-import { AnnouncementModal } from "@/components/dashboard/modals/AnnouncementModal";
-import { EventModal } from "@/components/dashboard/modals/EventModal";
-import { ModernCalendar as ViewCalendar } from "@/components/dashboard/calendar/Calendar";
+import { DashboardHeader } from "@/features/dashboard/DashboardHeader";
+import { StatsCards } from "@/features/dashboard/StatsCards";
+import { SectionHeader } from "@/features/dashboard/SectionHeader";
+import { AnnouncementList } from "@/features/dashboard/announcement/AnnouncementList";
+import { EventList } from "@/features/dashboard/event/EventList";
+import { ShowMoreButton } from "@/features/dashboard/ShowMoreButton";
+import { AnnouncementModal } from "@/features/dashboard/modals/AnnouncementModal";
+import { EventModal } from "@/features/dashboard/modals/EventModal";
+import { ModernCalendar as ViewCalendar } from "@/features/dashboard/calendar/Calendar";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";

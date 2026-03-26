@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Plus, X } from "lucide-react";
-import TaskCard from "@/components/Board/Task/TaskCard";
+import TaskCard from "../Task/TaskCard";
 import { Column, User, EventItem, Task } from "@/types";
 
 interface BoardColumnProps {
@@ -82,7 +82,9 @@ const BoardColumn: React.FC<BoardColumnProps> = ({
           ))
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-slate-400 dark:text-slate-600 text-xs">No tasks yet</p>
+            <p className="text-slate-400 dark:text-slate-600 text-xs">
+              No tasks yet
+            </p>
           </div>
         )}
       </div>

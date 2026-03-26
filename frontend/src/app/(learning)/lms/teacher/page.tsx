@@ -21,10 +21,17 @@ import {
   LogOut, Home
 } from "lucide-react";
 import {
-  StatCard, Card, SectionHeader,
-  Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
-  EmptyState, PageLoader, Alert
-} from "@/components/lms/shared";
+  StatCard,
+  Card,
+  SectionHeader,
+  Badge,
+  PrimaryBtn,
+  SecondaryBtn,
+  GhostBtn,
+  EmptyState,
+  PageLoader,
+  Alert,
+} from "@/features/lms/shared";
 import { Course } from "@/types";
 import { getCookie } from "@/utils/cookies";
 

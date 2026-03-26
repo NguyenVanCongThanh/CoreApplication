@@ -1,8 +1,14 @@
 "use client";
 import React from "react";
-import SafeImage from "../common/SafeImage";
+import SafeImage from "@/components/common/SafeImage";
 
-export default function Avatar({ code, size = 44 }: { code: string; size?: number }) {
+export default function Avatar({
+  code,
+  size = 44,
+}: {
+  code: string;
+  size?: number;
+}) {
   const src = `https://api.dicebear.com/9.x/adventurer/png?seed=${encodeURIComponent(code)}`;
   return (
     <SafeImage

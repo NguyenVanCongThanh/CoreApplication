@@ -8,9 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EventCard } from "@/components/dashboard/event/EventCard";
-import { EventModal } from "@/components/dashboard/modals/EventModal";
-import { LoadingState } from "@/components/dashboard/LoadingState";
+import { EventCard } from "@/features/dashboard/event/EventCard";
+import { EventModal } from "@/features/dashboard/modals/EventModal";
+import { LoadingState } from "@/features/dashboard/LoadingState";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";
 import { Search, Filter, Calendar, ArrowLeft, Plus } from "lucide-react";

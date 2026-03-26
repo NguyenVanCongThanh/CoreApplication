@@ -25,12 +25,18 @@ import lmsService      from "@/services/lmsService";
 import progressService, { CourseProgress, ProgressDetailItem } from "@/services/progressService";
 import analyticsService, { StudentQuizScore }                  from "@/services/analyticsService";
 
-import ContentViewer from "@/components/lms/student/ContentViewer";
-import { Badge, ContentTypeBadge, PageLoader, GhostBtn, ProgressBar } from "@/components/lms/shared";
+import ContentViewer from "@/features/lms/student/ContentViewer";
+import {
+  Badge,
+  ContentTypeBadge,
+  PageLoader,
+  GhostBtn,
+  ProgressBar,
+} from "@/features/lms/shared";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
-import { WeaknessTracker } from "@/components/lms/student/WeaknessTracker";
-import { FlashcardWidget } from "@/components/lms/student/FlashcardWidget";
+import { WeaknessTracker } from "@/features/lms/student/WeaknessTracker";
+import { FlashcardWidget } from "@/features/lms/student/FlashcardWidget";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 

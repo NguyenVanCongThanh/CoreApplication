@@ -7,10 +7,10 @@ import { userService, UserResponse, UpdateProfileRequest } from "@/services/user
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUser } from "@/store/UserContext";
 
-import MessageAlert from "@/components/user/manage/MessageAlert";
-import ProfileTab from "@/components/user/manage/ProfileTab";
-import PasswordTab from "@/components/user/manage/PasswordTab";
-import AccountStats from "@/components/user/manage/AccountStats";
+import MessageAlert from "@/features/user/manage/MessageAlert";
+import ProfileTab from "@/features/user/manage/ProfileTab";
+import PasswordTab from "@/features/user/manage/PasswordTab";
+import AccountStats from "@/features/user/manage/AccountStats";
 import { ActiveTab, MessageState, PasswordForm, ShowPasswords } from '@/types'
 import { validateOnlyPassword } from '@/utils/utils'
 

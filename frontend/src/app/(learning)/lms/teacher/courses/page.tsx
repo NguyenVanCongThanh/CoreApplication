@@ -8,9 +8,16 @@ import {
   Eye, EyeOff, ChevronRight
 } from "lucide-react";
 import {
-  Card, Badge, PrimaryBtn, GhostBtn,
-  EmptyState, PageLoader, Alert, TabBar, Spinner
-} from "@/components/lms/shared";
+  Card,
+  Badge,
+  PrimaryBtn,
+  GhostBtn,
+  EmptyState,
+  PageLoader,
+  Alert,
+  TabBar,
+  Spinner,
+} from "@/features/lms/shared";
 import { Course } from "@/types";
 import { cn } from "@/lib/utils";
 

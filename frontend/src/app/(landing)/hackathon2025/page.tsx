@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { hackathon2025Data } from '@/data/event/datahackathon2025';
-import EventHero from '@/components/events/EventHero';
-import EventTimeline from '@/components/events/EventTimeline';
-import EventDetails from '@/components/events/EventDetails';
-import EventRegistration from '@/components/events/EventRegistration';
+import EventHero from "@/features/events/EventHero";
+import EventTimeline from "@/features/events/EventTimeline";
+import EventDetails from "@/features/events/EventDetails";
+import EventRegistration from "@/features/events/EventRegistration";
 
 export default function EventPage() {
   const eventData = hackathon2025Data;

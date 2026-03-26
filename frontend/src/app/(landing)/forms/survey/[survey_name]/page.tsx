@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import SurveyForm from "@/components/form/SurveyForm";
+import SurveyForm from "@/features/form/SurveyForm";
 
 interface PageProps {
   params: {
