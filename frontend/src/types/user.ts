@@ -1,13 +1,12 @@
-export type Team = "RESEARCH" | "ENGINEER" | "EVENT" | "MEDIA";
-export type TypeTag = "CLC" | "DT" | "TN";
-export type Role = "ROLE_ADMIN" | "ROLE_USER" | "ROLE_MANAGER";
+import { ROLES, TYPE_TAGS, TEAMS } from "@/constants/user";
+
 export type ModalMode = "add" | "edit" | "view";
 
 export type UserLogin = {
   id: number | string;
   name: string;
   email: string;
-  role: Role | string;
+  role: (typeof ROLES)[number] | string;
 };
 
 export type User = {
@@ -15,9 +14,9 @@ export type User = {
   name: string;
   code: string;
   email: string;
-  team: Team | string;
-  type: TypeTag | string;
-  role: Role | string;
+  team: (typeof TEAMS)[number] | string;
+  type: (typeof TYPE_TAGS)[number] | string;
+  role: (typeof ROLES)[number] | string;
   score?: number;
   totalScore?: number;
   dateAdded?: string;

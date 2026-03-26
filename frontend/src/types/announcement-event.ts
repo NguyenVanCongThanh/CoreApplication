@@ -27,7 +27,12 @@ export interface AnnouncementItem {
   createdAt: string;
 }
 
-export const ANNOUNCEMENT_STATUSES = ["PENDING", "APPROVED", "DENIED", "EXPIRED"];
+export const ANNOUNCEMENT_STATUSES = [
+  "PENDING",
+  "APPROVED",
+  "DENIED",
+  "EXPIRED",
+] as const;
 
 export const STATUS_COLORS = {
   PENDING: "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800",
