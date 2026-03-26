@@ -13,5 +13,5 @@ public class AnnouncementRequest {
     private String title;
     private String content;
     private List<String> images;
-    private StatusPermission status; // Optional: Admin/Manager can update status
+    private StatusPermission status;
 }

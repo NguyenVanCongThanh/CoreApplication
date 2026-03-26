@@ -5,68 +5,47 @@ import com.example.demo.model.Task;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
+import jakarta.persistence.criteria.Predicate;
 
 public class TaskSpecifications {
 
+    private TaskSpecifications() {}
+
     public static Specification<Task> containsKeyword(String keyword, String... fields) {
         return (root, query, cb) -> {
-            if (keyword == null || keyword.isEmpty()) {
-                return cb.conjunction();
-            }
-            
+            if (keyword == null || keyword.isBlank()) return cb.conjunction();
             String pattern = "%" + keyword.toLowerCase() + "%";
-            var predicates = new jakarta.persistence.criteria.Predicate[fields.length];
-            
-            for (int i = 0; i < fields.length; i++) {
-                predicates[i] = cb.like(cb.lower(root.get(fields[i])), pattern);
-            }
-            
+            Predicate[] predicates = java.util.Arrays.stream(fields)
+                    .map(f -> cb.like(cb.lower(root.get(f)), pattern))
+                    .toArray(Predicate[]::new);
             return cb.or(predicates);
         };
     }
 
     public static Specification<Task> hasColumnId(String columnId) {
-        return (root, query, cb) -> {
-            if (columnId == null || columnId.isEmpty()) {
-                return cb.conjunction();
-            }
-            return cb.equal(root.get("columnId"), columnId);
-        };
+        return (root, query, cb) ->
+            (columnId == null || columnId.isBlank())
+                ? cb.conjunction()
+                : cb.equal(root.get("columnId"), columnId);
     }
 
     public static Specification<Task> hasPriority(Priority priority) {
-        return (root, query, cb) -> {
-            if (priority == null) {
-                return cb.conjunction();
-            }
-            return cb.equal(root.get("priority"), priority);
-        };
+        return (root, query, cb) ->
+            priority == null ? cb.conjunction() : cb.equal(root.get("priority"), priority);
     }
 
     public static Specification<Task> hasEventId(Long eventId) {
-        return (root, query, cb) -> {
-            if (eventId == null) {
-                return cb.conjunction();
-            }
-            return cb.equal(root.get("event").get("id"), eventId);
-        };
+        return (root, query, cb) ->
+            eventId == null ? cb.conjunction() : cb.equal(root.get("event").get("id"), eventId);
     }
 
-    public static Specification<Task> startAfter(LocalDateTime dateTime) {
-        return (root, query, cb) -> {
-            if (dateTime == null) {
-                return cb.conjunction();
-            }
-            return cb.greaterThanOrEqualTo(root.get("startDate"), dateTime);
-        };
+    public static Specification<Task> startAfter(LocalDateTime dt) {
+        return (root, query, cb) ->
+            dt == null ? cb.conjunction() : cb.greaterThanOrEqualTo(root.get("startDate"), dt);
     }
 
-    public static Specification<Task> endBefore(LocalDateTime dateTime) {
-        return (root, query, cb) -> {
-            if (dateTime == null) {
-                return cb.conjunction();
-            }
-            return cb.lessThanOrEqualTo(root.get("endDate"), dateTime);
-        };
+    public static Specification<Task> endBefore(LocalDateTime dt) {
+        return (root, query, cb) ->
+            dt == null ? cb.conjunction() : cb.lessThanOrEqualTo(root.get("endDate"), dt);
     }
 }

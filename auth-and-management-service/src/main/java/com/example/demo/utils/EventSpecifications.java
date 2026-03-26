@@ -10,26 +10,31 @@ import java.time.LocalDateTime;
 
 public class EventSpecifications {
 
+    private EventSpecifications() {}
+
     public static Specification<Event> containsKeyword(String keyword, String... fields) {
         return (root, query, cb) -> {
-            if (keyword == null || keyword.isEmpty()) return cb.conjunction();
-            Predicate[] predicates = new Predicate[fields.length];
-            for (int i = 0; i < fields.length; i++) {
-                predicates[i] = cb.like(cb.lower(root.get(fields[i])), "%" + keyword.toLowerCase() + "%");
-            }
+            if (keyword == null || keyword.isBlank()) return cb.conjunction();
+            String pattern = "%" + keyword.toLowerCase() + "%";
+            Predicate[] predicates = java.util.Arrays.stream(fields)
+                    .map(f -> cb.like(cb.lower(root.get(f)), pattern))
+                    .toArray(Predicate[]::new);
             return cb.or(predicates);
         };
     }
 
     public static Specification<Event> hasStatus(StatusEvent status) {
-        return (root, query, cb) -> status == null ? cb.conjunction() : cb.equal(root.get("statusEvent"), status);
+        return (root, query, cb) ->
+            status == null ? cb.conjunction() : cb.equal(root.get("statusEvent"), status);
     }
 
-    public static Specification<Event> startAfter(LocalDateTime start) {
-        return (root, query, cb) -> start == null ? cb.conjunction() : cb.greaterThanOrEqualTo(root.get("startTime"), start);
+    public static Specification<Event> startAfter(LocalDateTime dt) {
+        return (root, query, cb) ->
+            dt == null ? cb.conjunction() : cb.greaterThanOrEqualTo(root.get("startTime"), dt);
     }
 
-    public static Specification<Event> endBefore(LocalDateTime end) {
-        return (root, query, cb) -> end == null ? cb.conjunction() : cb.lessThanOrEqualTo(root.get("endTime"), end);
+    public static Specification<Event> endBefore(LocalDateTime dt) {
+        return (root, query, cb) ->
+            dt == null ? cb.conjunction() : cb.lessThanOrEqualTo(root.get("endTime"), dt);
     }
 }

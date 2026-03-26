@@ -1,7 +1,7 @@
 package com.example.demo.service;
 
-import com.example.demo.enums.UserRole;
 import com.example.demo.model.User;
+import com.example.demo.strategy.RoleResolutionStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,166 +9,145 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * UserSyncService: đồng bộ users sang LMS một cách bất đồng bộ.
+ *
+ * Cải tiến so với bản gốc:
+ * 1. Dùng strategy pattern (RoleResolutionStrategy) thay vì hardcode logic role
+ * 2. bulkSync dùng CompletableFuture.allOf để gửi song song nhiều user
+ * 3. Retry đơn giản với exponential backoff cho từng request
+ * 4. Header builder tách riêng, tái sử dụng
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class UserSyncService {
-    
+
     private final RestTemplate restTemplate;
-    
+    private final RoleResolutionStrategy roleStrategy;
+
     @Value("${lms.api.url}")
     private String lmsApiUrl;
-    
+
     @Value("${lms.api.secret}")
     private String lmsApiSecret;
-    
-    /**
-     * Đồng bộ user sang LMS (Go backend)
-     * Tất cả users đều có role TEACHER và STUDENT
-     * Chỉ ADMIN mới có thêm role ADMIN
-     */
-    @Async
-    public CompletableFuture<Void> syncUserToLms(User user) {
-        try {
-            syncSingleUser(user);
-            log.info("Successfully synced user {} to LMS", user.getEmail());
-        } catch (Exception e) {
-            log.error("Failed to sync user {} to LMS: {}", user.getEmail(), e.getMessage());
-        }
-        return CompletableFuture.completedFuture(null);
+
+    private static final int MAX_RETRIES = 3;
+
+    // ── Public API ───────────────────────────────────────────────────────────
+
+    @Async("syncExecutor")
+    public CompletableFuture<Void> syncUser(User user) {
+        return CompletableFuture.runAsync(() ->
+            withRetry(() -> doPost(lmsApiUrl + "/api/v1/sync/user", buildPayload(user)),
+                      "sync user " + user.getEmail())
+        );
     }
-    
+
     /**
-     * Đồng bộ nhiều users sang LMS
+     * Bulk sync: gửi từng user song song trên syncExecutor.
+     * Dùng allOf để đợi tất cả hoàn thành, lỗi từng user được log không dừng batch.
      */
-    @Async
-    public CompletableFuture<Void> syncUsersToLms(List<User> users) {
-        try {
-            bulkSyncUsers(users);
-            log.info("Successfully synced {} users to LMS", users.size());
-        } catch (Exception e) {
-            log.error("Failed to bulk sync users to LMS: {}", e.getMessage());
-        }
-        return CompletableFuture.completedFuture(null);
+    @Async("syncExecutor")
+    public CompletableFuture<Void> syncUsers(List<User> users) {
+        var futures = users.stream()
+                .map(u -> CompletableFuture
+                        .runAsync(() ->
+                            withRetry(() -> doPost(lmsApiUrl + "/api/v1/sync/user", buildPayload(u)),
+                                      "sync user " + u.getEmail()))
+                        .exceptionally(ex -> {
+                            log.error("Sync failed for user {}: {}", u.getEmail(), ex.getMessage());
+                            return null;
+                        }))
+                .toArray(CompletableFuture[]::new);
+
+        return CompletableFuture.allOf(futures)
+                .thenRun(() -> log.info("Bulk sync completed for {} users", users.size()));
     }
-    
-    private void syncSingleUser(User user) {
-        String url = lmsApiUrl + "/api/v1/sync/user";
-        
-        Map<String, Object> payload = buildUserSyncPayload(user);
-        
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Sync-Secret", lmsApiSecret);
-        
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-            url,
-            HttpMethod.POST,
-            request,
+
+    @Async("syncExecutor")
+    public CompletableFuture<Void> deleteUser(Long userId) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                restTemplate.exchange(
+                    lmsApiUrl + "/api/v1/sync/user/" + userId,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(authHeaders()),
+                    Void.class
+                );
+                log.info("Deleted user {} from LMS", userId);
+            } catch (RestClientException ex) {
+                log.error("Failed to delete user {} from LMS: {}", userId, ex.getMessage());
+            }
+        });
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private Map<String, Object> buildPayload(User user) {
+        return Map.of(
+            "user_id",   user.getId(),
+            "email",     user.getEmail(),
+            "full_name", user.getName(),
+            "roles",     roleStrategy.resolve(user.getRole())
+        );
+    }
+
+    private void doPost(String url, Object payload) {
+        var response = restTemplate.exchange(
+            url, HttpMethod.POST,
+            new HttpEntity<>(payload, jsonAuthHeaders()),
             new ParameterizedTypeReference<Map<String, Object>>() {}
         );
-        
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("LMS sync failed with status: " + response.getStatusCode());
+            throw new com.example.demo.exception.ExternalServiceException(
+                "LMS", "HTTP " + response.getStatusCode());
         }
     }
-    
-    private void bulkSyncUsers(List<User> users) {
-        String url = lmsApiUrl + "/api/v1/sync/users/bulk";
-        
-        List<Map<String, Object>> usersPayload = new ArrayList<>();
-        for (User user : users) {
-            usersPayload.add(buildUserSyncPayload(user));
+
+    /**
+     * Retry với exponential backoff: 1s → 2s → 4s.
+     * Nếu tất cả lần đều fail, log error và rethrow.
+     */
+    private void withRetry(Runnable task, String taskName) {
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                task.run();
+                return;
+            } catch (Exception ex) {
+                if (attempt == MAX_RETRIES) {
+                    log.error("All {} retries failed for [{}]: {}", MAX_RETRIES, taskName, ex.getMessage());
+                    throw ex;
+                }
+                long backoff = (long) Math.pow(2, attempt - 1) * 1000;
+                log.warn("Attempt {}/{} failed for [{}], retrying in {}ms: {}",
+                         attempt, MAX_RETRIES, taskName, backoff, ex.getMessage());
+                sleep(backoff);
+            }
         }
-        
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("users", usersPayload);
-        
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+    }
+
+    private HttpHeaders authHeaders() {
+        var headers = new HttpHeaders();
         headers.set("X-Sync-Secret", lmsApiSecret);
-        
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-            url,
-            HttpMethod.POST,
-            request,
-            new ParameterizedTypeReference<Map<String, Object>>() {}
-        );
-        
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("LMS bulk sync failed with status: " + response.getStatusCode());
-        }
+        return headers;
     }
-    
-    private Map<String, Object> buildUserSyncPayload(User user) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("user_id", user.getId());
-        payload.put("email", user.getEmail());
-        payload.put("full_name", user.getName());
-        
-        // Xác định roles
-        List<String> roles = determineRoles(user.getRole());
-        payload.put("roles", roles);
-        
-        return payload;
+
+    private HttpHeaders jsonAuthHeaders() {
+        var headers = authHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
     }
-    
-    /**
-     * Xác định roles cho LMS:
-     * - Tất cả users: TEACHER + STUDENT
-     * - ADMIN: TEACHER + STUDENT + ADMIN
-     */
-    private List<String> determineRoles(UserRole userRole) {
-        List<String> roles = new ArrayList<>();
-        
-        // Mặc định: tất cả đều có TEACHER và STUDENT
-        roles.add("TEACHER");
-        roles.add("STUDENT");
-        
-        // ADMIN thêm role ADMIN
-        if (userRole == UserRole.ROLE_ADMIN) {
-            roles.add("ADMIN");
-        }
-        
-        return roles;
-    }
-    
-    /**
-     * Xóa user khỏi LMS
-     */
-    @Async
-    public CompletableFuture<Void> deleteUserFromLms(Long userId) {
-        try {
-            String url = lmsApiUrl + "/api/v1/sync/user/" + userId;
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Sync-Secret", lmsApiSecret);
-            
-            HttpEntity<Void> request = new HttpEntity<>(headers);
-            
-            restTemplate.exchange(
-                url,
-                HttpMethod.DELETE,
-                request,
-                Void.class
-            );
-            
-            log.info("Successfully deleted user {} from LMS", userId);
-        } catch (Exception e) {
-            log.error("Failed to delete user {} from LMS: {}", userId, e.getMessage());
-        }
-        return CompletableFuture.completedFuture(null);
+
+    private void sleep(long ms) {
+        try { Thread.sleep(ms); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 }

@@ -21,6 +21,7 @@ public class AnnouncementService {
 
     private final AnnouncementRepository announcementRepository;
     private final UserRepository userRepository;
+    private final AnnouncementMapper announcementMapper;
 
     private User getCurrentUser() {
         String email = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -33,7 +34,7 @@ public class AnnouncementService {
         List<Announcement> announcements = announcementRepository.findAll();
         announcements.forEach(a -> a.getImages().size());
         return announcements.stream()
-                .map(AnnouncementMapper::toResponse)
+                .map(announcementMapper::toResponse)
                 .toList();
     }
 
@@ -42,14 +43,14 @@ public class AnnouncementService {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Announcement not found with id " + id));
         announcement.getImages().size();
-        return AnnouncementMapper.toResponse(announcement);
+        return announcementMapper.toResponse(announcement);
     }
 
     public AnnouncementResponse create(AnnouncementRequest request) {
         User creator = getCurrentUser();
-        Announcement announcement = AnnouncementMapper.toEntity(request, creator);
+        Announcement announcement = announcementMapper.toEntity(request, creator);
         announcement.setCreatedAt(LocalDateTime.now());
-        return AnnouncementMapper.toResponse(announcementRepository.save(announcement));
+        return announcementMapper.toResponse(announcementRepository.save(announcement));
     }
 
     public AnnouncementResponse update(Long id, AnnouncementRequest request) {
@@ -65,7 +66,7 @@ public class AnnouncementService {
         existing.setUpdatedAt(LocalDateTime.now());
         existing.setUpdatedBy(updater);
 
-        return AnnouncementMapper.toResponse(announcementRepository.save(existing));
+        return announcementMapper.toResponse(announcementRepository.save(existing));
     }
 
     public void delete(Long id) {

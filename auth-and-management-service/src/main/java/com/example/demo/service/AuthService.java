@@ -2,9 +2,12 @@ package com.example.demo.service;
 
 import com.example.demo.dto.auth.BulkRegisterRequest;
 import com.example.demo.dto.auth.LoginRequest;
+import com.example.demo.exception.BadRequestException;
+import com.example.demo.exception.DuplicateResourceException;
 import com.example.demo.enums.UserRole;
 import com.example.demo.model.User;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.strategy.RoleResolutionStrategy;
 import com.example.demo.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,35 +15,48 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+/**
+ * AuthService - xác thực + đăng ký.
+ *
+ * Cải tiến:
+ * - Inject RoleResolutionStrategy thay vì hardcode (OCP)
+ * - bulkRegister: validate tất cả trước khi save (fail-fast), rồi saveAll() 1 lần
+ * - Email gửi bất đồng bộ qua EmailService.sendWelcomeBatch()
+ * - User sync bất đồng bộ qua UserSyncService.syncUsers()
+ * - Dùng typed exceptions thay vì RuntimeException
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class AuthService {
+
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final UserSyncService userSyncService;
+    private final RoleResolutionStrategy roleStrategy;
+
+    // ── Authentication ───────────────────────────────────────────────────────
 
     public User authenticate(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        var user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new BadRequestException("Invalid email or password");
+            // Cố tình không phân biệt "user not found" vs "wrong password" → tránh user enumeration
         }
-
         return user;
     }
 
     public String generateToken(User user) {
-        List<String> roles = determineRoles(user.getRole());
-        return jwtService.generateToken(user.getId(), user.getEmail(), roles);
+        return jwtService.generateToken(user.getId(), user.getEmail(),
+                                        roleStrategy.resolve(user.getRole()));
     }
 
     public String generateRefreshToken(User user) {
@@ -55,75 +71,60 @@ public class AuthService {
         return jwtService.extractEmail(token);
     }
 
-    /**
-     * Determine roles for LMS:
-     * - All users: TEACHER + STUDENT
-     * - ADMIN: TEACHER + STUDENT + ADMIN
-     */
-    private List<String> determineRoles(UserRole userRole) {
-        List<String> roles = new ArrayList<>();
-        
-        // Default: all users have TEACHER and STUDENT
-        roles.add("TEACHER");
-        roles.add("STUDENT");
-        
-        // ADMIN gets additional ADMIN role
-        if (userRole == UserRole.ROLE_ADMIN) {
-            roles.add("ADMIN");
-        } else if (userRole == UserRole.ROLE_MANAGER) {
-            roles.add("MANAGER");
-        }
-        
-        return roles;
-    }
+    // ── Bulk register ────────────────────────────────────────────────────────
 
+    /**
+     * Validate-all → save-all → notify async
+     * Dùng saveAll() thay vì save() từng cái → giảm round-trip DB đáng kể.
+     */
     @Transactional
     public List<User> bulkRegister(BulkRegisterRequest request) {
-        List<User> createdUsers = new ArrayList<>();
-        Map<User, String> userPasswordMap = new HashMap<>();
-        
-        for (var reg : request.getUsers()) {
-            if (userRepository.existsByEmail(reg.getEmail())) {
-                throw new RuntimeException("Email already exists: " + reg.getEmail());
-            }
+        var registrations = request.getUsers();
 
-            String randomPassword = PasswordGenerator.generateStrongPassword();
-            
-            User user = User.builder()
-                    .name(reg.getName())
-                    .email(reg.getEmail())
-                    .password(passwordEncoder.encode(randomPassword))
-                    .role(reg.getRole() == null ? UserRole.ROLE_USER : reg.getRole())
-                    .team(reg.getTeam())
-                    .code(reg.getCode())
-                    .type(reg.getType())
-                    .active(true)
-                    .totalScore(0)
-                    .build();
+        // 1. Validate trước: collect tất cả duplicate email
+        var duplicates = registrations.stream()
+                .map(r -> r.getEmail())
+                .filter(userRepository::existsByEmail)
+                .toList();
 
-            User savedUser = userRepository.save(user);
-            createdUsers.add(savedUser);
-            userPasswordMap.put(savedUser, randomPassword);
-            
-            log.info("Created user: {} with email: {}", savedUser.getName(), savedUser.getEmail());
+        if (!duplicates.isEmpty()) {
+            throw new DuplicateResourceException("User", "email", String.join(", ", duplicates));
         }
-        
-        userPasswordMap.forEach((user, password) -> {
-            try {
-                emailService.sendWelcomeEmail(user.getEmail(), user.getName(), password);
-                log.info("Welcome email sent to: {}", user.getEmail());
-            } catch (Exception e) {
-                log.error("Failed to send email to: {}", user.getEmail(), e);
-            }
-        });
-        
-        try {
-            userSyncService.syncUsersToLms(createdUsers);
-            log.info("Initiated sync of {} users to LMS", createdUsers.size());
-        } catch (Exception e) {
-            log.error("Failed to initiate LMS sync: {}", e.getMessage());
-        }
-        
-        return createdUsers;
+
+        // 2. Build entities + ghi nhớ password plaintext để gửi mail
+        Map<String, String> emailToPassword = new java.util.LinkedHashMap<>();
+        Map<String, String> emailToName    = new java.util.LinkedHashMap<>();
+
+        List<User> users = registrations.stream()
+                .map(reg -> {
+                    String pwd = PasswordGenerator.generateStrongPassword();
+                    emailToPassword.put(reg.getEmail(), pwd);
+                    emailToName.put(reg.getEmail(), reg.getName());
+                    return User.builder()
+                            .name(reg.getName())
+                            .email(reg.getEmail())
+                            .password(passwordEncoder.encode(pwd))
+                            .role(reg.getRole() != null ? reg.getRole() : UserRole.ROLE_USER)
+                            .team(reg.getTeam())
+                            .code(reg.getCode())
+                            .type(reg.getType())
+                            .active(true)
+                            .totalScore(0)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        // 3. Batch insert một lần
+        List<User> saved = userRepository.saveAll(users);
+        log.info("Bulk registered {} users", saved.size());
+
+        // 4. Gửi email & sync LMS song song, bất đồng bộ - không chặn response
+        emailService.sendWelcomeBatch(emailToPassword, emailToName)
+                    .exceptionally(ex -> { log.error("Batch email error: {}", ex.getMessage()); return null; });
+
+        userSyncService.syncUsers(saved)
+                       .exceptionally(ex -> { log.error("LMS sync error: {}", ex.getMessage()); return null; });
+
+        return saved;
     }
 }

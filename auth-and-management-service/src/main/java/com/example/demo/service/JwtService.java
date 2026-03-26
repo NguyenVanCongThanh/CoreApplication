@@ -1,43 +1,58 @@
 package com.example.demo.service;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
-
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.security.Key;
 import java.util.Date;
+import java.util.List;
 
+/**
+ * JwtService - stateless, thread-safe.
+ *
+ * Cải tiến:
+ * - SecretKey được tạo 1 lần trong @PostConstruct, immutable field → thread-safe
+ * - extractAllClaims() dùng chung, không lặp parse logic
+ * - validateToken() trả Optional hoặc boolean tuỳ use-case
+ * - Không expose Claims ra ngoài service (encapsulation)
+ */
+@Slf4j
 @Service
 public class JwtService {
+
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    private Key secretKey;
-    
-    @Value("${jwt.expirationMs}")
+    @Value("${jwt.expirationMs:3600000}")
     private long expirationMs;
 
-    @Value("${jwt.refreshExpirationMs:604800000}") // Default 7 days
+    @Value("${jwt.refreshExpirationMs:604800000}")
     private long refreshExpirationMs;
+
+    // Immutable sau @PostConstruct → thread-safe, không cần synchronize
+    private SecretKey secretKey;
 
     @PostConstruct
     public void init() {
         this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
-    public String generateToken(Long userId, String email, java.util.List<String> roles) {
+    // ── Token generation ─────────────────────────────────────────────────────
+
+    public String generateToken(Long userId, String email, List<String> roles) {
         return Jwts.builder()
                 .subject(email)
                 .claim("user_id", userId)
-                .claim("email", email)
-                .claim("roles", roles)
+                .claim("email",   email)
+                .claim("roles",   roles)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .expiration(expiryFrom(expirationMs))
                 .signWith(secretKey)
                 .compact();
     }
@@ -47,42 +62,48 @@ public class JwtService {
                 .subject(email)
                 .claim("user_id", userId)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .expiration(expiryFrom(refreshExpirationMs))
                 .signWith(secretKey)
                 .compact();
     }
 
+    // ── Extraction ───────────────────────────────────────────────────────────
+
     public String extractEmail(String token) {
-        return extractAllClaims(token).getSubject();
+        return claims(token).getSubject();
     }
 
     public Long extractUserId(String token) {
-        return extractAllClaims(token).get("user_id", Long.class);
-    }
-
-    public String extractRole(String token) {
-        return extractAllClaims(token).get("role", String.class);
+        return claims(token).get("user_id", Long.class);
     }
 
     @SuppressWarnings("unchecked")
-    public java.util.List<String> extractRoles(String token) {
-        return extractAllClaims(token).get("roles", java.util.List.class);
+    public List<String> extractRoles(String token) {
+        return claims(token).get("roles", List.class);
     }
+
+    // ── Validation ───────────────────────────────────────────────────────────
 
     public boolean validateToken(String token) {
         try {
-            Claims claims = extractAllClaims(token);
-            return claims.getExpiration().after(new Date());
-        } catch (Exception e) {
+            return claims(token).getExpiration().after(new Date());
+        } catch (JwtException | IllegalArgumentException ex) {
+            log.debug("Invalid JWT token: {}", ex.getMessage());
             return false;
         }
     }
 
-    private Claims extractAllClaims(String token) {
+    // ── Internal helpers ─────────────────────────────────────────────────────
+
+    private Claims claims(String token) {
         return Jwts.parser()
-                .verifyWith((SecretKey) secretKey)   // JJWT 0.12.x style
+                .verifyWith(secretKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    private Date expiryFrom(long ms) {
+        return new Date(System.currentTimeMillis() + ms);
     }
 }

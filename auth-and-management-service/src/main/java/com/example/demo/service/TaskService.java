@@ -3,6 +3,8 @@ package com.example.demo.service;
 import com.example.demo.dto.task.TaskRequest;
 import com.example.demo.dto.task.TaskResponse;
 import com.example.demo.enums.Priority;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.mapper.TaskMapper;
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
 import com.example.demo.utils.SortUtils;
@@ -15,137 +17,117 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
+/**
+ * TaskService - chỉ chứa business logic, delegate mapping sang TaskMapper.
+ *
+ * Cải tiến:
+ * - SRP: mapping tách sang TaskMapper
+ * - N+1 fix: dùng 2-step fetch (assignees trước, links sau) đúng cách
+ * - Lambda + method ref ngắn gọn
+ * - Typed exception thay vì RuntimeException
+ */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true) // mặc định read-only, chỉ override khi write
 public class TaskService {
+
     private final TaskRepository taskRepo;
     private final UserRepository userRepo;
     private final EventRepository eventRepo;
-    private final TaskScoreRepository taskScoreRepo;
+    private final TaskMapper taskMapper;
+
+    // ── Write operations ─────────────────────────────────────────────────────
 
     @Transactional
-    public TaskResponse createTask(TaskRequest request, Long creatorId) {
-        User creator = userRepo.findById(creatorId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    public TaskResponse createTask(TaskRequest req, Long creatorId) {
+        var creator = findUser(creatorId);
 
-        Task task = Task.builder()
-                .title(request.getTitle())
-                .description(request.getDescription())
-                .priority(request.getPriority())
-                .columnId(request.getColumnId())
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+        var task = Task.builder()
+                .title(req.getTitle())
+                .description(req.getDescription())
+                .priority(req.getPriority())
+                .columnId(req.getColumnId())
+                .startDate(req.getStartDate())
+                .endDate(req.getEndDate())
                 .createdBy(creator)
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        // Set event if provided
-        if (request.getEventId() != null) {
-            Event event = eventRepo.findById(request.getEventId())
-                    .orElseThrow(() -> new RuntimeException("Event not found"));
-            task.setEvent(event);
+        if (req.getEventId() != null) {
+            task.setEvent(findEvent(req.getEventId()));
         }
 
-        // Save task first
+        // Save task trước để có ID, sau đó set links/assignees
+        task = taskRepo.save(task);
+        applyLinks(task, req);
+        applyAssignees(task, req);
         task = taskRepo.save(task);
 
-        // Add links
-        if (request.getLinks() != null) {
-            for (TaskRequest.TaskLinkRequest linkReq : request.getLinks()) {
-                TaskLink link = TaskLink.builder()
-                        .url(linkReq.getUrl())
-                        .title(linkReq.getTitle())
-                        .task(task)
-                        .build();
-                task.getLinks().add(link);
-            }
-        }
-
-        // Add assignees
-        if (request.getAssigneeIds() != null) {
-            for (Long userId : request.getAssigneeIds()) {
-                User user = userRepo.findById(userId)
-                        .orElseThrow(() -> new RuntimeException("User not found: " + userId));
-                UserTask userTask = UserTask.builder()
-                        .user(user)
-                        .task(task)
-                        .build();
-                task.getAssignees().add(userTask);
-            }
-        }
-
-        task = taskRepo.save(task);
-        return mapToResponse(task);
+        return taskMapper.toResponse(task);
     }
 
     @Transactional
-    public TaskResponse updateTask(Long taskId, TaskRequest request, Long updaterId) {
-        Task task = taskRepo.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
+    public TaskResponse updateTask(Long taskId, TaskRequest req, Long updaterId) {
+        var task    = findTaskById(taskId);
+        var updater = findUser(updaterId);
 
-        User updater = userRepo.findById(updaterId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        task.setTitle(request.getTitle());
-        task.setDescription(request.getDescription());
-        task.setPriority(request.getPriority());
-        task.setColumnId(request.getColumnId());
-        task.setStartDate(request.getStartDate());
-        task.setEndDate(request.getEndDate());
+        task.setTitle(req.getTitle());
+        task.setDescription(req.getDescription());
+        task.setPriority(req.getPriority());
+        task.setColumnId(req.getColumnId());
+        task.setStartDate(req.getStartDate());
+        task.setEndDate(req.getEndDate());
         task.setUpdatedBy(updater);
         task.setUpdatedAt(LocalDateTime.now());
+        task.setEvent(req.getEventId() != null ? findEvent(req.getEventId()) : null);
 
-        // Update event
-        if (request.getEventId() != null) {
-            Event event = eventRepo.findById(request.getEventId())
-                    .orElseThrow(() -> new RuntimeException("Event not found"));
-            task.setEvent(event);
-        } else {
-            task.setEvent(null);
-        }
-
-        // Update links
         task.getLinks().clear();
-        if (request.getLinks() != null) {
-            for (TaskRequest.TaskLinkRequest linkReq : request.getLinks()) {
-                TaskLink link = TaskLink.builder()
-                        .url(linkReq.getUrl())
-                        .title(linkReq.getTitle())
-                        .task(task)
-                        .build();
-                task.getLinks().add(link);
-            }
-        }
-
-        // Update assignees
         task.getAssignees().clear();
-        if (request.getAssigneeIds() != null) {
-            for (Long userId : request.getAssigneeIds()) {
-                User user = userRepo.findById(userId)
-                        .orElseThrow(() -> new RuntimeException("User not found: " + userId));
-                UserTask userTask = UserTask.builder()
-                        .user(user)
-                        .task(task)
-                        .build();
-                task.getAssignees().add(userTask);
-            }
-        }
+        applyLinks(task, req);
+        applyAssignees(task, req);
 
-        task = taskRepo.save(task);
-        return mapToResponse(task);
+        return taskMapper.toResponse(taskRepo.save(task));
     }
 
-    @Transactional(readOnly = true)
-    public List<TaskResponse> searchTasks(String keyword,
-                                          String columnId,
-                                          Priority priority,
-                                          Long eventId,
-                                          LocalDateTime startAfter,
-                                          LocalDateTime endBefore,
-                                          String[] sortParams) {
+    @Transactional
+    public TaskResponse moveTask(Long taskId, String columnId, Long userId) {
+        var task = findTaskById(taskId);
+        task.setColumnId(columnId);
+        task.setUpdatedBy(findUser(userId));
+        task.setUpdatedAt(LocalDateTime.now());
+        return taskMapper.toResponse(taskRepo.save(task));
+    }
 
+    @Transactional
+    public void deleteTask(Long id) {
+        taskRepo.deleteById(id);
+    }
+
+    // ── Read operations ──────────────────────────────────────────────────────
+
+    public List<TaskResponse> getAllTasks() {
+        return fetchAndMap(taskRepo.findAllWithAssignees());
+    }
+
+    public TaskResponse getTaskById(Long id) {
+        var task = taskRepo.findByIdWithAssignees(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Task", id));
+        taskRepo.findByIdWithLinks(id); // hydrate links in persistence context
+        return taskMapper.toResponse(task);
+    }
+
+    public List<TaskResponse> getTasksByEventId(Long eventId) {
+        return fetchAndMap(taskRepo.findByEventIdWithAssignees(eventId));
+    }
+
+    public List<TaskResponse> getTasksByColumnId(String columnId) {
+        return fetchAndMap(taskRepo.findByColumnIdWithAssignees(columnId));
+    }
+
+    public List<TaskResponse> searchTasks(String keyword, String columnId, Priority priority,
+                                          Long eventId, LocalDateTime startAfter,
+                                          LocalDateTime endBefore, String[] sortParams) {
         Specification<Task> spec = Specification
                 .where(TaskSpecifications.containsKeyword(keyword, "title", "description"))
                 .and(TaskSpecifications.hasColumnId(columnId))
@@ -155,151 +137,53 @@ public class TaskService {
                 .and(TaskSpecifications.endBefore(endBefore));
 
         Sort sort = SortUtils.parseSort(sortParams);
-
         return taskRepo.findAll(spec, sort).stream()
-                .map(this::mapToResponse)
+                .map(taskMapper::toResponse)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public TaskResponse getTaskById(Long id) {
-        // Fetch với assignees
-        Task task = taskRepo.findByIdWithAssignees(id)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
-        
-        // Fetch links
-        taskRepo.findByIdWithLinks(id);
-        
-        return mapToResponse(task);
-    }
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
-    public List<TaskResponse> getTasksByEventId(Long eventId) {
-        List<Task> tasks = taskRepo.findByEventIdWithAssignees(eventId);
-        
+    /**
+     * 2-step fetch: Step1 load assignees, Step2 load links.
+     * Tránh MultipleBagFetchException khi JOIN FETCH nhiều collection cùng lúc.
+     */
+    private List<TaskResponse> fetchAndMap(List<Task> tasks) {
         if (!tasks.isEmpty()) {
-                taskRepo.findLinksForTasks(tasks);
+            taskRepo.findLinksForTasks(tasks); // hydrate links vào persistence context
         }
-        
-        return tasks.stream()
-                .map(this::mapToResponse)
-                .toList();
+        return taskMapper.toResponseList(tasks);
     }
 
-    @Transactional(readOnly = true)
-    public List<TaskResponse> getTasksByColumnId(String columnId) {
-        List<Task> tasks = taskRepo.findByColumnIdWithAssignees(columnId);
-        
-        if (!tasks.isEmpty()) {
-                taskRepo.findLinksForTasks(tasks);
-        }
-        
-        return tasks.stream()
-                .map(this::mapToResponse)
-                .toList();
+    private void applyLinks(Task task, TaskRequest req) {
+        if (req.getLinks() == null) return;
+        req.getLinks().stream()
+                .map(l -> TaskLink.builder().url(l.getUrl()).title(l.getTitle()).task(task).build())
+                .forEach(task.getLinks()::add);
     }
 
-    @Transactional(readOnly = true)
-    public List<TaskResponse> getAllTasks() {
-        // Step 1: Fetch với assignees
-        List<Task> tasks = taskRepo.findAllWithAssignees();
-        
-        // Step 2: Fetch links cho các tasks đó
-        if (!tasks.isEmpty()) {
-                taskRepo.findLinksForTasks(tasks);
-        }
-        
-        return tasks.stream()
-                .map(this::mapToResponse)
-                .toList();
-    }
-
-    @Transactional
-    public void deleteTask(Long id) {
-        taskRepo.deleteById(id);
-    }
-
-    @Transactional
-    public TaskResponse moveTask(Long taskId, String newColumnId, Long userId) {
-        Task task = taskRepo.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
-
-        User updater = userRepo.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        task.setColumnId(newColumnId);
-        task.setUpdatedBy(updater);
-        task.setUpdatedAt(LocalDateTime.now());
-
-        task = taskRepo.save(task);
-        return mapToResponse(task);
-    }
-
-    private TaskResponse mapToResponse(Task task) {
-        TaskResponse.TaskResponseBuilder builder = TaskResponse.builder()
-                .id(task.getId())
-                .title(task.getTitle())
-                .description(task.getDescription())
-                .priority(task.getPriority())
-                .columnId(task.getColumnId())
-                .startDate(task.getStartDate())
-                .endDate(task.getEndDate())
-                .createdAt(task.getCreatedAt());
-
-        if (task.getEvent() != null) {
-            builder.event(TaskResponse.EventInfo.builder()
-                    .id(task.getEvent().getId())
-                    .title(task.getEvent().getTitle())
-                    .build());
-        }
-
-        if (task.getCreatedBy() != null) {
-            builder.createdBy(TaskResponse.UserInfo.builder()
-                    .id(task.getCreatedBy().getId())
-                    .name(task.getCreatedBy().getName())
-                    .email(task.getCreatedBy().getEmail())
-                    .build());
-        }
-
-        if (task.getUpdatedBy() != null) {
-            builder.updatedBy(TaskResponse.UserInfo.builder()
-                    .id(task.getUpdatedBy().getId())
-                    .name(task.getUpdatedBy().getName())
-                    .email(task.getUpdatedBy().getEmail())
-                    .build())
-                    .updatedAt(task.getUpdatedAt());
-        }
-
-        builder.assignees(task.getAssignees().stream()
-                .map(ut -> {
-                    TaskResponse.AssigneeInfo.AssigneeInfoBuilder assigneeBuilder = TaskResponse.AssigneeInfo.builder()
-                            .id(ut.getUser().getId())
-                            .name(ut.getUser().getName())
-                            .email(ut.getUser().getEmail())
-                            .code(ut.getUser().getCode())
-                            .team(ut.getUser().getTeam().name())
-                            .type(ut.getUser().getType().name());
-                    
-                    // Lấy score thông tin nếu có
-                    taskScoreRepo.findByTaskIdAndUserId(task.getId(), ut.getUser().getId())
-                            .ifPresent(score -> {
-                                assigneeBuilder.score(score.getScore());
-                                assigneeBuilder.applied(score.getApplied());
-                                assigneeBuilder.appliedAt(score.getAppliedAt());
-                            });
-                    
-                    return assigneeBuilder.build();
-                })
-                .collect(Collectors.toList()));
-
-        builder.links(task.getLinks().stream()
-                .map(link -> TaskResponse.TaskLinkInfo.builder()
-                        .id(link.getId())
-                        .url(link.getUrl())
-                        .title(link.getTitle())
+    private void applyAssignees(Task task, TaskRequest req) {
+        if (req.getAssigneeIds() == null) return;
+        req.getAssigneeIds().stream()
+                .map(uid -> UserTask.builder()
+                        .user(findUser(uid))
+                        .task(task)
                         .build())
-                .collect(Collectors.toList()));
+                .forEach(task.getAssignees()::add);
+    }
 
-        return builder.build();
+    private Task findTaskById(Long id) {
+        return taskRepo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Task", id));
+    }
+
+    private User findUser(Long id) {
+        return userRepo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+    }
+
+    private Event findEvent(Long id) {
+        return eventRepo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Event", id));
     }
 }

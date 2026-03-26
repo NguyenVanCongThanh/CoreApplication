@@ -2,47 +2,51 @@ package com.example.demo.utils;
 
 import java.security.SecureRandom;
 
-public class PasswordGenerator {
-    
+public final class PasswordGenerator {
+
     private static final String UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
-    private static final String DIGITS = "0123456789";
-    private static final String SPECIAL = "!@#$%^&*()_+-=";
+    private static final String DIGITS    = "0123456789";
+    private static final String SPECIAL   = "!@#$%^&*()_+-=";
     private static final String ALL_CHARS = UPPERCASE + LOWERCASE + DIGITS + SPECIAL;
-    
-    private static final SecureRandom random = new SecureRandom();
-    private static final int DEFAULT_LENGTH = 12;
-    
+    private static final int    DEFAULT_LENGTH = 12;
+
+    // ThreadLocal: mỗi thread có 1 SecureRandom riêng → không tranh lock
+    private static final ThreadLocal<SecureRandom> RANDOM =
+            ThreadLocal.withInitial(SecureRandom::new);
+
+    private PasswordGenerator() {}
+
     public static String generateStrongPassword() {
         return generateStrongPassword(DEFAULT_LENGTH);
     }
-    
+
     public static String generateStrongPassword(int length) {
-        if (length < 8) {
-            throw new IllegalArgumentException("Password length must be at least 8 characters");
-        }
-        
-        StringBuilder password = new StringBuilder(length);
-        
-        password.append(UPPERCASE.charAt(random.nextInt(UPPERCASE.length())));
-        password.append(LOWERCASE.charAt(random.nextInt(LOWERCASE.length())));
-        password.append(DIGITS.charAt(random.nextInt(DIGITS.length())));
-        password.append(SPECIAL.charAt(random.nextInt(SPECIAL.length())));
-        
+        if (length < 8) throw new IllegalArgumentException("Password length must be at least 8");
+
+        var rng = RANDOM.get();
+        var sb  = new StringBuilder(length);
+
+        // Đảm bảo đủ loại ký tự (mỗi loại ít nhất 1)
+        sb.append(UPPERCASE.charAt(rng.nextInt(UPPERCASE.length())));
+        sb.append(LOWERCASE.charAt(rng.nextInt(LOWERCASE.length())));
+        sb.append(DIGITS.charAt(rng.nextInt(DIGITS.length())));
+        sb.append(SPECIAL.charAt(rng.nextInt(SPECIAL.length())));
+
         for (int i = 4; i < length; i++) {
-            password.append(ALL_CHARS.charAt(random.nextInt(ALL_CHARS.length())));
+            sb.append(ALL_CHARS.charAt(rng.nextInt(ALL_CHARS.length())));
         }
-        
-        return shuffleString(password.toString());
+
+        return shuffle(sb.toString(), rng);
     }
-    
-    private static String shuffleString(String string) {
-        char[] chars = string.toCharArray();
+
+    private static String shuffle(String s, SecureRandom rng) {
+        char[] chars = s.toCharArray();
         for (int i = chars.length - 1; i > 0; i--) {
-            int j = random.nextInt(i + 1);
-            char temp = chars[i];
+            int j    = rng.nextInt(i + 1);
+            char tmp = chars[i];
             chars[i] = chars[j];
-            chars[j] = temp;
+            chars[j] = tmp;
         }
         return new String(chars);
     }
