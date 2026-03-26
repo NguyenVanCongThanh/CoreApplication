@@ -34,8 +34,7 @@ export function AIIndexButton({
   const [loading, setLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
-  // Không hiển thị nếu content không có file hoặc không hỗ trợ
-  if (!INDEXABLE_TYPES.has(contentType) || !filePath) return null;
+  const isIndexable = INDEXABLE_TYPES.has(contentType) && filePath;
 
   // ── Poll status khi đang processing ────────────────────────────────────────
   const startPolling = useCallback(() => {
@@ -85,6 +84,8 @@ export function AIIndexButton({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [status, startPolling, contentId]);
+
+  if (!isIndexable) return null;
 
   // ── Trigger index ───────────────────────────────────────────────────────────
   const handleIndex = async () => {
