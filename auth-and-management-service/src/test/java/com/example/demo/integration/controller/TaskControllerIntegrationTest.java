@@ -1,7 +1,5 @@
 package com.example.demo.integration.controller;
 
-import com.example.demo.common.TestDataFactory;
-import com.example.demo.dto.auth.*;
 import com.example.demo.dto.task.TaskRequest;
 import com.example.demo.enums.*;
 import com.example.demo.model.User;
@@ -18,7 +16,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.hamcrest.Matchers.*;

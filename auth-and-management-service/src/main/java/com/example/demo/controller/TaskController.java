@@ -3,7 +3,8 @@ package com.example.demo.controller;
 import com.example.demo.dto.task.TaskRequest;
 import com.example.demo.dto.task.TaskResponse;
 import com.example.demo.enums.Priority;
-import com.example.demo.service.TaskService;
+import com.example.demo.service.task.TaskService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;

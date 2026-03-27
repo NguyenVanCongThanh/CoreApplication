@@ -4,7 +4,8 @@ import com.example.demo.common.TestDataFactory;
 import com.example.demo.exception.InvalidTokenException;
 import com.example.demo.model.User;
 import com.example.demo.repository.PasswordResetTokenRepository;
-import com.example.demo.service.PasswordResetService;
+import com.example.demo.service.user.PasswordResetService;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
@@ -56,9 +57,6 @@ class PasswordResetServiceTest {
         token2.setToken("different-uuid");
 
         given(tokenRepository.save(any())).willReturn(token1, token2);
-
-        var t1 = passwordResetService.createToken(user);
-        var t2 = passwordResetService.createToken(user);
 
         then(tokenRepository).should(times(2)).deleteByUser(user);
     }

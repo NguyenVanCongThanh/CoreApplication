@@ -1,11 +1,12 @@
 package com.example.demo.unit.service;
 
-import com.example.demo.service.JwtService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import com.example.demo.service.auth.JwtService;
 
 import java.util.List;
 import java.util.concurrent.*;

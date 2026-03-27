@@ -1,6 +1,5 @@
 package com.example.demo.unit.service;
 
-import com.example.demo.service.EmailService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.*;
@@ -9,6 +8,8 @@ import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import com.example.demo.service.email.EmailService;
 
 import java.util.Map;
 import java.util.concurrent.*;

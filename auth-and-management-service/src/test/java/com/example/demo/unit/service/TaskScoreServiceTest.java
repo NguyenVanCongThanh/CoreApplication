@@ -3,10 +3,10 @@ package com.example.demo.unit.service;
 import com.example.demo.common.TestDataFactory;
 import com.example.demo.dto.taskscore.TaskScoreResponse;
 import com.example.demo.exception.ForbiddenException;
-import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
-import com.example.demo.service.TaskScoreService;
+import com.example.demo.service.task.TaskScoreService;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;

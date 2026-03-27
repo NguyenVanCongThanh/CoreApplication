@@ -1,4 +1,4 @@
-package com.example.demo.service.impl.user;
+package com.example.demo.service.user.impl;
 
 import com.example.demo.dto.auth.PasswordChangeRequest;
 import com.example.demo.dto.user.UpdateUserRequest;
@@ -8,9 +8,10 @@ import com.example.demo.exception.InvalidPasswordException;
 import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.model.User;
 import com.example.demo.repository.UserRepository;
-import com.example.demo.service.EmailService;
-import com.example.demo.service.PasswordResetService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.email.EmailService;
+import com.example.demo.service.user.PasswordResetService;
+import com.example.demo.service.user.UserService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

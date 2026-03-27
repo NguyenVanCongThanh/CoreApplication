@@ -38,7 +38,6 @@ class TaskScoreRepositoryTest {
     @Test
     @DisplayName("findByTaskIdAndUserId - returns score for specific task+user pair")
     void findByTaskIdAndUserId_success() {
-        var score = persistScore(task, user1, 100, false);
 
         var found = taskScoreRepo.findByTaskIdAndUserId(task.getId(), user1.getId());
 

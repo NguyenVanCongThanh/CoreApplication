@@ -1,6 +1,5 @@
 package com.example.demo.config;
 
-import com.example.demo.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -15,6 +14,8 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.example.demo.service.auth.JwtService;
 
 import java.io.IOException;
 import java.util.Arrays;

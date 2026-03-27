@@ -1,4 +1,4 @@
-package com.example.demo.service;
+package com.example.demo.service.user;
 
 import com.example.demo.exception.InvalidTokenException;
 import com.example.demo.model.PasswordResetToken;

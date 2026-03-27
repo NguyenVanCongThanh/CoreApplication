@@ -2,7 +2,8 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.taskscore.TaskScoreRequest;
 import com.example.demo.dto.taskscore.TaskScoreResponse;
-import com.example.demo.service.TaskScoreService;
+import com.example.demo.service.task.TaskScoreService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

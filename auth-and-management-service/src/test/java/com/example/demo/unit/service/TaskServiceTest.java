@@ -1,20 +1,18 @@
 package com.example.demo.unit.service;
 
 import com.example.demo.common.TestDataFactory;
-import com.example.demo.dto.task.TaskRequest;
 import com.example.demo.dto.task.TaskResponse;
-import com.example.demo.enums.Priority;
 import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.TaskMapper;
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
-import com.example.demo.service.TaskService;
+import com.example.demo.service.task.TaskService;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;

@@ -1,4 +1,4 @@
-package com.example.demo.service.impl.email.sender;
+package com.example.demo.service.email.impl;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -6,6 +6,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 import com.example.demo.exception.ExternalServiceException;
+import com.example.demo.service.email.EmailSender;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;

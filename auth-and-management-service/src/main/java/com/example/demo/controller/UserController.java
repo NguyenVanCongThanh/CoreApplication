@@ -3,7 +3,8 @@ package com.example.demo.controller;
 import com.example.demo.dto.user.ChangePasswordRequest;
 import com.example.demo.dto.user.UpdateUserRequest;
 import com.example.demo.dto.user.UserResponse;
-import com.example.demo.service.UserService;
+import com.example.demo.service.user.UserService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

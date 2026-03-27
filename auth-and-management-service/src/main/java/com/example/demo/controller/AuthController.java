@@ -2,8 +2,9 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.auth.*;
 import com.example.demo.model.User;
-import com.example.demo.service.AuthService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.auth.AuthService;
+import com.example.demo.service.user.UserService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;

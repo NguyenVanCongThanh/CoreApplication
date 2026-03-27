@@ -1,8 +1,8 @@
-package com.example.demo.service.impl.email;
+package com.example.demo.service.email.impl;
 
-import com.example.demo.service.EmailService;
-import com.example.demo.service.impl.email.sender.EmailSender;
-import com.example.demo.service.impl.email.template.EmailTemplateProvider;
+import com.example.demo.service.email.EmailSender;
+import com.example.demo.service.email.EmailService;
+import com.example.demo.service.email.EmailTemplateProvider;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

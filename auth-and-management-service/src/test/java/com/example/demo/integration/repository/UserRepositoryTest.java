@@ -1,6 +1,5 @@
 package com.example.demo.integration.repository;
 
-import com.example.demo.common.TestDataFactory;
 import com.example.demo.enums.*;
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
@@ -9,9 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 

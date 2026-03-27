@@ -1,4 +1,4 @@
-package com.example.demo.service;
+package com.example.demo.service.email;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;

@@ -1,4 +1,4 @@
-package com.example.demo.service;
+package com.example.demo.service.task;
 
 import com.example.demo.dto.taskscore.TaskScoreRequest;
 import com.example.demo.dto.taskscore.TaskScoreResponse;

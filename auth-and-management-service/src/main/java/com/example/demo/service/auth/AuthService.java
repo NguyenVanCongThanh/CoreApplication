@@ -1,4 +1,4 @@
-package com.example.demo.service;
+package com.example.demo.service.auth;
 
 import com.example.demo.dto.auth.BulkRegisterRequest;
 import com.example.demo.dto.auth.LoginRequest;
@@ -7,6 +7,8 @@ import com.example.demo.exception.DuplicateResourceException;
 import com.example.demo.enums.UserRole;
 import com.example.demo.model.User;
 import com.example.demo.repository.UserRepository;
+import com.example.demo.service.email.EmailService;
+import com.example.demo.service.user.UserSyncService;
 import com.example.demo.strategy.RoleResolutionStrategy;
 import com.example.demo.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;

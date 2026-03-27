@@ -1,10 +1,12 @@
-package com.example.demo.service.impl.email.template;
+package com.example.demo.service.email.template;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import com.example.demo.service.email.EmailTemplateProvider;
 
 @Component
 public class EmailHtmlTemplate implements EmailTemplateProvider{
