@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.List;
 
 @org.springframework.stereotype.Component
-class LmsRoleStrategy implements RoleResolutionStrategy {
+public class LmsRoleStrategy implements RoleResolutionStrategy {
 
     private static final Map<UserRole, List<String>> ROLE_MAP = Map.of(
         UserRole.ROLE_ADMIN,   List.of("TEACHER", "STUDENT", "ADMIN"),
