@@ -139,6 +139,25 @@ app:
     dir: uploads/profiles/
   name: BDC System
   url: ${APP_PUBLIC_URL}
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
+
+cors:
+  allowed-origins:
+    - http://localhost:3000
+    - http://localhost:8080
+    - https://bdc.hpcc.vn
+    - http://frontend:3000
+    - https://bdcweb.vercel.app
+
+async:
+  email:
+    core-pool-size: ${ASYNC_EMAIL_CORE:5}
+    max-pool-size: ${ASYNC_EMAIL_MAX:30}
+  sync:
+    core-pool-size: ${ASYNC_SYNC_CORE:3}
+    max-pool-size: ${ASYNC_SYNC_MAX:10}
 
 # Logging Configuration
 logging:

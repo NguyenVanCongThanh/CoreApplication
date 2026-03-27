@@ -3,7 +3,8 @@ package com.example.demo.controller;
 import com.example.demo.dto.task.TaskRequest;
 import com.example.demo.dto.task.TaskResponse;
 import com.example.demo.enums.Priority;
-import com.example.demo.service.TaskService;
+import com.example.demo.service.task.TaskService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -17,60 +18,51 @@ import java.util.List;
 @RequestMapping("/api/tasks")
 @RequiredArgsConstructor
 public class TaskController {
+
     private final TaskService taskService;
 
     @PostMapping
-    public ResponseEntity<TaskResponse> createTask(
-            @RequestBody TaskRequest request,
-            @RequestParam Long userId) {
-        TaskResponse response = taskService.createTask(request, userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<TaskResponse> create(@RequestBody TaskRequest req,
+                                                @RequestParam Long userId) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(req, userId));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TaskResponse> updateTask(
-            @PathVariable Long id,
-            @RequestBody TaskRequest request,
-            @RequestParam Long userId) {
-        TaskResponse response = taskService.updateTask(id, request, userId);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<TaskResponse> update(@PathVariable Long id,
+                                                @RequestBody TaskRequest req,
+                                                @RequestParam Long userId) {
+        return ResponseEntity.ok(taskService.updateTask(id, req, userId));
     }
 
     @PatchMapping("/{id}/move")
-    public ResponseEntity<TaskResponse> moveTask(
-            @PathVariable Long id,
-            @RequestParam String columnId,
-            @RequestParam Long userId) {
-        TaskResponse response = taskService.moveTask(id, columnId, userId);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<TaskResponse> move(@PathVariable Long id,
+                                              @RequestParam String columnId,
+                                              @RequestParam Long userId) {
+        return ResponseEntity.ok(taskService.moveTask(id, columnId, userId));
     }
 
     @GetMapping
-    public ResponseEntity<List<TaskResponse>> getAllTasks() {
-        List<TaskResponse> tasks = taskService.getAllTasks();
-        return ResponseEntity.ok(tasks);
+    public ResponseEntity<List<TaskResponse>> getAll() {
+        return ResponseEntity.ok(taskService.getAllTasks());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TaskResponse> getTaskById(@PathVariable Long id) {
-        TaskResponse response = taskService.getTaskById(id);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<TaskResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(taskService.getTaskById(id));
     }
 
     @GetMapping("/event/{eventId}")
-    public ResponseEntity<List<TaskResponse>> getTasksByEvent(@PathVariable Long eventId) {
-        List<TaskResponse> tasks = taskService.getTasksByEventId(eventId);
-        return ResponseEntity.ok(tasks);
+    public ResponseEntity<List<TaskResponse>> getByEvent(@PathVariable Long eventId) {
+        return ResponseEntity.ok(taskService.getTasksByEventId(eventId));
     }
 
     @GetMapping("/column/{columnId}")
-    public ResponseEntity<List<TaskResponse>> getTasksByColumn(@PathVariable String columnId) {
-        List<TaskResponse> tasks = taskService.getTasksByColumnId(columnId);
-        return ResponseEntity.ok(tasks);
+    public ResponseEntity<List<TaskResponse>> getByColumn(@PathVariable String columnId) {
+        return ResponseEntity.ok(taskService.getTasksByColumnId(columnId));
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<TaskResponse>> searchTasks(
+    public ResponseEntity<List<TaskResponse>> search(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String columnId,
             @RequestParam(required = false) Priority priority,
@@ -78,14 +70,12 @@ public class TaskController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startAfter,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endBefore,
             @RequestParam(required = false) String[] sort) {
-        
-        List<TaskResponse> tasks = taskService.searchTasks(
-                keyword, columnId, priority, eventId, startAfter, endBefore, sort);
-        return ResponseEntity.ok(tasks);
+        return ResponseEntity.ok(
+                taskService.searchTasks(keyword, columnId, priority, eventId, startAfter, endBefore, sort));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         taskService.deleteTask(id);
         return ResponseEntity.noContent().build();
     }

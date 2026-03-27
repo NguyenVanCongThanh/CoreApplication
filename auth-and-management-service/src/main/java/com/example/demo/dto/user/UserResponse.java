@@ -1,13 +1,39 @@
 package com.example.demo.dto.user;
 
+import com.example.demo.enums.UserRole;
+import com.example.demo.enums.UserTeam;
+import com.example.demo.enums.UserType;
+import com.example.demo.model.User;
 import lombok.Builder;
 import lombok.Data;
 
 @Data
 @Builder
 public class UserResponse {
-    private Long id;
-    private String name;
-    private String email;
-    private String profilePicture;
+
+    private Long       id;
+    private String     name;
+    private String     email;
+    private UserRole   role;
+    private UserTeam   team;
+    private UserType   type;
+    private String     code;
+    private Integer    totalScore;
+    private Boolean    active;
+    private String     profilePicture;
+
+    public static UserResponse fromEntity(User user) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .team(user.getTeam())
+                .type(user.getType())
+                .code(user.getCode())
+                .totalScore(user.getTotalScore())
+                .active(user.getActive())
+                .profilePicture(user.getProfilePicture())
+                .build();
+    }
 }

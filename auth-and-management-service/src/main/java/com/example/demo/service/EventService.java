@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.event.*;
 import com.example.demo.enums.StatusEvent;
+import com.example.demo.mapper.EventMapper;
 import com.example.demo.model.Event;
 import com.example.demo.model.User;
 import com.example.demo.repository.EventRepository;
@@ -16,13 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class EventService {
     private final EventRepository eventRepo;
     private final UserRepository userRepo;
+    private final EventMapper eventMapper;
 
     @Transactional
     public EventResponse createEvent(EventRequest request, Long creatorId) {
@@ -38,7 +39,7 @@ public class EventService {
                 .createdBy(creator)
                 .build();
         event = eventRepo.save(event);
-        return mapToResponse(event);
+        return eventMapper.toResponse(event);
     }
 
     @Transactional
@@ -58,7 +59,7 @@ public class EventService {
         event.setUpdatedAt(LocalDateTime.now());
         event.setUpdatedBy(updater);
         event = eventRepo.save(event);
-        return mapToResponse(event);
+        return eventMapper.toResponse(event);
     }
 
     @Transactional(readOnly = true)
@@ -77,7 +78,7 @@ public class EventService {
         Sort sort = SortUtils.parseSort(sortParams);
 
         return eventRepo.findAll(spec, sort).stream()
-                .map(this::mapToResponse)
+                .map(eventMapper::toResponse)
                 .toList();
     }
 
@@ -85,7 +86,7 @@ public class EventService {
     public List<EventResponse> getAllEvents() {
         // Sử dụng EntityGraph để fetch tasks cùng lúc, tránh N+1 query
         return eventRepo.findAllWithTasks().stream()
-                .map(this::mapToResponseWithTasks)
+                .map(eventMapper::toResponseWithTasks)
                 .toList();
     }
 
@@ -93,52 +94,12 @@ public class EventService {
     public EventResponse getEventById(Long id) {
         // Fetch event cùng với tasks
         return eventRepo.findWithTasksById(id)
-                .map(this::mapToResponseWithTasks)
+                .map(eventMapper::toResponseWithTasks)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
     }
 
     @Transactional
     public void deleteEvent(Long id) {
         eventRepo.deleteById(id);
-    }
-
-    private EventResponse mapToResponse(Event event) {
-        return EventResponse.builder()
-                .id(event.getId())
-                .title(event.getTitle())
-                .description(event.getDescription())
-                .statusEvent(event.getStatusEvent())
-                .startTime(event.getStartTime())
-                .endTime(event.getEndTime())
-                .capacity(event.getCapacity())
-                .build();
-    }
-
-    private EventResponse mapToResponseWithTasks(Event event) {
-        EventResponse.EventResponseBuilder builder = EventResponse.builder()
-                .id(event.getId())
-                .title(event.getTitle())
-                .description(event.getDescription())
-                .statusEvent(event.getStatusEvent())
-                .startTime(event.getStartTime())
-                .endTime(event.getEndTime())
-                .capacity(event.getCapacity());
-
-        if (event.getTasks() != null && !event.getTasks().isEmpty()) {
-            List<EventResponse.TaskInfo> taskInfos = event.getTasks().stream()
-                    .map(task -> EventResponse.TaskInfo.builder()
-                            .id(task.getId())
-                            .title(task.getTitle())
-                            .description(task.getDescription())
-                            .priority(task.getPriority() != null ? task.getPriority().name() : null)
-                            .columnId(task.getColumnId())
-                            .startDate(task.getStartDate())
-                            .endDate(task.getEndDate())
-                            .build())
-                    .collect(Collectors.toList());
-            builder.tasks(taskInfos);
-        }
-
-        return builder.build();
     }
 }

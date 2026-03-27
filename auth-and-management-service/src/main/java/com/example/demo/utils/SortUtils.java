@@ -2,20 +2,20 @@ package com.example.demo.utils;
 
 import org.springframework.data.domain.Sort;
 
-public class SortUtils {
+public final class SortUtils {
 
-    // sortParams example: ["createdAt:desc", "title:asc"]
-    public static Sort parseSort(String[] sortParams) {
-        Sort sort = Sort.unsorted();
-        if (sortParams != null) {
-            for (String param : sortParams) {
-                String[] parts = param.split(":");
-                String field = parts[0];
-                Sort.Direction direction = parts.length > 1 && parts[1].equalsIgnoreCase("desc")
-                        ? Sort.Direction.DESC : Sort.Direction.ASC;
-                sort = sort.and(Sort.by(direction, field));
-            }
-        }
-        return sort;
+    private SortUtils() {}
+
+    public static Sort parseSort(String[] params) {
+        if (params == null || params.length == 0) return Sort.unsorted();
+
+        return java.util.Arrays.stream(params)
+                .map(p -> p.split(":", 2))
+                .map(parts -> {
+                    var dir = parts.length > 1 && "desc".equalsIgnoreCase(parts[1])
+                              ? Sort.Direction.DESC : Sort.Direction.ASC;
+                    return Sort.by(dir, parts[0]);
+                })
+                .reduce(Sort.unsorted(), Sort::and);
     }
 }

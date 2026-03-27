@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
-import com.example.demo.dto.announcement.*;
+import com.example.demo.dto.announcement.AnnouncementRequest;
+import com.example.demo.dto.announcement.AnnouncementResponse;
 import com.example.demo.service.AnnouncementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -26,20 +27,21 @@ public class AnnouncementController {
         return ResponseEntity.ok(announcementService.getById(id));
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @PostMapping
-    public ResponseEntity<AnnouncementResponse> create(@RequestBody AnnouncementRequest request) {
-        return ResponseEntity.ok(announcementService.create(request));
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<AnnouncementResponse> create(@RequestBody AnnouncementRequest req) {
+        return ResponseEntity.ok(announcementService.create(req));
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @PutMapping("/{id}")
-    public ResponseEntity<AnnouncementResponse> update(@PathVariable Long id, @RequestBody AnnouncementRequest request) {
-        return ResponseEntity.ok(announcementService.update(id, request));
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<AnnouncementResponse> update(@PathVariable Long id,
+                                                       @RequestBody AnnouncementRequest req) {
+        return ResponseEntity.ok(announcementService.update(id, req));
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         announcementService.delete(id);
         return ResponseEntity.noContent().build();

@@ -4,30 +4,40 @@ import com.example.demo.dto.announcement.AnnouncementRequest;
 import com.example.demo.dto.announcement.AnnouncementResponse;
 import com.example.demo.model.Announcement;
 import com.example.demo.model.User;
+import org.springframework.stereotype.Component;
 
-public class AnnouncementMapper {
+import java.util.ArrayList;
+import java.util.Optional;
 
-    public static AnnouncementResponse toResponse(Announcement entity) {
+@Component
+public class AnnouncementMapper implements EntityMapper<Announcement, AnnouncementResponse> {
+
+    @Override
+    public AnnouncementResponse toResponse(Announcement a) {
         return AnnouncementResponse.builder()
-                .id(entity.getId())
-                .title(entity.getTitle())
-                .content(entity.getContent())
-                .images(entity.getImages())
-                .status(entity.getStatus())
-                .createdAt(entity.getCreatedAt())
-                .createdBy(entity.getCreatedBy() != null ? entity.getCreatedBy().getEmail() : null)
-                .updatedAt(entity.getUpdatedAt())
-                .updatedBy(entity.getUpdatedBy() != null ? entity.getUpdatedBy().getEmail() : null)
+                .id(a.getId())
+                .title(a.getTitle())
+                .content(a.getContent())
+                .images(a.getImages())
+                .status(a.getStatus())
+                .createdAt(a.getCreatedAt())
+                .createdBy(emailOf(a.getCreatedBy()))
+                .updatedAt(a.getUpdatedAt())
+                .updatedBy(emailOf(a.getUpdatedBy()))
                 .build();
     }
 
-    public static Announcement toEntity(AnnouncementRequest request, User creator) {
+    public Announcement toEntity(AnnouncementRequest req, User creator) {
         return Announcement.builder()
-                .title(request.getTitle())
-                .content(request.getContent())
-                .images(request.getImages() != null ? new java.util.ArrayList<>(request.getImages()) : new java.util.ArrayList<>())
-                .status(request.getStatus())
+                .title(req.getTitle())
+                .content(req.getContent())
+                .images(req.getImages() != null ? new ArrayList<>(req.getImages()) : new ArrayList<>())
+                .status(req.getStatus())
                 .createdBy(creator)
                 .build();
+    }
+
+    private String emailOf(User user) {
+        return Optional.ofNullable(user).map(User::getEmail).orElse(null);
     }
 }

@@ -10,5 +10,5 @@ import java.util.Optional;
 public interface UserTaskRepository extends JpaRepository<UserTask, Long> {
     Optional<UserTask> findByUserIdAndTaskId(Long userId, Long taskId);
     boolean existsByUserIdAndTaskId(Long userId, Long taskId);
-    long countByTaskId(Long taskId); // NEW: Count assignments for a task
+    long countByTaskId(Long taskId);
 }
