@@ -1,6 +1,8 @@
 package com.example.demo.service.impl.user;
 
 import com.example.demo.dto.auth.PasswordChangeRequest;
+import com.example.demo.dto.user.UpdateUserRequest;
+import com.example.demo.dto.user.UserResponse;
 import com.example.demo.exception.BadRequestException;
 import com.example.demo.exception.InvalidPasswordException;
 import com.example.demo.exception.ResourceNotFoundException;
@@ -22,66 +24,61 @@ import java.nio.file.*;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * UserServiceImpl - quản lý user, đổi mật khẩu, upload ảnh.
- *
- * Cải tiến:
- * - validatePassword() là private helper tập trung, gọi 1 nơi
- * - Email notification gọi async - không block response
- * - Typed exceptions thay RuntimeException
- * - Optional.ofNullable để xử lý null an toàn
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final EmailService emailService;
+    private final UserRepository     userRepository;
+    private final PasswordEncoder    passwordEncoder;
+    private final EmailService       emailService;
     private final PasswordResetService passwordResetService;
 
     @Value("${app.upload.dir:uploads/profiles/}")
     private String uploadDir;
 
-    // ── Reads ────────────────────────────────────────────────────────────────
+    // Reads
 
     @Override
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
+    public List<UserResponse> getAllUsers() {
+        return userRepository.findAll().stream()
+                .map(UserResponse::fromEntity)
+                .toList();
     }
 
     @Override
-    public User getUserById(Long id) {
+    public UserResponse getUserById(Long id) {
         return userRepository.findById(id)
+                .map(UserResponse::fromEntity)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
     }
 
+    /** Internal use only */
     @Override
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
     }
 
-    // ── Writes ───────────────────────────────────────────────────────────────
+    // Writes
 
     @Override
     @Transactional
-    public User updateUser(Long id, User details) {
-        var user = getUserById(id);
-        user.setName(details.getName());
-        user.setEmail(details.getEmail());
-        if (details.getTeam() != null)           user.setTeam(details.getTeam());
-        if (details.getType() != null)           user.setType(details.getType());
-        if (details.getProfilePicture() != null) user.setProfilePicture(details.getProfilePicture());
-        return userRepository.save(user);
+    public UserResponse updateUser(Long id, UpdateUserRequest req) {
+        var user = findUserEntity(id);
+        user.setName(req.getName());
+        user.setEmail(req.getEmail());
+        if (req.getTeam() != null)           user.setTeam(req.getTeam());
+        if (req.getType() != null)           user.setType(req.getType());
+        if (req.getProfilePicture() != null) user.setProfilePicture(req.getProfilePicture());
+        return UserResponse.fromEntity(userRepository.save(user));
     }
 
     @Override
     @Transactional
     public void changePassword(Long userId, String current, String newPwd) {
-        var user = getUserById(userId);
+        var user = findUserEntity(userId);
 
         if (!passwordEncoder.matches(current, user.getPassword())) {
             throw new BadRequestException("Current password is incorrect");
@@ -91,9 +88,11 @@ public class UserServiceImpl implements UserService {
         user.setPassword(passwordEncoder.encode(newPwd));
         userRepository.save(user);
 
-        // Notification async - không block response
         emailService.sendPasswordChangedNotificationAsync(user.getEmail(), user.getName())
-                    .exceptionally(ex -> { log.warn("Notification email failed: {}", ex.getMessage()); return null; });
+                .exceptionally(ex -> {
+                    log.warn("Notification email failed: {}", ex.getMessage());
+                    return null;
+                });
     }
 
     @Override
@@ -108,7 +107,10 @@ public class UserServiceImpl implements UserService {
 
         var token = passwordResetService.createToken(user);
         emailService.sendPasswordChangeConfirmationAsync(user.getEmail(), user.getName(), token.getToken())
-                    .exceptionally(ex -> { log.error("Confirmation email failed for {}: {}", user.getEmail(), ex.getMessage()); return null; });
+                .exceptionally(ex -> {
+                    log.error("Confirmation email failed for {}: {}", user.getEmail(), ex.getMessage());
+                    return null;
+                });
     }
 
     @Override
@@ -123,7 +125,10 @@ public class UserServiceImpl implements UserService {
         passwordResetService.markTokenAsUsed(token);
 
         emailService.sendPasswordChangedNotificationAsync(user.getEmail(), user.getName())
-                    .exceptionally(ex -> { log.warn("Notification email failed: {}", ex.getMessage()); return null; });
+                .exceptionally(ex -> {
+                    log.warn("Notification email failed: {}", ex.getMessage());
+                    return null;
+                });
 
         log.info("Password changed for user: {}", user.getEmail());
     }
@@ -131,7 +136,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public String uploadProfilePicture(Long userId, MultipartFile file) {
-        var user = getUserById(userId);
+        var user = findUserEntity(userId);
         validateImageFile(file);
 
         try {
@@ -158,16 +163,19 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void deleteUser(Long id) {
-        var user = getUserById(id);
+        var user = findUserEntity(id);
         deleteOldPicture(user.getProfilePicture());
         userRepository.deleteById(id);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // Helpers
 
-    /**
-     * Validate password strength - tập trung 1 nơi, gọi nhiều chỗ.
-     */
+    /** Entity-level lookup */
+    private User findUserEntity(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+    }
+
     private void validatePassword(String pwd) {
         if (pwd == null || pwd.length() < 8) {
             throw new InvalidPasswordException("Mật khẩu phải có ít nhất 8 ký tự");
@@ -177,7 +185,8 @@ public class UserServiceImpl implements UserService {
         boolean hasDigit = pwd.chars().anyMatch(Character::isDigit);
 
         if (!hasUpper || !hasLower || !hasDigit) {
-            throw new InvalidPasswordException("Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường và 1 số");
+            throw new InvalidPasswordException(
+                    "Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường và 1 số");
         }
     }
 

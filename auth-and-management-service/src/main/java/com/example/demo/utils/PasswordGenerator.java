@@ -11,7 +11,7 @@ public final class PasswordGenerator {
     private static final String ALL_CHARS = UPPERCASE + LOWERCASE + DIGITS + SPECIAL;
     private static final int    DEFAULT_LENGTH = 12;
 
-    // ThreadLocal: mỗi thread có 1 SecureRandom riêng → không tranh lock
+    // ThreadLocal
     private static final ThreadLocal<SecureRandom> RANDOM =
             ThreadLocal.withInitial(SecureRandom::new);
 
@@ -27,7 +27,6 @@ public final class PasswordGenerator {
         var rng = RANDOM.get();
         var sb  = new StringBuilder(length);
 
-        // Đảm bảo đủ loại ký tự (mỗi loại ít nhất 1)
         sb.append(UPPERCASE.charAt(rng.nextInt(UPPERCASE.length())));
         sb.append(LOWERCASE.charAt(rng.nextInt(LOWERCASE.length())));
         sb.append(DIGITS.charAt(rng.nextInt(DIGITS.length())));

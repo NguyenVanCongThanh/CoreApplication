@@ -13,14 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * PasswordResetService - quản lý token đặt lại mật khẩu.
- *
- * Cải tiến:
- * - Typed exception (InvalidTokenException) thay vì RuntimeException("Token đã hết hạn...")
- * - Xóa token cũ trước khi tạo mới trong 1 transaction
- * - cleanupExpiredTokens() chạy scheduler 2h sáng mỗi ngày (không thay đổi)
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,7 +24,6 @@ public class PasswordResetService {
 
     @Transactional
     public PasswordResetToken createToken(User user) {
-        // Xóa token cũ của user này trước (1 user chỉ có 1 pending token)
         tokenRepository.deleteByUser(user);
 
         var token = PasswordResetToken.builder()
@@ -63,7 +54,6 @@ public class PasswordResetService {
         tokenRepository.save(token);
     }
 
-    /** Dọn token hết hạn - chạy 02:00 mỗi ngày */
     @Scheduled(cron = "0 0 2 * * *")
     @Transactional
     public void cleanupExpiredTokens() {

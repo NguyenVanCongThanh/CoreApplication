@@ -1,8 +1,9 @@
 package com.example.demo.controller;
 
-import com.example.demo.model.User;
-import com.example.demo.service.UserService;
 import com.example.demo.dto.user.ChangePasswordRequest;
+import com.example.demo.dto.user.UpdateUserRequest;
+import com.example.demo.dto.user.UserResponse;
+import com.example.demo.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,15 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * UserController — REST API cho user management.
+ *
+ * Fixes:
+ *   - public class (không còn package-private).
+ *   - Trả UserResponse thay vì User entity — không lộ internal model.
+ *   - updateUser nhận UpdateUserRequest thay vì User entity.
+ *     Tránh mass assignment: client không thể tự set role, totalScore qua endpoint này.
+ */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -20,18 +30,20 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public ResponseEntity<List<User>> getAll() {
+    public ResponseEntity<List<UserResponse>> getAll() {
         return ResponseEntity.ok(userService.getAllUsers());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getById(@PathVariable Long id) {
+    public ResponseEntity<UserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<User> update(@PathVariable Long id, @Valid @RequestBody User user) {
-        return ResponseEntity.ok(userService.updateUser(id, user));
+    public ResponseEntity<UserResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateUserRequest req) {
+        return ResponseEntity.ok(userService.updateUser(id, req));
     }
 
     @PostMapping("/{id}/change-password")

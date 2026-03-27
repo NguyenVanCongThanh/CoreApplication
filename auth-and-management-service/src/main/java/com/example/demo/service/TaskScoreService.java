@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * TaskScoreService - quản lý điểm số cho task assignees.
@@ -116,16 +117,32 @@ public class TaskScoreService {
         requireTaskExists(taskId);
 
         var now = LocalDateTime.now();
-        taskScoreRepo.findByTaskIdAndAppliedFalse(taskId).stream()
+        var pending = taskScoreRepo.findByTaskIdAndAppliedFalse(taskId)
+                .stream()
                 .filter(s -> s.getScore() > 0)
-                .forEach(s -> {
-                    adjustUserScore(s.getUser(), s.getScore());
-                    s.setApplied(true);
-                    s.setAppliedAt(now);
-                    taskScoreRepo.save(s);
-                    log.info("Applied {} pts to user {}", s.getScore(), s.getUser().getId());
-                });
+                .toList();
 
+        if (pending.isEmpty()) return getTaskScores(taskId);
+
+        pending.forEach(s -> {
+            s.setApplied(true);
+            s.setAppliedAt(now);
+        });
+        taskScoreRepo.saveAll(pending);
+
+        var userScoreDeltas = pending.stream()
+                .collect(Collectors.groupingBy(
+                    s -> s.getUser().getId(),
+                    Collectors.summingInt(TaskScore::getScore)
+                ));
+        
+        var users = userRepo.findAllById(userScoreDeltas.keySet());
+        users.forEach(u -> u.setTotalScore(
+            u.getTotalScore() + userScoreDeltas.get(u.getId())
+        ));
+        userRepo.saveAll(users);
+
+        log.info("Applied scores to {} users for task {}", pending.size(), taskId);
         return taskScoreRepo.findByTaskId(taskId).stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -163,17 +180,27 @@ public class TaskScoreService {
     @Transactional
     public List<TaskScoreResponse> initializeScoresForTask(Long taskId, int initialScore, Long adminId) {
         var admin = requireAdminOrManager(adminId);
-        var task  = findTask(taskId);
+        var task = findTask(taskId);
 
-        task.getAssignees().stream()
-                .filter(ut -> !taskScoreRepo.existsByTaskIdAndUserId(taskId, ut.getUser().getId()))
-                .forEach(ut -> taskScoreRepo.save(
-                    TaskScore.builder()
-                            .task(task).user(ut.getUser())
-                            .score(initialScore).scoredBy(admin)
-                            .scoredAt(LocalDateTime.now()).applied(false)
-                            .build()
-                ));
+        var existingUserIds = taskScoreRepo.findByTaskId(taskId).stream()
+                .map(s -> s.getUser().getId())
+                .collect(Collectors.toSet());
+
+        var newScores = task.getAssignees().stream()
+                .filter(ut -> !existingUserIds.contains(ut.getUser().getId()))
+                .map(ut -> TaskScore.builder()
+                        .task(task)
+                        .user(ut.getUser())
+                        .score(initialScore)
+                        .scoredBy(admin)
+                        .scoredAt(LocalDateTime.now())
+                        .applied(false)
+                        .build())
+                .toList();
+
+        if (!newScores.isEmpty()) {
+            taskScoreRepo.saveAll(newScores);
+        }
 
         return taskScoreRepo.findByTaskId(taskId).stream()
                 .map(this::mapToResponse)

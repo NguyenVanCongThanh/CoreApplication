@@ -3,20 +3,21 @@ package com.example.demo.mapper;
 import com.example.demo.dto.task.TaskResponse;
 import com.example.demo.model.Task;
 import com.example.demo.model.TaskScore;
-import com.example.demo.repository.TaskScoreRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
-@RequiredArgsConstructor
 public class TaskMapper implements EntityMapper<Task, TaskResponse> {
-
-    private final TaskScoreRepository taskScoreRepo;
 
     @Override
     public TaskResponse toResponse(Task task) {
+        return toResponse(task, Map.of());
+    }
+
+    public TaskResponse toResponse(Task task, Map<Long, TaskScore> scoresByUserId) {
         return TaskResponse.builder()
                 .id(task.getId())
                 .title(task.getTitle())
@@ -30,9 +31,16 @@ public class TaskMapper implements EntityMapper<Task, TaskResponse> {
                 .event(mapEvent(task))
                 .createdBy(mapUser(task.getCreatedBy()))
                 .updatedBy(mapUser(task.getUpdatedBy()))
-                .assignees(mapAssignees(task))
+                .assignees(mapAssignees(task, scoresByUserId))
                 .links(mapLinks(task))
                 .build();
+    }
+
+    public List<TaskResponse> toResponseList(List<Task> tasks,
+                                             Map<Long, Map<Long, TaskScore>> scoresByTask) {
+        return tasks.stream()
+                .map(t -> toResponse(t, scoresByTask.getOrDefault(t.getId(), Map.of())))
+                .toList();
     }
 
     private TaskResponse.EventInfo mapEvent(Task task) {
@@ -54,11 +62,12 @@ public class TaskMapper implements EntityMapper<Task, TaskResponse> {
                 .orElse(null);
     }
 
-    private java.util.List<TaskResponse.AssigneeInfo> mapAssignees(Task task) {
+    private List<TaskResponse.AssigneeInfo> mapAssignees(Task task,
+                                                          Map<Long, TaskScore> scores) {
         return task.getAssignees().stream()
                 .map(ut -> {
                     var u = ut.getUser();
-                    var scoreOpt = taskScoreRepo.findByTaskIdAndUserId(task.getId(), u.getId());
+                    var score = scores.get(u.getId());
                     return TaskResponse.AssigneeInfo.builder()
                             .id(u.getId())
                             .name(u.getName())
@@ -66,15 +75,15 @@ public class TaskMapper implements EntityMapper<Task, TaskResponse> {
                             .code(u.getCode())
                             .team(u.getTeam().name())
                             .type(u.getType().name())
-                            .score(scoreOpt.map(TaskScore::getScore).orElse(null))
-                            .applied(scoreOpt.map(TaskScore::getApplied).orElse(null))
-                            .appliedAt(scoreOpt.map(TaskScore::getAppliedAt).orElse(null))
+                            .score(score != null ? score.getScore() : null)
+                            .applied(score != null ? score.getApplied() : null)
+                            .appliedAt(score != null ? score.getAppliedAt() : null)
                             .build();
                 })
                 .toList();
     }
 
-    private java.util.List<TaskResponse.TaskLinkInfo> mapLinks(Task task) {
+    private List<TaskResponse.TaskLinkInfo> mapLinks(Task task) {
         return task.getLinks().stream()
                 .map(l -> TaskResponse.TaskLinkInfo.builder()
                         .id(l.getId())

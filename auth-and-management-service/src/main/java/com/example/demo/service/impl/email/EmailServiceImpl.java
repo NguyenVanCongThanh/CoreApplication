@@ -48,20 +48,20 @@ public class EmailServiceImpl implements EmailService {
     @Async("emailExecutor")
     public CompletableFuture<Void> sendWelcomeBatch(Map<String, String> emailToPassword,
                                                      Map<String, String> emailToName) {
-        var futures = emailToPassword.entrySet().stream()
-                .map(entry -> CompletableFuture.runAsync(
-                        () -> sendWelcomeEmail(entry.getKey(),
-                                               emailToName.getOrDefault(entry.getKey(), ""),
-                                               entry.getValue()),
-                        Executors.newVirtualThreadPerTaskExecutor()
-                )
-                .exceptionally(ex -> {
-                    log.error("Failed to send welcome email to {}: {}", entry.getKey(), ex.getMessage());
-                    return null;
-                }))
-                .toArray(CompletableFuture[]::new);
- 
-        return CompletableFuture.allOf(futures);
+        try (var vtExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = emailToPassword.entrySet().stream()
+                    .map(entry -> CompletableFuture.runAsync(
+                            () -> sendWelcomeEmail(entry.getKey(),
+                                    emailToName.getOrDefault(entry.getKey(), ""),
+                                    entry.getValue()),
+                            vtExecutor
+                    ).exceptionally(ex -> {
+                        log.error("Failed email to {}: {}", entry.getKey(), ex.getMessage());
+                        return null;
+                    }))
+                    .toArray(CompletableFuture[]::new);
+            return CompletableFuture.allOf(futures);
+        }
     }
 
     @Async("emailExecutor")

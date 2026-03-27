@@ -13,15 +13,6 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.List;
 
-/**
- * JwtService - stateless, thread-safe.
- *
- * Cải tiến:
- * - SecretKey được tạo 1 lần trong @PostConstruct, immutable field → thread-safe
- * - extractAllClaims() dùng chung, không lặp parse logic
- * - validateToken() trả Optional hoặc boolean tuỳ use-case
- * - Không expose Claims ra ngoài service (encapsulation)
- */
 @Slf4j
 @Service
 public class JwtService {
@@ -35,15 +26,12 @@ public class JwtService {
     @Value("${jwt.refreshExpirationMs:604800000}")
     private long refreshExpirationMs;
 
-    // Immutable sau @PostConstruct → thread-safe, không cần synchronize
     private SecretKey secretKey;
 
     @PostConstruct
     public void init() {
         this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
-
-    // ── Token generation ─────────────────────────────────────────────────────
 
     public String generateToken(Long userId, String email, List<String> roles) {
         return Jwts.builder()
@@ -67,8 +55,6 @@ public class JwtService {
                 .compact();
     }
 
-    // ── Extraction ───────────────────────────────────────────────────────────
-
     public String extractEmail(String token) {
         return claims(token).getSubject();
     }
@@ -82,8 +68,6 @@ public class JwtService {
         return claims(token).get("roles", List.class);
     }
 
-    // ── Validation ───────────────────────────────────────────────────────────
-
     public boolean validateToken(String token) {
         try {
             return claims(token).getExpiration().after(new Date());
@@ -92,8 +76,6 @@ public class JwtService {
             return false;
         }
     }
-
-    // ── Internal helpers ─────────────────────────────────────────────────────
 
     private Claims claims(String token) {
         return Jwts.parser()

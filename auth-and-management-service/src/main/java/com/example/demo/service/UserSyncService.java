@@ -16,15 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * UserSyncService: đồng bộ users sang LMS một cách bất đồng bộ.
- *
- * Cải tiến so với bản gốc:
- * 1. Dùng strategy pattern (RoleResolutionStrategy) thay vì hardcode logic role
- * 2. bulkSync dùng CompletableFuture.allOf để gửi song song nhiều user
- * 3. Retry đơn giản với exponential backoff cho từng request
- * 4. Header builder tách riêng, tái sử dụng
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -41,7 +32,7 @@ public class UserSyncService {
 
     private static final int MAX_RETRIES = 3;
 
-    // ── Public API ───────────────────────────────────────────────────────────
+    // Public API
 
     @Async("syncExecutor")
     public CompletableFuture<Void> syncUser(User user) {
@@ -51,10 +42,6 @@ public class UserSyncService {
         );
     }
 
-    /**
-     * Bulk sync: gửi từng user song song trên syncExecutor.
-     * Dùng allOf để đợi tất cả hoàn thành, lỗi từng user được log không dừng batch.
-     */
     @Async("syncExecutor")
     public CompletableFuture<Void> syncUsers(List<User> users) {
         var futures = users.stream()
@@ -89,8 +76,7 @@ public class UserSyncService {
         });
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
+    // Helpers
     private Map<String, Object> buildPayload(User user) {
         return Map.of(
             "user_id",   user.getId(),
@@ -112,10 +98,6 @@ public class UserSyncService {
         }
     }
 
-    /**
-     * Retry với exponential backoff: 1s → 2s → 4s.
-     * Nếu tất cả lần đều fail, log error và rethrow.
-     */
     private void withRetry(Runnable task, String taskName) {
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {

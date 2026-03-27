@@ -4,11 +4,13 @@ import com.example.demo.exception.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -34,6 +36,11 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized(UnauthorizedException ex) {
+        return error(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
     @ExceptionHandler({InvalidTokenException.class, InvalidPasswordException.class})
     public ResponseEntity<ErrorResponse> handleValidation(AppException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
@@ -50,7 +57,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, "File size exceeds maximum limit of 5MB");
     }
 
-    // Fallback
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+        return error(HttpStatus.BAD_REQUEST, message);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
         log.error("Unhandled exception: {}", ex.getMessage(), ex);
@@ -62,7 +76,10 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(status.value(), status.getReasonPhrase(), message));
     }
 
-    public record ErrorResponse(int status, String error, String message) {
-        public Instant timestamp() { return Instant.now(); }
+    public record ErrorResponse(int status, String error, String message, Instant timestamp) {
+
+        public ErrorResponse(int status, String error, String message) {
+            this(status, error, message, Instant.now());
+        }
     }
 }

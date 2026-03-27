@@ -17,27 +17,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-/**
- * TaskService - chỉ chứa business logic, delegate mapping sang TaskMapper.
- *
- * Cải tiến:
- * - SRP: mapping tách sang TaskMapper
- * - N+1 fix: dùng 2-step fetch (assignees trước, links sau) đúng cách
- * - Lambda + method ref ngắn gọn
- * - Typed exception thay vì RuntimeException
- */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true) // mặc định read-only, chỉ override khi write
+@Transactional(readOnly = true)
 public class TaskService {
 
     private final TaskRepository taskRepo;
     private final UserRepository userRepo;
     private final EventRepository eventRepo;
     private final TaskMapper taskMapper;
-
-    // ── Write operations ─────────────────────────────────────────────────────
+    private final TaskScoreRepository taskScoreRepo;
 
     @Transactional
     public TaskResponse createTask(TaskRequest req, Long creatorId) {
@@ -58,7 +50,6 @@ public class TaskService {
             task.setEvent(findEvent(req.getEventId()));
         }
 
-        // Save task trước để có ID, sau đó set links/assignees
         task = taskRepo.save(task);
         applyLinks(task, req);
         applyAssignees(task, req);
@@ -104,7 +95,6 @@ public class TaskService {
         taskRepo.deleteById(id);
     }
 
-    // ── Read operations ──────────────────────────────────────────────────────
 
     public List<TaskResponse> getAllTasks() {
         return fetchAndMap(taskRepo.findAllWithAssignees());
@@ -142,17 +132,20 @@ public class TaskService {
                 .toList();
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    /**
-     * 2-step fetch: Step1 load assignees, Step2 load links.
-     * Tránh MultipleBagFetchException khi JOIN FETCH nhiều collection cùng lúc.
-     */
     private List<TaskResponse> fetchAndMap(List<Task> tasks) {
-        if (!tasks.isEmpty()) {
-            taskRepo.findLinksForTasks(tasks); // hydrate links vào persistence context
-        }
-        return taskMapper.toResponseList(tasks);
+        if (tasks.isEmpty()) return List.of();
+        taskRepo.findLinksForTasks(tasks);
+        
+        var taskIds = tasks.stream().map(Task::getId).toList();
+        var scoresByTaskAndUser = taskScoreRepo.findByTaskIdIn(taskIds).stream()
+                .collect(Collectors.groupingBy(
+                    s -> s.getTask().getId(),
+                    Collectors.toMap(s -> s.getUser().getId(), s -> s)
+                ));
+        
+        return tasks.stream()
+                .map(t -> taskMapper.toResponse(t, scoresByTaskAndUser.getOrDefault(t.getId(), Map.of())))
+                .toList();
     }
 
     private void applyLinks(Task task, TaskRequest req) {
