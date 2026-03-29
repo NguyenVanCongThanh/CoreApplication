@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EventCard } from "@/features/dashboard/event/EventCard";
-import { EventModal } from "@/features/dashboard/modals/EventModal";
+import { EventModal } from "@/features/dashboard/modals/EventModal/EventModal";
 import { LoadingState } from "@/features/dashboard/LoadingState";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";

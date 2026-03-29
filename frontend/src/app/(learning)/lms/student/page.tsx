@@ -21,7 +21,7 @@ import {
   EmptyState,
   PageLoader,
   Alert,
-} from "@/features/lms/shared";
+} from "@/components/lms/shared";
 import { Course, Enrollment } from "@/types";
 
 type Tab = "my-courses" | "discover";

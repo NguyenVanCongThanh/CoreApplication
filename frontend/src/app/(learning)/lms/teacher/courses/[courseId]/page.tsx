@@ -3,18 +3,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
-import ContentViewer from "@/features/lms/student/ContentViewer";
-import ContentModal from "@/features/lms/teacher/ContentModal";
-import EditContentModal from "@/features/lms/teacher/EditContentModal";
-import BulkUploadModal from "@/features/lms/teacher/BulkUploadModal";
-import { EditCourseModal } from "@/features/lms/teacher/EditCourseModal";
-import { SectionModal } from "@/features/lms/teacher/SectionModal";
-import { OverviewTab } from "@/features/lms/teacher/OverviewTab";
-import { StudentsTab } from "@/features/lms/teacher/StudentTab";
-import { AIQuizGenPanel } from "@/features/lms/teacher/AIQuizGenPanel";
-import { AIHeatmapSection } from "@/features/lms/AIHeatmapSection";
-import { AIIndexButton } from "@/features/lms/teacher/AIIndexButton";
-import { KnowledgeGraphPanel } from "@/features/lms/teacher/KnowledgeGraphPanel";
+import ContentViewer from "@/components/lms/student/ContentViewer";
+import ContentModal from "@/components/lms/teacher/ContentModal";
+import EditContentModal from "@/components/lms/teacher/EditContentModal";
+import BulkUploadModal from "@/components/lms/teacher/BulkUploadModal";
+import { EditCourseModal } from "@/components/lms/teacher/EditCourseModal";
+import { SectionModal } from "@/components/lms/teacher/SectionModal";
+import { OverviewTab } from "@/components/lms/teacher/OverviewTab";
+import { StudentsTab } from "@/components/lms/teacher/StudentTab";
+import { AIQuizGenPanel } from "@/components/lms/teacher/AIQuizGenPanel";
+import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
+import { AIIndexButton } from "@/components/lms/teacher/AIIndexButton";
+import { KnowledgeGraphPanel } from "@/components/lms/teacher/KnowledgeGraphPanel";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
   Trash2, Eye, CheckCircle2,
@@ -34,7 +34,7 @@ import {
   PageLoader,
   Alert,
   Spinner,
-} from "@/features/lms/shared";
+} from "@/components/lms/shared";
 import { Course, Section, Content } from "@/types";
 
 type Tab = "overview" | "content" | "learners" | "quizzes" | "students" | "ai";

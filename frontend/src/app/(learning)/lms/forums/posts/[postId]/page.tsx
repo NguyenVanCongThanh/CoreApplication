@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import lmsService from "@/services/lmsService";
-import ForumPostDetail from "@/features/lms/forum/ForumPostDetail";
+import ForumPostDetail from "@/components/lms/forum/ForumPostDetail";
 
 export default function PostDetailPage() {
   const params = useParams();

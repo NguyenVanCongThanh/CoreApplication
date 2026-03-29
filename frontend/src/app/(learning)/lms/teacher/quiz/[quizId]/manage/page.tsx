@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import quizService from "@/services/quizService";
 import { Button } from "@/components/ui/button";
-import QuestionImageUploader from "@/features/lms/teacher/QuestionImageUploader";
-import FillBlankTextEditor from "@/features/lms/teacher/FillBlankTextEditor";
-import FillBlankDropdownEditor from "@/features/lms/teacher/FillBlankDropdownEditor";
+import QuestionImageUploader from "@/components/lms/teacher/QuestionImageUploader";
+import FillBlankTextEditor from "@/components/lms/teacher/FillBlankTextEditor";
+import FillBlankDropdownEditor from "@/components/lms/teacher/FillBlankDropdownEditor";
 import type {
   FillBlankTextSettings,
   FillBlankTextCorrectAnswer,

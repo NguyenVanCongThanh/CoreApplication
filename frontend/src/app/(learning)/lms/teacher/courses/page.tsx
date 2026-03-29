@@ -17,7 +17,7 @@ import {
   Alert,
   TabBar,
   Spinner,
-} from "@/features/lms/shared";
+} from "@/components/lms/shared";
 import { Course } from "@/types";
 import { cn } from "@/lib/utils";
 

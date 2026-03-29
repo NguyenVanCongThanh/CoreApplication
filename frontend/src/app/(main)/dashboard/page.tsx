@@ -9,7 +9,7 @@ import { AnnouncementList } from "@/features/dashboard/announcement/Announcement
 import { EventList } from "@/features/dashboard/event/EventList";
 import { ShowMoreButton } from "@/features/dashboard/ShowMoreButton";
 import { AnnouncementModal } from "@/features/dashboard/modals/AnnouncementModal/AnnouncementModal";
-import { EventModal } from "@/features/dashboard/modals/EventModal";
+import { EventModal } from "@/features/dashboard/modals/EventModal/EventModal";
 import { ModernCalendar as ViewCalendar } from "@/features/dashboard/calendar/Calendar";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import { useEvents } from "@/hooks/useEvents";

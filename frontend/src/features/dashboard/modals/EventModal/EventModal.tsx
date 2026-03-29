@@ -1,13 +1,7 @@
 "use client";
 
 import React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,12 +13,21 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Clock, ListTodo, ExternalLink, Users } from "lucide-react";
-import { EventItem, ModalMode, EVENT_STATUSES, STATUS_COLORS, PRIORITY_COLORS } from "@/types";
+import {
+  EventItem,
+  ModalMode,
+  EVENT_STATUSES,
+  STATUS_COLORS,
+  PRIORITY_COLORS,
+} from "@/types";
 import {
   INPUT_BASE,
   LABEL_BASE,
   SECTION_LABEL,
-} from "../../../constants/modalStyles";
+} from "../../../../constants/modalStyles";
+import ModalHeader from "./ModalHeader";
+import ModalFooter from "./ModalFooter";
+import ModalForm from "./ModalForm";
 
 interface EventModalProps {
   open: boolean;
@@ -35,27 +38,37 @@ interface EventModalProps {
   onSave: () => void;
 }
 
-const TITLE_MAP = {
-  add: "Tạo sự kiện mới",
-  edit: "Chỉnh sửa sự kiện",
-  view: "Chi tiết sự kiện",
-};
-
-function ReadonlyField({ icon: Icon, value }: { icon: React.ElementType; value: string }) {
+function ReadonlyField({
+  icon: Icon,
+  value,
+}: {
+  icon: React.ElementType;
+  value: string;
+}) {
   return (
-    <div className="flex items-center gap-2 rounded-xl p-3 text-sm
+    <div
+      className="flex items-center gap-2 rounded-xl p-3 text-sm
                     bg-slate-50 dark:bg-slate-800
                     border border-slate-200 dark:border-slate-700
-                    text-slate-600 dark:text-slate-300">
+                    text-slate-600 dark:text-slate-300"
+    >
       <Icon className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
       <span>{value}</span>
     </div>
   );
 }
 
-export function EventModal({ open, mode, event, onOpenChange, onChange, onSave }: EventModalProps) {
+export function EventModal({
+  open,
+  mode,
+  event,
+  onOpenChange,
+  onChange,
+  onSave,
+}: EventModalProps) {
   const isViewMode = mode === "view";
-  const formatDate = (d?: string) => d ? new Date(d).toLocaleString("vi-VN") : "Chưa xác định";
+  const formatDate = (d?: string) =>
+    d ? new Date(d).toLocaleString("vi-VN") : "Chưa xác định";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -65,19 +78,9 @@ export function EventModal({ open, mode, event, onOpenChange, onChange, onSave }
                                 border border-slate-200 dark:border-slate-800
                                 shadow-xl rounded-2xl"
       >
-        <DialogHeader className="pb-4 border-b border-slate-100 dark:border-slate-800">
-          {/* <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
-            Sự kiện
-          </p> */}
-          <DialogTitle className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-            {TITLE_MAP[mode]}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-6 py-2">
-          {/* Basic info */}
+        <ModalHeader mode={mode} />
+        {/* <div className="space-y-6 py-2">
           <section className="space-y-4">
-            {/* <p className={SECTION_LABEL}>Thông tin sự kiện</p> */}
 
             <div className="space-y-1.5">
               <Label className={LABEL_BASE}>Tên sự kiện</Label>
@@ -219,7 +222,6 @@ export function EventModal({ open, mode, event, onOpenChange, onChange, onSave }
             </div>
           </section>
 
-          {/* Tasks — view mode only */}
           {isViewMode && (
             <section>
               <div className="flex items-center justify-between mb-3">
@@ -334,28 +336,16 @@ export function EventModal({ open, mode, event, onOpenChange, onChange, onSave }
               )}
             </section>
           )}
-        </div>
-
+        </div> */}
+        <ModalForm isViewMode={isViewMode} event={event} onChange={onChange} />
         {!isViewMode && (
-          <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="border border-slate-300 dark:border-slate-700
-                         text-slate-700 dark:text-slate-300
-                         hover:bg-slate-50 dark:hover:bg-slate-800
-                         rounded-xl px-5 font-medium transition-all duration-200 active:scale-95"
-            >
-              Hủy
-            </Button>
-            <Button
-              onClick={onSave}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold
-                         px-6 rounded-xl shadow-sm transition-all duration-200 active:scale-95"
-            >
-              Lưu sự kiện
-            </Button>
-          </DialogFooter>
+          <ModalFooter
+            onOpenChange={() => onOpenChange(false)}
+            onSave={() => {
+              onSave();
+              onOpenChange(false);
+            }}
+          />
         )}
       </DialogContent>
     </Dialog>
