@@ -3,8 +3,8 @@ import React, { useState, useEffect } from "react";
 import { User } from "@/types";
 import Avatar from "./Avatar";
 import { X, Pencil, Save, Loader2 } from "lucide-react";
-import { updateUser } from "@/lib/users/api";
-import { mapFrontendTeamToBackend, mapFrontendTypeToBackend } from "@/lib/users/auth";
+import { updateUser, updateUserRole } from "@/lib/users/api";
+import { mapFrontendTeamToBackend, mapFrontendTypeToBackend, mapFrontendRoleToBackend } from "@/lib/users/auth";
 
 interface DetailModalProps {
   user: User | null;
@@ -15,6 +15,7 @@ interface DetailModalProps {
 
 const TEAM_OPTIONS = ["Research", "Engineer", "Event", "Media"];
 const TYPE_OPTIONS = ["CLC", "DT", "TN"];
+const ROLE_OPTIONS = ["User", "Manager", "Admin"];
 
 export default function DetailModal({ user, onClose, isAdmin = false, onUserUpdated }: DetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -27,6 +28,7 @@ export default function DetailModal({ user, onClose, isAdmin = false, onUserUpda
   const [editEmail, setEditEmail] = useState("");
   const [editTeam, setEditTeam] = useState("");
   const [editType, setEditType] = useState("");
+  const [editRole, setEditRole] = useState("");
 
   // Reset form state when user changes
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function DetailModal({ user, onClose, isAdmin = false, onUserUpda
       setEditEmail(user.email);
       setEditTeam(user.team as string);
       setEditType(user.type as string);
+      setEditRole(user.role as string);
       setIsEditing(false);
       setSaveError(null);
       setSaveSuccess(false);
@@ -48,6 +51,7 @@ export default function DetailModal({ user, onClose, isAdmin = false, onUserUpda
     setEditEmail(user.email);
     setEditTeam(user.team as string);
     setEditType(user.type as string);
+    setEditRole(user.role as string);
     setSaveError(null);
     setSaveSuccess(false);
     setIsEditing(true);
@@ -75,6 +79,10 @@ export default function DetailModal({ user, onClose, isAdmin = false, onUserUpda
         team: mapFrontendTeamToBackend(editTeam),
         type: mapFrontendTypeToBackend(editType),
       });
+
+      if (editRole !== user.role && isAdmin) {
+        await updateUserRole(user.id, mapFrontendRoleToBackend(editRole));
+      }
 
       setSaveSuccess(true);
       setIsEditing(false);
@@ -244,9 +252,24 @@ export default function DetailModal({ user, onClose, isAdmin = false, onUserUpda
                   <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                     Role
                   </label>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {user.role}
-                  </p>
+                  {isAdmin ? (
+                    <select
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 
+                                 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-900 dark:text-slate-50 
+                                 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 
+                                 transition-all duration-200"
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {user.role}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

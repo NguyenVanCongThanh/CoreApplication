@@ -2,12 +2,14 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.user.ChangePasswordRequest;
 import com.example.demo.dto.user.UpdateUserRequest;
+import com.example.demo.dto.user.UpdateUserRoleRequest;
 import com.example.demo.dto.user.UserResponse;
 import com.example.demo.service.user.UserService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,6 +47,14 @@ public class UserController {
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserRequest req) {
         return ResponseEntity.ok(userService.updateUser(id, req));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}/role")
+    public ResponseEntity<UserResponse> updateRole(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateUserRoleRequest req) {
+        return ResponseEntity.ok(userService.updateRole(id, req.getRole()));
     }
 
     @PostMapping("/{id}/change-password")
