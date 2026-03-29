@@ -93,3 +93,20 @@ export async function updateUser(
   const raw = await res.json();
   return mapServerUserToClient(raw);
 }
+
+export async function updateUserRole(id: number | string, role: string): Promise<User> {
+  const res = await fetch(`${BASE}/api/users/${id}/role`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+    credentials: "include",
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(
+      `Update role failed: ${res.status} ${res.statusText}${txt ? " - " + txt : ""}`
+    );
+  }
+  const raw = await res.json();
+  return mapServerUserToClient(raw);
+}

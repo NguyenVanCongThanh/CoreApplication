@@ -11,6 +11,8 @@ import com.example.demo.repository.UserRepository;
 import com.example.demo.service.email.EmailService;
 import com.example.demo.service.user.PasswordResetService;
 import com.example.demo.service.user.UserService;
+import com.example.demo.service.user.UserSyncService;
+import com.example.demo.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder    passwordEncoder;
     private final EmailService       emailService;
     private final PasswordResetService passwordResetService;
+    private final UserSyncService    userSyncService;
 
     @Value("${app.upload.dir:uploads/profiles/}")
     private String uploadDir;
@@ -73,7 +76,19 @@ public class UserServiceImpl implements UserService {
         if (req.getTeam() != null)           user.setTeam(req.getTeam());
         if (req.getType() != null)           user.setType(req.getType());
         if (req.getProfilePicture() != null) user.setProfilePicture(req.getProfilePicture());
-        return UserResponse.fromEntity(userRepository.save(user));
+        var saved = userRepository.save(user);
+        userSyncService.syncUser(saved);
+        return UserResponse.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateRole(Long id, UserRole role) {
+        var user = findUserEntity(id);
+        user.setRole(role);
+        var saved = userRepository.save(user);
+        userSyncService.syncUser(saved);
+        return UserResponse.fromEntity(saved);
     }
 
     @Override
