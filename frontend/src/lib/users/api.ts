@@ -68,3 +68,28 @@ export async function postCreateUserSingle(user: {
 }) {
   return postBulkRegister([user]);
 }
+
+export async function updateUser(
+  id: number | string,
+  data: {
+    name: string;
+    email: string;
+    team?: string;
+    type?: string;
+  }
+): Promise<User> {
+  const res = await fetch(`${BASE}/api/users/${id}`, {
+    method: "PUT",
+    headers: await authHeaders(),
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(
+      `Update user failed: ${res.status} ${res.statusText}${txt ? " - " + txt : ""}`
+    );
+  }
+  const raw = await res.json();
+  return mapServerUserToClient(raw);
+}
