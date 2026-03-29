@@ -1,7 +1,7 @@
 "use client";
 
-import { Label } from "@/components/ui/label";
-import { INPUT_BASE, LABEL_BASE } from "@/constants/modalStyles";
+import { INPUT_BASE } from "@/constants/modalStyles";
+import { FieldLabel } from "@/components/ui/field";
 
 interface ImageFieldProps {
   value?: string[];
@@ -16,12 +16,12 @@ export function ImageField({
 }: ImageFieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label className={LABEL_BASE}>
+      <FieldLabel>
         Hình ảnh URL
         <span className="text-slate-400 dark:text-slate-600 font-normal ml-1">
           (phân cách bởi dấu phẩy)
         </span>
-      </Label>
+      </FieldLabel>
 
       <input
         value={value.join(", ")}

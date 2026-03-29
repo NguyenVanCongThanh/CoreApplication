@@ -413,149 +413,149 @@ services:
       - "traefik.http.routers.lms.rule=Host(`bdc.hpcc.vn`) && PathPrefix(`/lmsapiv1`)"
       - "traefik.http.services.lms.loadbalancer.server.port=8081"
 
-  ai-service:
-    build:
-      context: ./ai-service
-      dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
-    container_name: ai-service
-    restart: unless-stopped
+  # ai-service:
+  #   build:
+  #     context: ./ai-service
+  #     dockerfile: Dockerfile
+  #   image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
+  #   container_name: ai-service
+  #   restart: unless-stopped
  
-    environment:
-      APP_ENV: ${APP_ENV:-production}
-      APP_PORT: 8000
-      LOG_LEVEL: INFO
+  #   environment:
+  #     APP_ENV: ${APP_ENV:-production}
+  #     APP_PORT: 8000
+  #     LOG_LEVEL: INFO
  
-      # Database (shared with lms-service)
-      DB_HOST: postgres-lms
-      DB_PORT: 5432
-      DB_USER: ${LMS_POSTGRES_USER}
-      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
-      DB_NAME: ${LMS_POSTGRES_DB}
+  #     # Database (shared with lms-service)
+  #     DB_HOST: postgres-lms
+  #     DB_PORT: 5432
+  #     DB_USER: ${LMS_POSTGRES_USER}
+  #     DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
+  #     DB_NAME: ${LMS_POSTGRES_DB}
  
-      # Redis (shared)
-      REDIS_HOST: redis-lms
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 1
+  #     # Redis (shared)
+  #     REDIS_HOST: redis-lms
+  #     REDIS_PORT: 6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD}
+  #     REDIS_DB: 1
  
-      # MinIO
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: lms-files
-      MINIO_USE_SSL: "false"
+  #     # MinIO
+  #     MINIO_ENDPOINT: minio:9000
+  #     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+  #     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  #     MINIO_BUCKET: lms-files
+  #     MINIO_USE_SSL: "false"
  
-      GROQ_API_KEY: ${GROQ_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
+  #     GROQ_API_KEY: ${GROQ_API_KEY:-None}
+  #     CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+  #     QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+  #     EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
+  #     EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
 
-      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
+  #     AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
 
-      CHUNK_SIZE: 500
-      CHUNK_OVERLAP: 50
-      TOP_K_CHUNKS: 3
+  #     CHUNK_SIZE: 500
+  #     CHUNK_OVERLAP: 50
+  #     TOP_K_CHUNKS: 3
 
-    ports:
-      - "8000:8000"
+  #   ports:
+  #     - "8000:8000"
 
-    depends_on:
-      postgres-lms:
-        condition: service_healthy
-      redis-lms:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+  #   depends_on:
+  #     postgres-lms:
+  #       condition: service_healthy
+  #     redis-lms:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
 
-    networks:
-      - app-network
+  #   networks:
+  #     - app-network
 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
 
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2.0'
+  #         memory: 1G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 256M
 
-    labels:
-      - "service.type=ai"
-      - "service.name=ai-service"
+  #   labels:
+  #     - "service.type=ai"
+  #     - "service.name=ai-service"
 
-    volumes:
-      - ai_model_cache:/app/.cache/fastembed
+  #   volumes:
+  #     - ai_model_cache:/app/.cache/fastembed
 
-  ai-worker:
-    build:
-      context: ./ai-service
-      dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
-    container_name: ai-worker
-    restart: unless-stopped
+  # ai-worker:
+  #   build:
+  #     context: ./ai-service
+  #     dockerfile: Dockerfile
+  #   image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
+  #   container_name: ai-worker
+  #   restart: unless-stopped
  
-    # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+  #   # Override CMD to run Celery worker
+  #   command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
  
-    environment:
-      APP_ENV: ${APP_ENV:-production}
-      DB_HOST: postgres-lms
-      DB_PORT: 5432
-      DB_USER: ${LMS_POSTGRES_USER}
-      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
-      DB_NAME: ${LMS_POSTGRES_DB}
-      REDIS_HOST: redis-lms
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 1
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: lms-files
+  #   environment:
+  #     APP_ENV: ${APP_ENV:-production}
+  #     DB_HOST: postgres-lms
+  #     DB_PORT: 5432
+  #     DB_USER: ${LMS_POSTGRES_USER}
+  #     DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
+  #     DB_NAME: ${LMS_POSTGRES_DB}
+  #     REDIS_HOST: redis-lms
+  #     REDIS_PORT: 6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD}
+  #     REDIS_DB: 1
+  #     MINIO_ENDPOINT: minio:9000
+  #     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+  #     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  #     MINIO_BUCKET: lms-files
 
-      GROQ_API_KEY: ${GROQ_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
+  #     GROQ_API_KEY: ${GROQ_API_KEY:-None}
+  #     CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+  #     QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
-      CHUNK_SIZE: 500
-      CHUNK_OVERLAP: 50
+  #     EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
+  #     EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+  #     CHUNK_SIZE: 500
+  #     CHUNK_OVERLAP: 50
 
-    depends_on:
-      postgres-lms:
-        condition: service_healthy
-      redis-lms:
-        condition: service_healthy
+  #   depends_on:
+  #     postgres-lms:
+  #       condition: service_healthy
+  #     redis-lms:
+  #       condition: service_healthy
  
-    networks:
-      - app-network
+  #   networks:
+  #     - app-network
  
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2.0'
+  #         memory: 2G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 256M
  
-    labels:
-      - "service.type=worker"
-      - "service.name=ai-worker"
+  #   labels:
+  #     - "service.type=worker"
+  #     - "service.name=ai-worker"
 
-    volumes:
-      - ai_model_cache:/app/.cache/fastembed
+  #   volumes:
+  #     - ai_model_cache:/app/.cache/fastembed
 
   # MinIO: Object Storage
   minio:

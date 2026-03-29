@@ -1,15 +1,15 @@
 import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-type ModalFooterProps = {
+type EventFooterProps = {
   onOpenChange: (open: boolean) => void;
   onSave: () => void;
 };
 
-export default function ModalFooter({
+export default function EventFooter({
   onOpenChange,
   onSave,
-}: ModalFooterProps) {
+}: EventFooterProps) {
   return (
     <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2">
       <Button

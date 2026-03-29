@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Clock, ListTodo, ExternalLink } from "lucide-react";
 import { PRIORITY_COLORS } from "@/types";
-import { SECTION_LABEL } from "../../../../constants/modalStyles";
+import { SECTION_LABEL } from "@/constants/modalStyles";
 
 type Props = {
   tasks?: any[];

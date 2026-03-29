@@ -1,5 +1,6 @@
 import { Task } from "./task";
-import STATUS_MAP from "../constants/status";
+import { ANNOUNCEMENT_STATUS_MAP } from "@/constants/announcement";
+import { EVENT_STATUS_MAP } from "@/constants/event";
 
 // ─── Announcement ───────────────────────────────────────────────────────────
 
@@ -8,11 +9,7 @@ export type Announcement = {
   title: string;
   content: string;
   images: string[];
-  // status: "PENDING" | "APPROVED" | "DENIED" | "EXPIRED";
-  status: Extract<
-    keyof typeof STATUS_MAP,
-    "PENDING" | "APPROVED" | "DENIED" | "EXPIRED"
-  >;
+  status: Extract<keyof typeof ANNOUNCEMENT_STATUS_MAP, string>;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string;
@@ -27,30 +24,14 @@ export interface AnnouncementItem {
   createdAt: string;
 }
 
-export const ANNOUNCEMENT_STATUSES = [
-  "PENDING",
-  "APPROVED",
-  "DENIED",
-  "EXPIRED",
-] as const;
-
-export const STATUS_COLORS = {
-  PENDING: "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800",
-  IN_PROGRESS: "bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
-  COMPLETED: "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
-  POSTPONED: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
-  APPROVED: "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
-  DENIED: "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
-  EXPIRED: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
-};
-
 // ─── Event ───────────────────────────────────────────────────────────────────
 
 export type EventItem = {
   id: number;
   title: string;
   description: string;
-  statusEvent: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "POSTPONED";
+  // statusEvent: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "POSTPONED";
+  statusEvent: Extract<keyof typeof EVENT_STATUS_MAP, string>;
   startTime?: string;
   endTime?: string;
   capacity?: number;
@@ -70,4 +51,4 @@ export type MockEvent = {
   tasks?: Task[];
 };
 
-export const EVENT_STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED", "POSTPONED"] as const;
+// export const EVENT_STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED", "POSTPONED"] as const;

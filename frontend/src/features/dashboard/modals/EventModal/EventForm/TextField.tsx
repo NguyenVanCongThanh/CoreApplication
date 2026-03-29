@@ -1,5 +1,5 @@
 import { Label } from "@/components/ui/label";
-import { INPUT_BASE, LABEL_BASE } from "../../../../constants/modalStyles";
+import { INPUT_BASE, LABEL_BASE } from "@/constants/modalStyles";
 
 function TextField({
   label,

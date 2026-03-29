@@ -1,4 +1,3 @@
-// StatusField.tsx
 import {
   Select,
   SelectContent,
@@ -6,7 +5,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ANNOUNCEMENT_STATUSES, STATUS_COLORS } from "@/types";
+import { Badge } from "@/components/ui/badge"; // Component chuẩn của shadcn
+import { ANNOUNCEMENT_STATUS_MAP } from "@/constants/announcement";
+import { cn } from "@/lib/utils";
 
 export function StatusField({
   value,
@@ -17,44 +18,43 @@ export function StatusField({
   isViewMode: boolean;
   onChange: (v: string) => void;
 }) {
-  if (isViewMode) {
+  const statusKey =
+    value && value in ANNOUNCEMENT_STATUS_MAP
+      ? (value as keyof typeof ANNOUNCEMENT_STATUS_MAP)
+      : "PENDING";
+
+  const config = ANNOUNCEMENT_STATUS_MAP[statusKey];
+
+  // Helper để render Badge đồng nhất
+  const renderBadge = (key: keyof typeof ANNOUNCEMENT_STATUS_MAP) => {
+    const item = ANNOUNCEMENT_STATUS_MAP[key];
     return (
-      <span
-        className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold
-        ${STATUS_COLORS[value as keyof typeof STATUS_COLORS]}`}
+      <Badge
+        variant="outline"
+        className={cn("font-medium border-transparent shadow-none", item.style)}
       >
-        {value}
-      </span>
+        {item.label}
+      </Badge>
     );
+  };
+
+  if (isViewMode) {
+    return <div className="pt-1">{renderBadge(statusKey)}</div>;
   }
 
   return (
-    <Select value={value || "PENDING"} onValueChange={onChange}>
-      <SelectTrigger
-        className="rounded-xl
-                                          border border-slate-300 dark:border-slate-700
-                                          bg-slate-50 dark:bg-slate-800
-                                          text-slate-900 dark:text-slate-100
-                                          focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-      >
-        <SelectValue />
+    <Select value={statusKey} onValueChange={onChange}>
+      <SelectTrigger className="w-full rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 h-11 focus:ring-2 focus:ring-blue-500/20">
+        <SelectValue>{renderBadge(statusKey)}</SelectValue>
       </SelectTrigger>
-      <SelectContent
-        className="bg-white dark:bg-slate-900
-                                          border border-slate-200 dark:border-slate-800 rounded-xl"
-      >
-        {ANNOUNCEMENT_STATUSES.map((status) => (
+      <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl shadow-lg">
+        {Object.entries(ANNOUNCEMENT_STATUS_MAP).map(([key, info]) => (
           <SelectItem
-            key={status}
-            value={status}
-            className="focus:bg-slate-100 dark:focus:bg-slate-800"
+            key={key}
+            value={key}
+            className="focus:bg-slate-100 dark:focus:bg-slate-800 cursor-pointer"
           >
-            <span
-              className={`px-2 py-0.5 rounded-md text-xs font-medium
-                                                    ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}
-            >
-              {status}
-            </span>
+            {renderBadge(key as keyof typeof ANNOUNCEMENT_STATUS_MAP)}
           </SelectItem>
         ))}
       </SelectContent>

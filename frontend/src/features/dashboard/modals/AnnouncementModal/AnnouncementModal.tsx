@@ -3,9 +3,9 @@
 import React from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Announcement, ModalMode } from "@/types";
-import { ModalHeader } from "./ModalHeader";
-import { ModalFooter } from "./ModalFooter";
-import { ModalForm } from "./ModalForm";
+import { AnnouncementFooter } from "./AnnouncementFooter";
+import { AnnouncementForm } from "./AnnouncementForm";
+import { AnnouncementHeader } from "./AnnouncementHeader";
 
 interface AnnouncementModalProps {
   open: boolean;
@@ -34,16 +34,16 @@ export function AnnouncementModal({
                                 border border-slate-200 dark:border-slate-800
                                 shadow-xl rounded-2xl"
       >
-        <ModalHeader mode={mode} />
+        <AnnouncementHeader mode={mode} />
 
-        <ModalForm
+        <AnnouncementForm
           announcement={announcement}
           onChange={onChange}
           isViewMode={isViewMode}
         />
 
         {!isViewMode && (
-          <ModalFooter
+          <AnnouncementFooter
             onCancel={() => onOpenChange(false)}
             onSave={() => {
               onSave();

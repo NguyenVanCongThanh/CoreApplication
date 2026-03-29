@@ -7,7 +7,7 @@ const TITLE_MAP = {
   view: "Chi tiết sự kiện",
 };
 
-const ModalHeader = ({ mode }: { mode: ModalMode }) => {
+const EventHeader = ({ mode }: { mode: ModalMode }) => {
   return (
     <DialogHeader className="pb-4 border-b border-slate-100 dark:border-slate-800">
       <DialogTitle className="text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -17,4 +17,4 @@ const ModalHeader = ({ mode }: { mode: ModalMode }) => {
   );
 };
 
-export default ModalHeader;
+export default EventHeader;

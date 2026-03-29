@@ -1,1 +1,52 @@
-const ANNOUNCEMENT_MODES = ["create", "edit", "view"] as const;
+export const ANNOUNCEMENT_TITLE_MAP = {
+  add: {
+    title: "Tạo thông báo mới",
+    description: "Điền thông tin để tạo thông báo mới",
+  },
+  edit: {
+    title: "Chỉnh sửa thông báo",
+    description: "Cập nhật thông tin thông báo hiện tại",
+  },
+  view: {
+    title: "Chi tiết thông báo",
+    description: "Xem thông tin chi tiết của thông báo",
+  },
+} as const;
+
+export const ANNOUNCEMENT_STATUS_MAP = {
+  PENDING: {
+    label: "Chờ duyệt",
+    style:
+      "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800",
+  },
+  //   IN_PROGRESS: {
+  //     label: "Đang diễn ra",
+  //     style:
+  //       "bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
+  //   },
+  //   COMPLETED: {
+  //     label: "Đã hoàn thành",
+  //     style:
+  //       "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
+  //   },
+  //   POSTPONED: {
+  //     label: "Hoãn lại",
+  //     style:
+  //       "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
+  //   },
+  APPROVED: {
+    label: "Đã duyệt",
+    style:
+      "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
+  },
+  DENIED: {
+    label: "Từ chối",
+    style:
+      "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
+  },
+  EXPIRED: {
+    label: "Hết hạn",
+    style:
+      "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700",
+  },
+} as const;

@@ -14,7 +14,7 @@ import { LoadingState } from "@/features/dashboard/LoadingState";
 import { useEvents } from "@/hooks/useEvents";
 import { useAuth } from "@/hooks/useAuth";
 import { Search, Filter, Calendar, ArrowLeft, Plus } from "lucide-react";
-import { EVENT_STATUSES } from "@/types";
+import { EVENT_STATUS_MAP } from "@/constants/event";
 import { useRouter } from "next/navigation";
 
 export default function EventsPage() {
@@ -188,9 +188,9 @@ export default function EventsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-              {EVENT_STATUSES.map((status) => (
-                <SelectItem key={status} value={status}>
-                  {status}
+              {Object.entries(EVENT_STATUS_MAP).map(([key, status]) => (
+                <SelectItem key={key} value={key}>
+                  {status.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -218,7 +218,7 @@ export default function EventsPage() {
       {/* Events Grid */}
       <div id="events-grid">
         {loading ? (
-          <LoadingState/>
+          <LoadingState />
         ) : filteredEvents.length === 0 ? (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-12 text-center">
             <Calendar className="h-12 w-12 mx-auto mb-4 text-slate-300 dark:text-slate-700" />
