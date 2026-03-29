@@ -6,8 +6,10 @@ import { parseFile } from "@/lib/users/fileParser";
 import UserRow from "./UserRow";
 import DetailModal from "./DetailModal";
 import { mapFrontendRoleToBackend, mapFrontendTeamToBackend, mapFrontendTypeToBackend } from "@/lib/users/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function UserApp() {
+  const { isAdmin } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,7 +267,7 @@ export default function UserApp() {
         </div>
       </div>
 
-      <DetailModal user={detail} onClose={() => setDetail(null)} />
+      <DetailModal user={detail} onClose={() => setDetail(null)} isAdmin={isAdmin} onUserUpdated={load} />
     </div>
   );
 }
