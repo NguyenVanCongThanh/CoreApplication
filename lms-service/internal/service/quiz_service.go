@@ -1304,6 +1304,16 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 		return err
 	}
 
+	// Calculate actual raw total points of all questions in the quiz
+	allQuestions, err := s.quizRepo.ListQuestions(ctx, quiz.ID)
+	if err != nil {
+		return err
+	}
+	var quizTotalRawPoints float64 = 0
+	for _, q := range allQuestions {
+		quizTotalRawPoints += q.Points
+	}
+
 	// Collect all question IDs
 	questionIDs := make([]int64, 0, len(answers))
 	for _, ans := range answers {
@@ -1311,9 +1321,12 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 	}
 
 	// Single batch query instead of N queries
-	questions, err := s.quizRepo.GetQuestionsByIDs(ctx, questionIDs)
-	if err != nil {
-		return err
+	var questions []models.QuizQuestion
+	if len(questionIDs) > 0 {
+		questions, err = s.quizRepo.GetQuestionsByIDs(ctx, questionIDs)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Build lookup map
@@ -1322,8 +1335,7 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 		questionMap[questions[i].ID] = &questions[i]
 	}
 
-	var totalPoints float64 = 0
-	var earnedPoints float64 = 0
+	var earnedRawPoints float64 = 0
 	allAnswersGraded := true
 
 	for _, ans := range answers {
@@ -1332,10 +1344,8 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 			continue
 		}
 
-		totalPoints += question.Points
-
 		if ans.PointsEarned.Valid {
-			earnedPoints += ans.PointsEarned.Float64
+			earnedRawPoints += ans.PointsEarned.Float64
 		} else {
 			// Check if this is a question type that requires manual grading
 			if question.QuestionType == models.QuestionTypeEssay ||
@@ -1346,18 +1356,33 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 		}
 	}
 
+	// Determine final max total points and scale earned points
+	finalTotalPoints := quiz.TotalPoints
+	if finalTotalPoints <= 0 {
+		finalTotalPoints = quizTotalRawPoints
+	}
+
+	scaledEarnedPoints := earnedRawPoints
+	if quizTotalRawPoints > 0 && quiz.TotalPoints > 0 {
+		scaledEarnedPoints = (earnedRawPoints / quizTotalRawPoints) * quiz.TotalPoints
+	}
+
 	percentage := 0.0
-	if totalPoints > 0 {
-		percentage = (earnedPoints / totalPoints) * 100
+	if finalTotalPoints > 0 {
+		percentage = (scaledEarnedPoints / finalTotalPoints) * 100
+	} else if quizTotalRawPoints > 0 {
+		percentage = (earnedRawPoints / quizTotalRawPoints) * 100
 	}
 
 	isPassed := false
 	if quiz.PassingScore.Valid {
 		isPassed = percentage >= quiz.PassingScore.Float64
+	} else {
+		isPassed = percentage > 0.0
 	}
 
-	attempt.TotalPoints = sql.NullFloat64{Float64: totalPoints, Valid: true}
-	attempt.EarnedPoints = sql.NullFloat64{Float64: earnedPoints, Valid: true}
+	attempt.TotalPoints = sql.NullFloat64{Float64: finalTotalPoints, Valid: true}
+	attempt.EarnedPoints = sql.NullFloat64{Float64: scaledEarnedPoints, Valid: true}
 	attempt.Percentage = sql.NullFloat64{Float64: percentage, Valid: true}
 	attempt.IsPassed = sql.NullBool{Bool: isPassed, Valid: true}
 	
