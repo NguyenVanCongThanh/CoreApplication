@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"example/hello/internal/dto"
 	"example/hello/internal/models"
@@ -165,35 +168,47 @@ func (s *EnrollmentService) BulkEnroll(ctx context.Context, courseID int64, stud
 		Failed:     []dto.EnrollmentError{},
 	}
 
-	// Create enrollment for each student
-	for _, studentID := range studentIDs {
-		// Check if already enrolled
-		existing, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, studentID, courseID)
-		if existing != nil {
-			response.Failed = append(response.Failed, dto.EnrollmentError{
-				StudentID: studentID,
-				Error:     "already enrolled",
-			})
-			continue
-		}
+	var mu sync.Mutex
 
-		// Create enrollment
-		enrollment := &models.Enrollment{
-			CourseID:  courseID,
-			StudentID: studentID,
-			Status:    models.EnrollmentAccepted, // Bulk by teacher = auto accept
-		}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(20)
 
-		result, err := s.enrollmentRepo.Create(ctx, enrollment)
-		if err != nil {
-			response.Failed = append(response.Failed, dto.EnrollmentError{
+	for _, sid := range studentIDs {
+		studentID := sid
+		g.Go(func() error {
+			existing, _ := s.enrollmentRepo.GetByStudentAndCourse(gCtx, studentID, courseID)
+			if existing != nil {
+				mu.Lock()
+				response.Failed = append(response.Failed, dto.EnrollmentError{
+					StudentID: studentID,
+					Error:     "already enrolled",
+				})
+				mu.Unlock()
+				return nil
+			}
+
+			enrollment := &models.Enrollment{
+				CourseID:  courseID,
 				StudentID: studentID,
-				Error:     err.Error(),
-			})
-		} else {
-			response.Succeeded = append(response.Succeeded, result.StudentID)
-		}
+				Status:    models.EnrollmentAccepted,
+			}
+			result, err := s.enrollmentRepo.Create(gCtx, enrollment)
+
+			mu.Lock()
+			if err != nil {
+				response.Failed = append(response.Failed, dto.EnrollmentError{
+					StudentID: studentID,
+					Error:     err.Error(),
+				})
+			} else {
+				response.Succeeded = append(response.Succeeded, result.StudentID)
+			}
+			mu.Unlock()
+
+			return nil
+		})
 	}
+	g.Wait()
 
 	return response
 }

@@ -343,6 +343,19 @@ type BulkGradeRequest struct {
 	Grades []GradeAnswerRequest `json:"grades" binding:"required,min=1"`
 }
 
+// BulkGradeResponse represents result of bulk grading operation
+type BulkGradeResponse struct {
+	Succeeded []int64      `json:"succeeded"`
+	Failed    []GradeError `json:"failed"`
+}
+
+// GradeError represents an error during answer grading
+type GradeError struct {
+	AnswerID int64  `json:"answer_id"`
+	Error    string `json:"error"`
+}
+
+
 // StudentAnswerForGrading represents an answer that needs grading
 type StudentAnswerForGrading struct {
 	ID             int64                  `json:"id"`

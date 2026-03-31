@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	"example/hello/internal/models"
 )
 
@@ -1214,4 +1216,67 @@ func (r *QuizRepository) GetAnswersForGrading(ctx context.Context, quizID int64)
 	}
 
 	return answers, rows.Err()
+}
+
+// GetQuizCourseOwner retrieves the creator ID of the course containing the quiz
+func (r *QuizRepository) GetQuizCourseOwner(ctx context.Context, quizID int64) (int64, error) {
+	var ownerID int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT c.created_by
+		FROM quizzes q
+		JOIN section_content sc ON sc.id = q.content_id
+		JOIN course_sections cs ON cs.id = sc.section_id
+		JOIN courses c ON c.id = cs.course_id
+		WHERE q.id = $1
+	`, quizID).Scan(&ownerID)
+	return ownerID, err
+}
+
+// GetQuestionsByIDs retrieves a batch of questions by their IDs
+func (r *QuizRepository) GetQuestionsByIDs(ctx context.Context, ids []int64) ([]models.QuizQuestion, error) {
+	if len(ids) == 0 {
+		return []models.QuizQuestion{}, nil
+	}
+
+	query := `SELECT * FROM quiz_questions WHERE id = ANY($1)`
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []models.QuizQuestion
+	for rows.Next() {
+		var q models.QuizQuestion
+
+		err = rows.Scan(
+			&q.ID,
+			&q.QuizID,
+			&q.QuestionType,
+			&q.QuestionText,
+			&q.QuestionHTML,
+			&q.Explanation,
+			&q.Points,
+			&q.OrderIndex,
+			&q.Settings,
+			&q.IsRequired,
+			&q.CreatedAt,
+			&q.UpdatedAt,
+			&q.NodeID,
+			&q.BloomLevel,
+			&q.ReferenceChunkID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		questions = append(questions, q)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return questions, nil
 }

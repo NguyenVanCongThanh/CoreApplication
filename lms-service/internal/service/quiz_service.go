@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"example/hello/internal/dto"
 	"example/hello/internal/models"
 	"example/hello/internal/repository"
@@ -781,17 +783,27 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 			return nil, err
 		}
 
-		for _, ans := range answers {
-			question, err := s.quizRepo.GetQuestion(ctx, ans.QuestionID)
-			if err != nil {
-				continue
-			}
+		g, gCtx := errgroup.WithContext(ctx)
+		g.SetLimit(10)
 
-			if s.canAutoGrade(question.QuestionType) {
-				if err := s.autoGradeAnswer(ctx, &ans, question); err != nil {
-					logger.Error(fmt.Sprintf("Auto-grade failed for question %d", ans.QuestionID), err)
+		for i := range answers {
+			ans := answers[i]
+			g.Go(func() error {
+				question, err := s.quizRepo.GetQuestion(gCtx, ans.QuestionID)
+				if err != nil {
+					return nil
 				}
-			}
+				if s.canAutoGrade(question.QuestionType) {
+					if err := s.autoGradeAnswer(gCtx, &ans, question); err != nil {
+						logger.Error(fmt.Sprintf("Auto-grade failed for question %d", ans.QuestionID), err)
+					}
+				}
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			logger.Error("Auto-grading error", err)
 		}
 
 		attempt.AutoGradedAt = sql.NullTime{Time: now, Valid: true}
@@ -807,11 +819,19 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 	}
 
 	// Update analytics
-	_ = s.quizRepo.UpdateQuizAnalytics(ctx, quiz.ID)
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.quizRepo.UpdateQuizAnalytics(bgCtx, quiz.ID)
+	}()
 
 	// Auto-mark quiz content as completed (if it has a content_id)
 	if quiz.ContentID > 0 {
-		_ = s.progressRepo.MarkComplete(ctx, quiz.ContentID, studentID)
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.progressRepo.MarkComplete(bgCtx, quiz.ContentID, studentID)
+		}()
 	}
 
 	// Build result response
@@ -944,13 +964,42 @@ func (s *QuizService) GradeAnswer(ctx context.Context, req *dto.GradeAnswerReque
 }
 
 // BulkGrade grades multiple answers at once
-func (s *QuizService) BulkGrade(ctx context.Context, req *dto.BulkGradeRequest, graderID int64, userRole string) error {
-	for _, gradeReq := range req.Grades {
-		if err := s.GradeAnswer(ctx, &gradeReq, graderID, userRole); err != nil {
-			return fmt.Errorf("failed to grade answer %d: %w", gradeReq.AnswerID, err)
+func (s *QuizService) BulkGrade(ctx context.Context, req *dto.BulkGradeRequest, graderID int64, userRole string) *dto.BulkGradeResponse {
+	response := &dto.BulkGradeResponse{
+		Succeeded: []int64{},
+		Failed:    []dto.GradeError{},
+	}
+
+	type gradeResult struct {
+		AnswerID int64
+		Err      error
+	}
+
+	results := make([]gradeResult, len(req.Grades))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(5)
+
+	for i := range req.Grades {
+		i := i
+		g.Go(func() error {
+			err := s.GradeAnswer(gCtx, &req.Grades[i], graderID, userRole)
+			results[i] = gradeResult{AnswerID: req.Grades[i].AnswerID, Err: err}
+			return nil
+		})
+	}
+	g.Wait()
+
+	for _, r := range results {
+		if r.Err != nil {
+			response.Failed = append(response.Failed, dto.GradeError{
+				AnswerID: r.AnswerID,
+				Error:    r.Err.Error(),
+			})
+		} else {
+			response.Succeeded = append(response.Succeeded, r.AnswerID)
 		}
 	}
-	return nil
+	return response
 }
 
 // ListStudentAnswersForGrading lists answers that need grading
@@ -1248,13 +1297,31 @@ func (s *QuizService) calculateAttemptScore(ctx context.Context, attempt *models
 		return err
 	}
 
+	// Collect all question IDs
+	questionIDs := make([]int64, 0, len(answers))
+	for _, ans := range answers {
+		questionIDs = append(questionIDs, ans.QuestionID)
+	}
+
+	// Single batch query instead of N queries
+	questions, err := s.quizRepo.GetQuestionsByIDs(ctx, questionIDs)
+	if err != nil {
+		return err
+	}
+
+	// Build lookup map
+	questionMap := make(map[int64]*models.QuizQuestion, len(questions))
+	for i := range questions {
+		questionMap[questions[i].ID] = &questions[i]
+	}
+
 	var totalPoints float64 = 0
 	var earnedPoints float64 = 0
 	allAnswersGraded := true
 
 	for _, ans := range answers {
-		question, err := s.quizRepo.GetQuestion(ctx, ans.QuestionID)
-		if err != nil {
+		question, ok := questionMap[ans.QuestionID]
+		if !ok {
 			continue
 		}
 
@@ -1396,31 +1463,12 @@ func (s *QuizService) verifyQuizOwnership(ctx context.Context, quizID, userID in
 		return nil
 	}
 
-	// Get quiz to find content
-	quiz, err := s.quizRepo.GetQuiz(ctx, quizID)
+	ownerID, err := s.quizRepo.GetQuizCourseOwner(ctx, quizID)
 	if err != nil {
 		return err
 	}
 
-	// Get content to find section
-	content, err := s.courseRepo.GetContentByID(ctx, quiz.ContentID)
-	if err != nil {
-		return err
-	}
-
-	// Get section to find course
-	section, err := s.courseRepo.GetSectionByID(ctx, content.SectionID)
-	if err != nil {
-		return err
-	}
-
-	// Get course to check owner
-	course, err := s.courseRepo.GetByID(ctx, section.CourseID)
-	if err != nil {
-		return err
-	}
-
-	if course.CreatedBy != userID {
+	if ownerID != userID {
 		return fmt.Errorf("permission denied: you don't own this quiz")
 	}
 
