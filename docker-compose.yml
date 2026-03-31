@@ -21,8 +21,6 @@ services:
       args:
         - BUILD_DATE=${BUILD_DATE:-unknown}
         - VERSION=${VERSION:-1.0.0}
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-        - NEXT_PUBLIC_LMS_API_URL=${NEXT_PUBLIC_LMS_API_URL}
     image: ${DOCKER_USERNAME}/bdc-frontend:${IMAGE_TAG:-latest}
     container_name: nextjs-prod
     restart: unless-stopped
@@ -32,8 +30,6 @@ services:
       HOSTNAME: 0.0.0.0
       BACKEND_URL: http://backend:8080
       LMS_API_URL: http://lms-backend:8081
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_LMS_API_URL: ${NEXT_PUBLIC_LMS_API_URL}
       GOOGLE_SCRIPT_URL: ${GOOGLE_SCRIPT_URL}
       YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
       YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}

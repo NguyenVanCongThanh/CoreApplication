@@ -366,8 +366,6 @@ LMS_SYNC_SECRET=chuoi-bi-mat-sync   # phải bằng LMS_API_SECRET
 ```env
 # Dev local
 NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=http://localhost:3000/apiv1
-NEXT_PUBLIC_LMS_API_URL=http://localhost:3000/lmsapiv1
 APP_PUBLIC_URL=http://localhost:3000    # Dùng trong link email reset password
 
 # Giao tiếp nội bộ Docker network (giữ nguyên khi dùng Docker Compose)

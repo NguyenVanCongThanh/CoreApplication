@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Brain,
   Lightbulb,
-  ArrowRight,
   BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -94,7 +93,7 @@ export function WeaknessTracker({ courseId }: Props) {
     return null; // hide entirely if there's no data / error
   }
 
-  if (data.weak_nodes.length === 0) {
+  if (!data.weak_nodes || data.weak_nodes.length === 0) {
     return (
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center shadow-sm">
         <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950/20 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">

@@ -1,6 +1,3 @@
-import { API_BASE_URL } from "@/constants";
-import { getAuthToken } from "@/utils/tokenManager";
-
 export class ApiClient {
   readonly baseURL: string;
 
@@ -88,13 +85,11 @@ export class ApiClient {
   }
 
   async uploadFile<T>(endpoint: string, formData: FormData): Promise<T> {
-    const token = await getAuthToken();
     const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: "POST",
       credentials: "include",
       headers: {
         Accept: "*/*",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: formData,
     });
@@ -102,4 +97,4 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient("/apiv1");

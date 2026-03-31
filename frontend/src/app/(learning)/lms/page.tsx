@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAuthToken, getCookie } from "@/utils/cookies";
 import lmsService from "@/services/lmsService";
+import { useSession } from "next-auth/react";
 
 interface RoleOption {
   value: string;
@@ -35,27 +35,22 @@ const ROLE_OPTIONS: Record<string, RoleOption> = {
 
 export default function LMSRoleSelection() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  
   const [userRoles, setUserRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [userName, setUserName] = useState("");
 
   useEffect(() => {
-    fetchUserRoles();
-  }, []);
+    if (status === "authenticated") {
+      fetchUserRoles();
+    } else if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
 
   const fetchUserRoles = async () => {
     try {
-      const checkToken = async () => {
-        return await getAuthToken();
-      };
-
-      checkToken();
-
-      // Get user info from token or API
-      const userNameCookie = getCookie("userName") || "";
-      setUserName(userNameCookie);
-
       const data = await lmsService.getMyRoles();
       const roles = data || [];
 
@@ -65,7 +60,6 @@ export default function LMSRoleSelection() {
         return;
       }
 
-      // If user has only one role, auto-redirect
       if (roles.length === 1) {
         selectRole(roles[0]);
         return;
@@ -122,6 +116,8 @@ export default function LMSRoleSelection() {
       </div>
     );
   }
+
+  const userName = session?.user?.name;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">

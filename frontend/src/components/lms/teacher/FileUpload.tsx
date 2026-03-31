@@ -3,7 +3,6 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInfo } from "@/types";
-import { getAuthToken } from "@/utils/tokenManager";
 
 interface FileUploadProps {
   onFileUploaded: (fileInfo: FileInfo) => void;
@@ -69,77 +68,34 @@ export default function FileUpload({
       formData.append("file", file);
       formData.append("type", fileType);
 
-      // Get auth token from cookie
-      const token = await getAuthToken();
+      // Upload via proxy - middleware handles auth token
+      const response = await fetch(`/lmsapiv1/files/upload`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
 
-      if (!token) {
-        setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
-        setUploading(false);
-        return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Lỗi HTTP ${response.status}`);
       }
 
-      // Upload file with progress tracking
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = Math.round((e.loaded / e.total) * 100);
-          setProgress(percentComplete);
+      const result = await response.json();
+      if (result.data) {
+        onFileUploaded(result.data);
+        setProgress(100);
+        
+        // Reset input after successful upload
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
         }
-      });
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            
-            if (response.data) {
-              onFileUploaded(response.data);
-              setProgress(100);
-              
-              // Reset input after successful upload
-              if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-              }
-            } else {
-              setError("Phản hồi không đúng định dạng");
-            }
-          } catch (e) {
-            setError("Lỗi khi xử lý phản hồi từ server");
-            console.error("Parse error:", e);
-          }
-        } else {
-          try {
-            const errorResponse = JSON.parse(xhr.responseText);
-            setError(errorResponse.error || `Lỗi HTTP ${xhr.status}`);
-          } catch {
-            setError(`Lỗi khi upload file (${xhr.status})`);
-          }
-        }
-        setUploading(false);
-      });
-
-      xhr.addEventListener("error", () => {
-        setError("Lỗi kết nối khi upload file");
-        setUploading(false);
-        console.error("XHR error");
-      });
-
-      xhr.addEventListener("abort", () => {
-        setError("Upload đã bị hủy");
-        setUploading(false);
-      });
-
-      // Use the correct API endpoint
-      const apiUrl = process.env.NEXT_PUBLIC_LMS_API_URL || "http://localhost:8081/api/v1";
-      xhr.open("POST", `${apiUrl}/files/upload`);
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      
-      xhr.send(formData);
-
-    } catch (err) {
+      } else {
+        throw new Error("Phản hồi không đúng định dạng");
+      }
+    } catch (err: any) {
       console.error("Upload error:", err);
-      setError("Lỗi không xác định khi upload file");
+      setError(err.message || "Lỗi không xác định khi upload file");
+    } finally {
       setUploading(false);
     }
   };

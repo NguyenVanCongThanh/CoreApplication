@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import lmsService from "@/services/lmsService";
 import { FileToUpload } from "@/types";
-import { getAuthToken } from "@/utils/tokenManager";
+
 
 interface BulkUploadModalProps {
   sectionId: number;
@@ -163,57 +163,28 @@ export default function BulkUploadModal({
     }
   };
 
-  const uploadSingleFile = (fileItem: FileToUpload): Promise<any> => {
-    return new Promise(async (resolve, reject) => {
-      const formData = new FormData();
-      formData.append("file", fileItem.file);
-      formData.append("type", fileItem.type);
+  const uploadSingleFile = async (fileItem: FileToUpload): Promise<any> => {
+    const formData = new FormData();
+    formData.append("file", fileItem.file);
+    formData.append("type", fileItem.type);
 
-      const xhr = new XMLHttpRequest();
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.data) {
-              resolve(response.data);
-            } else {
-              reject(new Error("Invalid response format"));
-            }
-          } catch {
-            reject(new Error("Failed to parse response"));
-          }
-        } else {
-          try {
-            const errorResponse = JSON.parse(xhr.responseText);
-            reject(new Error(errorResponse.error || `HTTP ${xhr.status}`));
-          } catch {
-            reject(new Error(`Upload failed (${xhr.status})`));
-          }
-        }
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(new Error("Connection error"));
-      });
-
-      xhr.addEventListener("abort", () => {
-        reject(new Error("Upload cancelled"));
-      });
-
-      const apiUrl =
-        process.env.NEXT_PUBLIC_LMS_API_URL || "http://localhost:8081/api/v1";
-      const token = await getAuthToken();
-
-      if (!token) {
-        reject(new Error("No authentication token found"));
-        return;
-      }
-
-      xhr.open("POST", `${apiUrl}/files/upload`);
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      xhr.send(formData);
+    const response = await fetch("/lmsapiv1/files/upload", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.data) {
+      throw new Error("Invalid response format");
+    }
+
+    return result.data;
   };
 
   const formatFileSize = (bytes: number): string => {

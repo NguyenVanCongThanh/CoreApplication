@@ -230,7 +230,6 @@ function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
           {sections.map((sec, i) => {
             const isExpanded = expanded.has(sec.id);
             const contents = sectionContents[sec.id] ?? [];
-            console.log(contents)
             const isLoadingC = loadingContent[sec.id];
 
             return (

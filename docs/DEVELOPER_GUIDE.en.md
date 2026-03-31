@@ -366,8 +366,6 @@ LMS_SYNC_SECRET=your-sync-secret   # must equal LMS_API_SECRET
 ```env
 # Local development
 NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=http://localhost:3000/apiv1
-NEXT_PUBLIC_LMS_API_URL=http://localhost:3000/lmsapiv1
 APP_PUBLIC_URL=http://localhost:3000   # Used in password reset emails
 
 # Internal Docker network communication (keep as-is when using Docker Compose)

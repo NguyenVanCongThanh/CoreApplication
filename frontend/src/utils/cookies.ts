@@ -12,5 +12,3 @@ export function setCookie(name: string, value: string, days = 7): void {
 export function deleteCookie(name: string): void {
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
 }
-
-export { getAuthToken, clearAuthToken, setAuthToken } from "@/utils/tokenManager";

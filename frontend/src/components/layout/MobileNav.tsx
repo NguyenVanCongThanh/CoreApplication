@@ -11,7 +11,6 @@ import { useState } from "react";
 import { useUser } from "@/store/UserContext";
 import { useTheme } from "next-themes";
 import { userService } from "@/services/userService";
-import { clearAuthToken } from "@/utils/tokenManager";
 import SafeImage from "../common/SafeImage";
 
 const MobileNav = () => {
@@ -23,7 +22,6 @@ const MobileNav = () => {
 
   const handleLogout = async () => {
     try { userService.logout(); } catch { /* silent */ }
-    clearAuthToken();
     setUser(null);
     router.push("/login");
     router.refresh();

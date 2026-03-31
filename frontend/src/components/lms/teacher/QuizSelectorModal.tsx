@@ -50,7 +50,6 @@ export function QuizSelectorModal({
       // Get all sections of the course
       const res = await lmsService.listSections(courseId);
       const sectionsData = res.data;
-      console.log(sectionsData)
       setSections(sectionsData);
 
       // Extract all quizzes from all sections

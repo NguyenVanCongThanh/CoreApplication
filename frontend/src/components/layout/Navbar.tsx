@@ -2,25 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { Logo } from "@/components/layout/Logo";
 import { userService } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import { getAuthToken, clearAuthToken } from "@/utils/tokenManager";
 
 export default function Navbar() {
   const router = useRouter();
-  const [hasToken, setHasToken] = useState(false);
+  const { status } = useSession();
   const [scrolled, setScrolled] = useState(false);
+  const isAuthenticated = status === "authenticated";
 
   useEffect(() => {
-    const checkToken = async () => {
-      const token = await getAuthToken();
-      setHasToken(!!token);
-    };
-
-    checkToken();
-
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
@@ -28,13 +22,11 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     try {
-      const { signOut } = await import("next-auth/react");
       userService.logout();
       signOut({ callbackUrl: "/login" });
     } catch (err) {
       console.error("Logout error:", err);
       // Fallback
-      clearAuthToken();
       router.push("/login");
     }
   };
@@ -73,7 +65,7 @@ export default function Navbar() {
           </div>
 
           <div>
-            {hasToken ? (
+            {isAuthenticated ? (
               <Button onClick={handleLogout} variant="outline" className="text-slate-600 border-slate-300 hover:bg-slate-50">
                 <LogOut className="h-4 w-4 mr-2" />
                 Đăng xuất

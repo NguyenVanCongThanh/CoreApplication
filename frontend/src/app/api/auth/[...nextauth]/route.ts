@@ -7,7 +7,7 @@ declare module "next-auth" {
     accessToken?: string;
     error?: string;
     user: {
-      /** Existing default fields */
+      id?: number | string;
       name?: string | null;
       email?: string | null;
       role?: string;
@@ -95,7 +95,7 @@ export const authOptions: NextAuthOptions = {
           const refreshToken = setCookie?.match(/refreshToken=([^;]+)/)?.[1];
 
           return {
-            id: data.email,
+            id: String(data.userId),
             name: data.name,
             email: data.email,
             role: data.role,
@@ -118,10 +118,12 @@ export const authOptions: NextAuthOptions = {
       // Initial sign in
       if (user && account) {
         return {
+          ...token,
           accessToken: (user as any).token,
           refreshToken: (user as any).refreshToken,
           accessTokenExpires: Date.now() + ((user as any).expiresIn || 3600000),
-          role: user.role,
+          role: (user as any).role,
+          sub: user.id,
           user: {
              name: user.name,
              email: user.email,
@@ -141,6 +143,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role as string;
+        (session.user as any).id = Number(token.sub);
         (session as any).error = token.error;
       }
       return session;
