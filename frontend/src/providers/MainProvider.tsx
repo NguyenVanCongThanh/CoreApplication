@@ -7,19 +7,28 @@ import { Toaster } from "react-hot-toast";
 import { UserProvider, useUser } from "@/store/UserContext";
 
 function SessionMonitor() {
-  const { data: session } = useSession();
-  const { setUser } = useUser();
+  const { data: session, status } = useSession();
+  const { user, setUser } = useUser();
 
   useEffect(() => {
-    if (session?.error === "RefreshAccessTokenError") {
+    if ((session as any)?.error === "RefreshAccessTokenError") {
       signOut({ callbackUrl: "/login" });
+      return;
     }
     
-    // Periodically update local context from session if needed
-    if (session?.user && session.accessToken) {
-       // setUser({ ... }) if necessary to keep sync
+    if (status === "authenticated" && session?.user) {
+      if (!user || user.id !== (session.user as any).id) {
+        setUser({
+          id: (session.user as any).id,
+          name: session.user.name as string,
+          email: session.user.email as string,
+          role: (session.user as any).role as string,
+        });
+      }
+    } else if (status === "unauthenticated") {
+       if (user) setUser(null);
     }
-  }, [session, setUser]);
+  }, [session, status, user, setUser]);
 
   return null;
 }

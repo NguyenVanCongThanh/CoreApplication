@@ -3,14 +3,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EyeIcon, EyeOffIcon, Spinner } from "@/components/icons/Icons";
-import { useUser } from "@/store/UserContext";
-import { userService } from "@/services/userService";
 import { validatePassword } from "@/utils/utils";
 import Mascot from "./Mascot";
 
 export default function LoginForm() {
   const router = useRouter();
-  const { setUser } = useUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -37,9 +34,6 @@ export default function LoginForm() {
         throw new Error("Email hoặc mật khẩu không chính xác.");
       }
 
-      const data = await userService.login(email, password);
-      setUser({ id: data.userId, name: data.name, email: data.email, role: data.role });
-      
       router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
