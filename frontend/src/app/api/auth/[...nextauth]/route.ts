@@ -7,7 +7,7 @@ declare module "next-auth" {
     accessToken?: string;
     error?: string;
     user: {
-      /** Existing default fields */
+      id?: number | string;
       name?: string | null;
       email?: string | null;
       role?: string;

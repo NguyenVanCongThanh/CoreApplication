@@ -39,16 +39,12 @@ interface ContentViewerProps {
   onComplete?: () => void;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const API_URL = process.env.NEXT_PUBLIC_LMS_API_URL ?? "";
-
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function buildFileUrl(filePath?: string | null): string {
   if (!filePath) return "";
   if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
-  return `${API_URL}/files/serve/${filePath}`;
+  return `/lmsapiv1/files/serve/${filePath}`;
 }
 
 function formatFileSize(bytes: number): string {

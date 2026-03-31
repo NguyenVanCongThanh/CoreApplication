@@ -1,23 +1,9 @@
-import { API_BASE_URL } from "@/constants";
 import { mapServerUserToClient } from "./mappers";
 import { User } from "@/types";
-import { getAuthToken } from "@/utils/tokenManager";
-
-const BASE = API_BASE_URL;
-
-async function authHeaders(): Promise<HeadersInit> {
-  const token = await getAuthToken();
-  return {
-    Accept: "*/*",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    "Content-Type": "application/json",
-  };
-}
 
 export async function fetchUsers(): Promise<User[]> {
-  const res = await fetch(`${BASE}/api/users`, {
+  const res = await fetch(`/apiv1/api/users`, {
     method: "GET",
-    headers: await authHeaders(),
     credentials: "include",
   });
 
@@ -43,9 +29,8 @@ export async function postBulkRegister(
     type: string;
   }>
 ) {
-  const res = await fetch(`${BASE}/api/auth/register/bulk`, {
+  const res = await fetch(`/apiv1/api/auth/register/bulk`, {
     method: "POST",
-    headers: await authHeaders(),
     credentials: "include",
     body: JSON.stringify({ users: payload }),
   });
@@ -78,9 +63,8 @@ export async function updateUser(
     type?: string;
   }
 ): Promise<User> {
-  const res = await fetch(`${BASE}/api/users/${id}`, {
+  const res = await fetch(`/apiv1/api/users/${id}`, {
     method: "PUT",
-    headers: await authHeaders(),
     credentials: "include",
     body: JSON.stringify(data),
   });
@@ -95,9 +79,8 @@ export async function updateUser(
 }
 
 export async function updateUserRole(id: number | string, role: string): Promise<User> {
-  const res = await fetch(`${BASE}/api/users/${id}/role`, {
+  const res = await fetch(`/apiv1/api/users/${id}/role`, {
     method: "PATCH",
-    headers: await authHeaders(),
     credentials: "include",
     body: JSON.stringify({ role }),
   });

@@ -1,21 +1,12 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowRight } from "lucide-react";
-import { getAuthToken } from "@/utils/tokenManager";
 
 export default function Hero() {
   const router = useRouter();
-  const [hasToken, setHasToken] = useState(false);
-
-  useEffect(() => {
-    const checkToken = async () => {
-      const token = await getAuthToken();
-      setHasToken(!!token);
-    };
-    
-    checkToken();
-  }, []);
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
 
   return (
     <section className="relative min-h-[75vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 text-center mt-8">
@@ -31,7 +22,7 @@ export default function Hero() {
           <a href="#about" className="px-8 py-3.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2">
             Tìm hiểu thêm <ArrowRight className="w-4 h-4" />
           </a>
-          {hasToken && (
+          {isAuthenticated && (
             <button onClick={() => router.push("/dashboard")} className="px-8 py-3.5 bg-white text-slate-800 font-medium rounded-xl border border-slate-200 hover:bg-slate-50 transition-all">
               Bảng quản trị
             </button>

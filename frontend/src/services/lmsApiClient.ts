@@ -1,10 +1,7 @@
 import axios from "axios";
 
-const LMS_API_URL =
-  process.env.NEXT_PUBLIC_LMS_API_URL || "http://localhost:8081/api/v1";
-
 export const lmsApiClient = axios.create({
-  baseURL: LMS_API_URL,
+  baseURL: "/lmsapiv1",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });

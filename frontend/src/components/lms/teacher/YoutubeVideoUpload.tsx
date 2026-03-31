@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInfo } from "@/types";
 import { Youtube, CheckCircle, AlertCircle, XCircle } from "lucide-react";
-import { getAuthToken } from "@/utils/tokenManager";
+
 
 interface YouTubeVideoUploadProps {
   onFileUploaded: (fileInfo: FileInfo) => void;
@@ -79,19 +79,6 @@ export default function YouTubeVideoUpload({
       formData.append("description", videoDescription || "Uploaded from LMS");
       formData.append("privacyStatus", privacyStatus);
 
-      // Get auth token
-      const checkToken = async () => {
-        return await getAuthToken();
-      };
-      
-      const token = checkToken();
-
-      if (!token) {
-        setError("Không tìm thấy token xác thực. Vui lòng đăng nhập lại.");
-        setUploading(false);
-        return;
-      }
-
       // Simulate progress (YouTube upload doesn't provide real-time progress)
       const progressInterval = setInterval(() => {
         setProgress(prev => {
@@ -100,13 +87,11 @@ export default function YouTubeVideoUpload({
         });
       }, 500);
 
-      // Upload to YouTube via API
+      // Upload to YouTube via API (middleware handles auth)
       const response = await fetch('/api/youtube/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
+        credentials: 'include',
       });
 
       clearInterval(progressInterval);

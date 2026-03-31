@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GOOGLE_SCRIPT_URL } from '@/utils/constants';
+import { GOOGLE_SCRIPT_URL } from '@/constants';
 
 export async function POST(request: NextRequest) {
   try {

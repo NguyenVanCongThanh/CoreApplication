@@ -49,7 +49,6 @@ export function FlashcardWidget({ courseId }: Props) {
         analyticsService.getFlashcardStats(courseId),
         flashcardService.listDueFlashcards(courseId),
       ]);
-      console.log(sRes, cardsRes)
       setStats(sRes.data);
       setDueCards(cardsRes.data || []);
     } catch (e: any) {

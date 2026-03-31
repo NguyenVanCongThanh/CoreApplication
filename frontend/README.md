@@ -52,11 +52,6 @@ npm install
 cp .env.local.example .env.local
 ```
 
-3. **Configure your API endpoint** in `.env.local`:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
-```
-
 ### Development Server
 
 Run the development server:
@@ -97,13 +92,6 @@ frontend/
 ```
 
 ## 🔧 Configuration
-
-### Environment Variables
-
-```env
-# API Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
-```
 
 ### Customization
 

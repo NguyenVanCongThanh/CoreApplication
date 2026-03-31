@@ -376,7 +376,6 @@ export default function StudentCourseDetailPage() {
     setStatsLoading(true);
     try {
       const res = await analyticsService.getMyQuizScores(id);
-      console.log(res)
       setQuizScores(Array.isArray(res?.data) ? res.data : (res as any) ?? []);
       setStatsLoaded(true);
     } catch {

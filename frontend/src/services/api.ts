@@ -1,5 +1,3 @@
-import { API_BASE_URL } from "@/constants";
-
 export class ApiClient {
   readonly baseURL: string;
 
@@ -99,4 +97,4 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient("/apiv1");

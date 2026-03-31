@@ -187,8 +187,6 @@ Variables prefixed `NEXT_PUBLIC_` are **baked into the client bundle at build ti
 
 ```env
 # ── Client-side (baked at build via Dockerfile ARG) ──────────────────────
-NEXT_PUBLIC_API_URL=https://bdc.hpcc.vn/apiv1        # Used by service files in browser
-NEXT_PUBLIC_LMS_API_URL=https://bdc.hpcc.vn/lmsapiv1 # Used by lmsApiClient in browser
 NEXT_PUBLIC_YOUTUBE_UPLOAD_ENABLED=true
 
 # ── Server-side only ──────────────────────────────────────────────────────
@@ -211,7 +209,6 @@ GOOGLE_SCRIPT_URL=https://script.google.com/...   # Survey form → submit-form/
 
 | Scenario | Correct approach |
 |----------|-----------------|
-| Client component fetching data | `NEXT_PUBLIC_API_URL` or `NEXT_PUBLIC_LMS_API_URL` via service files |
 | Server Component or Route Handler | `process.env.BACKEND_URL` directly |
 | Docker Compose (all services on same network) | `BACKEND_URL=http://backend:8080` (internal), proxied by `next.config.ts` |
 | Local dev without Docker | `BACKEND_URL=http://localhost:8080`, `LMS_API_URL=http://localhost:8081` |
