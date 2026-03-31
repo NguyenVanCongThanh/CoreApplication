@@ -822,7 +822,9 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = s.quizRepo.UpdateQuizAnalytics(bgCtx, quiz.ID)
+		if err := s.quizRepo.UpdateQuizAnalytics(bgCtx, quiz.ID); err != nil {
+			logger.Error(fmt.Sprintf("async: UpdateQuizAnalytics quiz=%d", quiz.ID), err)
+		}
 	}()
 
 	// Auto-mark quiz content as completed (if it has a content_id)
@@ -830,7 +832,12 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 		go func() {
 			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_ = s.progressRepo.MarkComplete(bgCtx, quiz.ContentID, studentID)
+			if err := s.progressRepo.MarkComplete(bgCtx, quiz.ContentID, studentID); err != nil {
+				logger.Error(
+					fmt.Sprintf("async: MarkComplete content=%d student=%d", quiz.ContentID, studentID),
+					err,
+				)
+			}
 		}()
 	}
 

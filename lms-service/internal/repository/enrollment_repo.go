@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"example/hello/internal/models"
 )
@@ -281,4 +282,48 @@ func (r *EnrollmentRepository) UpdateBulkLog(ctx context.Context, id int64, succ
 
 	_, err := r.db.ExecContext(ctx, query, successCount, failedCount, status, id)
 	return err
+}
+
+func (r *EnrollmentRepository) BulkCreate(
+	ctx context.Context,
+	courseID int64,
+	studentIDs []int64,
+) (inserted []int64, err error) {
+	if len(studentIDs) == 0 {
+		return nil, nil
+	}
+ 
+	// Xây dựng VALUES clause: ($1,$2), ($1,$3), ($1,$4), ...
+	// $1 là courseID — dùng chung cho mọi row
+	args := make([]interface{}, 0, 1+len(studentIDs))
+	args = append(args, courseID)
+ 
+	placeholders := make([]string, len(studentIDs))
+	for i, sid := range studentIDs {
+		args = append(args, sid)
+		placeholders[i] = fmt.Sprintf("($1, $%d)", i+2)
+	}
+ 
+	query := `
+		INSERT INTO enrollments (course_id, student_id)
+		VALUES ` + strings.Join(placeholders, ", ") + `
+		ON CONFLICT (course_id, student_id) DO NOTHING
+		RETURNING student_id
+	`
+ 
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("BulkCreate enrollments course=%d: %w", courseID, err)
+	}
+	defer rows.Close()
+ 
+	inserted = make([]int64, 0, len(studentIDs))
+	for rows.Next() {
+		var sid int64
+		if err := rows.Scan(&sid); err != nil {
+			return nil, err
+		}
+		inserted = append(inserted, sid)
+	}
+	return inserted, rows.Err()
 }
