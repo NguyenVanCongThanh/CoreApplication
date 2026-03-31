@@ -549,7 +549,7 @@ func (h *QuizHandler) GradeAnswer(c *gin.Context) {
 // @Produce json
 // @Param request body dto.BulkGradeRequest true "Bulk grade data"
 // @Security BearerAuth
-// @Success 200 {object} dto.SuccessResponse{message=string} "Answers graded successfully"
+// @Success 200 {object} dto.SuccessResponse{data=dto.BulkGradeResponse} "Answers graded successfully"
 // @Failure 400 {object} dto.ErrorResponse "Invalid request"
 // @Failure 401 {object} dto.ErrorResponse "Unauthorized"
 // @Failure 403 {object} dto.ErrorResponse "Forbidden - teacher/admin only"
@@ -564,13 +564,9 @@ func (h *QuizHandler) BulkGrade(c *gin.Context) {
 		return
 	}
 
-	if err := h.quizService.BulkGrade(c.Request.Context(), &req, userID.(int64), userRole.(string)); err != nil {
-		logger.Error("Failed to bulk grade", err)
-		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("grading_failed", err.Error()))
-		return
-	}
+	response := h.quizService.BulkGrade(c.Request.Context(), &req, userID.(int64), userRole.(string))
 
-	c.JSON(http.StatusOK, dto.NewMessageResponse("Answers graded successfully"))
+	c.JSON(http.StatusOK, dto.NewDataResponse(response))
 }
 
 // ListAnswersForGrading godoc

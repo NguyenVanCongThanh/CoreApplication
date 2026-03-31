@@ -146,56 +146,61 @@ func (s *EnrollmentService) RejectEnrollment(ctx context.Context, enrollmentID, 
 }
 
 // BulkEnroll enrolls multiple students in a course
-func (s *EnrollmentService) BulkEnroll(ctx context.Context, courseID int64, studentIDs []int64, teacherID int64, role string) *dto.BulkEnrollmentResponse {
-	// Verify course exists and user is creator
+func (s *EnrollmentService) BulkEnroll(
+	ctx context.Context,
+	courseID int64,
+	studentIDs []int64,
+	teacherID int64,
+	role string,
+) *dto.BulkEnrollmentResponse {
+	total := len(studentIDs)
+ 
+	// 1. Kiểm tra quyền — 1 query
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil || (course.CreatedBy != teacherID && role != "ADMIN") {
 		return &dto.BulkEnrollmentResponse{
-			TotalCount: len(studentIDs),
+			TotalCount: total,
 			Succeeded:  []int64{},
-			Failed: []dto.EnrollmentError{
-				{StudentID: 0, Error: "unauthorized or course not found"},
-			},
+			Failed:     []dto.EnrollmentError{{StudentID: 0, Error: "unauthorized or course not found"}},
 		}
 	}
-
-	response := &dto.BulkEnrollmentResponse{
-		TotalCount: len(studentIDs),
-		Succeeded:  []int64{},
-		Failed:     []dto.EnrollmentError{},
+ 
+	// 2. Batch INSERT — 1 query, bỏ qua duplicate qua ON CONFLICT
+	inserted, err := s.enrollmentRepo.BulkCreate(ctx, courseID, studentIDs)
+	if err != nil {
+		// Toàn bộ batch fail — trả về lỗi cho tất cả
+		failed := make([]dto.EnrollmentError, total)
+		for i, sid := range studentIDs {
+			failed[i] = dto.EnrollmentError{StudentID: sid, Error: err.Error()}
+		}
+		return &dto.BulkEnrollmentResponse{
+			TotalCount: total,
+			Succeeded:  []int64{},
+			Failed:     failed,
+		}
 	}
-
-	// Create enrollment for each student
-	for _, studentID := range studentIDs {
-		// Check if already enrolled
-		existing, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, studentID, courseID)
-		if existing != nil {
-			response.Failed = append(response.Failed, dto.EnrollmentError{
-				StudentID: studentID,
+ 
+	// 3. Xác định ai bị skip (đã enrolled) — O(N) với map lookup
+	insertedSet := make(map[int64]struct{}, len(inserted))
+	for _, sid := range inserted {
+		insertedSet[sid] = struct{}{}
+	}
+ 
+	failed := make([]dto.EnrollmentError, 0, total-len(inserted))
+	for _, sid := range studentIDs {
+		if _, ok := insertedSet[sid]; !ok {
+			failed = append(failed, dto.EnrollmentError{
+				StudentID: sid,
 				Error:     "already enrolled",
 			})
-			continue
-		}
-
-		// Create enrollment
-		enrollment := &models.Enrollment{
-			CourseID:  courseID,
-			StudentID: studentID,
-			Status:    models.EnrollmentAccepted, // Bulk by teacher = auto accept
-		}
-
-		result, err := s.enrollmentRepo.Create(ctx, enrollment)
-		if err != nil {
-			response.Failed = append(response.Failed, dto.EnrollmentError{
-				StudentID: studentID,
-				Error:     err.Error(),
-			})
-		} else {
-			response.Succeeded = append(response.Succeeded, result.StudentID)
 		}
 	}
-
-	return response
+ 
+	return &dto.BulkEnrollmentResponse{
+		TotalCount: total,
+		Succeeded:  inserted,
+		Failed:     failed,
+	}
 }
 
 // CancelEnrollment allows student to cancel their enrollment

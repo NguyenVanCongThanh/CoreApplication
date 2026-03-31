@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	"example/hello/internal/models"
 )
 
@@ -472,30 +474,42 @@ func (r *QuizRepository) ListQuestionsWithOptions(ctx context.Context, quizID in
 	if err != nil {
 		return nil, err
 	}
-
-	result := make([]models.QuestionWithOptions, 0, len(questions))
-	for _, q := range questions {
-		qWithOptions := models.QuestionWithOptions{
-			QuizQuestion: q,
-		}
-
-		// Get answer options
-		options, err := r.ListAnswerOptions(ctx, q.ID)
-		if err != nil {
-			return nil, err
-		}
-		qWithOptions.AnswerOptions = options
-
-		// Get correct answers
-		correctAnswers, err := r.ListCorrectAnswers(ctx, q.ID)
-		if err != nil {
-			return nil, err
-		}
-		qWithOptions.CorrectAnswers = correctAnswers
-
-		result = append(result, qWithOptions)
+	if len(questions) == 0 {
+		return []models.QuestionWithOptions{}, nil
 	}
-
+ 
+	// Gom tất cả question IDs để batch fetch
+	questionIDs := make([]int64, len(questions))
+	for i, q := range questions {
+		questionIDs[i] = q.ID
+	}
+ 
+	optionsByQID, err := r.ListAnswerOptionsByQuestionIDs(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+ 
+	correctByQID, err := r.ListCorrectAnswersByQuestionIDs(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+ 
+	result := make([]models.QuestionWithOptions, len(questions))
+	for i, q := range questions {
+		opts := optionsByQID[q.ID]
+		if opts == nil {
+			opts = []models.QuizAnswerOption{}
+		}
+		cas := correctByQID[q.ID]
+		if cas == nil {
+			cas = []models.QuizCorrectAnswer{}
+		}
+		result[i] = models.QuestionWithOptions{
+			QuizQuestion:   q,
+			AnswerOptions:  opts,
+			CorrectAnswers: cas,
+		}
+	}
 	return result, nil
 }
 
@@ -1214,4 +1228,135 @@ func (r *QuizRepository) GetAnswersForGrading(ctx context.Context, quizID int64)
 	}
 
 	return answers, rows.Err()
+}
+
+// GetQuizCourseOwner retrieves the creator ID of the course containing the quiz
+func (r *QuizRepository) GetQuizCourseOwner(ctx context.Context, quizID int64) (int64, error) {
+	var ownerID int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT c.created_by
+		FROM quizzes q
+		JOIN section_content sc ON sc.id = q.content_id
+		JOIN course_sections cs ON cs.id = sc.section_id
+		JOIN courses c ON c.id = cs.course_id
+		WHERE q.id = $1
+	`, quizID).Scan(&ownerID)
+	return ownerID, err
+}
+
+// GetQuestionsByIDs retrieves a batch of questions by their IDs
+func (r *QuizRepository) GetQuestionsByIDs(ctx context.Context, ids []int64) ([]models.QuizQuestion, error) {
+	if len(ids) == 0 {
+		return []models.QuizQuestion{}, nil
+	}
+
+	query := `SELECT * FROM quiz_questions WHERE id = ANY($1)`
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []models.QuizQuestion
+	for rows.Next() {
+		var q models.QuizQuestion
+
+		err = rows.Scan(
+			&q.ID,
+			&q.QuizID,
+			&q.QuestionType,
+			&q.QuestionText,
+			&q.QuestionHTML,
+			&q.Explanation,
+			&q.Points,
+			&q.OrderIndex,
+			&q.Settings,
+			&q.IsRequired,
+			&q.CreatedAt,
+			&q.UpdatedAt,
+			&q.NodeID,
+			&q.BloomLevel,
+			&q.ReferenceChunkID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		questions = append(questions, q)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return questions, nil
+}
+
+func (r *QuizRepository) ListAnswerOptionsByQuestionIDs(
+	ctx context.Context,
+	questionIDs []int64,
+) (map[int64][]models.QuizAnswerOption, error) {
+	result := make(map[int64][]models.QuizAnswerOption, len(questionIDs))
+	if len(questionIDs) == 0 {
+		return result, nil
+	}
+ 
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, question_id, option_text, option_html, is_correct,
+		       order_index, blank_id, created_at, settings
+		FROM   quiz_answer_options
+		WHERE  question_id = ANY($1)
+		ORDER  BY question_id, order_index
+	`, pq.Array(questionIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+ 
+	for rows.Next() {
+		var opt models.QuizAnswerOption
+		if err := rows.Scan(
+			&opt.ID, &opt.QuestionID, &opt.OptionText, &opt.OptionHTML,
+			&opt.IsCorrect, &opt.OrderIndex, &opt.BlankID, &opt.CreatedAt, &opt.Settings,
+		); err != nil {
+			return nil, err
+		}
+		result[opt.QuestionID] = append(result[opt.QuestionID], opt)
+	}
+	return result, rows.Err()
+}
+ 
+func (r *QuizRepository) ListCorrectAnswersByQuestionIDs(
+	ctx context.Context,
+	questionIDs []int64,
+) (map[int64][]models.QuizCorrectAnswer, error) {
+	result := make(map[int64][]models.QuizCorrectAnswer, len(questionIDs))
+	if len(questionIDs) == 0 {
+		return result, nil
+	}
+ 
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, question_id, answer_text, blank_id, blank_position,
+		       case_sensitive, exact_match, created_at
+		FROM   quiz_correct_answers
+		WHERE  question_id = ANY($1)
+		ORDER  BY question_id, blank_id, blank_position
+	`, pq.Array(questionIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+ 
+	for rows.Next() {
+		var ca models.QuizCorrectAnswer
+		if err := rows.Scan(
+			&ca.ID, &ca.QuestionID, &ca.AnswerText, &ca.BlankID,
+			&ca.BlankPosition, &ca.CaseSensitive, &ca.ExactMatch, &ca.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result[ca.QuestionID] = append(result[ca.QuestionID], ca)
+	}
+	return result, rows.Err()
 }

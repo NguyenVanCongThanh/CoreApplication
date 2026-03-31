@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"example/hello/internal/dto"
 	"example/hello/internal/models"
@@ -96,22 +99,35 @@ func (s *UserSyncService) BulkSyncUsers(ctx context.Context, req *dto.BulkUserSy
 		FailedUsers:  []dto.SyncError{},
 	}
 
-	for _, userReq := range req.Users {
-		syncResp, err := s.SyncUser(ctx, &userReq)
-		if err != nil {
-			response.FailedCount++
-			response.FailedUsers = append(response.FailedUsers, dto.SyncError{
-				UserID: userReq.UserID,
-				Email:  userReq.Email,
-				Error:  err.Error(),
-			})
-			logger.Error(fmt.Sprintf("Failed to sync user %s", userReq.Email), err)
-			continue
-		}
+	var mu sync.Mutex
 
-		response.SuccessCount++
-		response.SuccessUsers = append(response.SuccessUsers, *syncResp)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(15)
+
+	for i := range req.Users {
+		userReq := req.Users[i]
+		g.Go(func() error {
+			syncResp, err := s.SyncUser(gCtx, &userReq)
+			
+			mu.Lock()
+			defer mu.Unlock()
+			
+			if err != nil {
+				response.FailedCount++
+				response.FailedUsers = append(response.FailedUsers, dto.SyncError{
+					UserID: userReq.UserID,
+					Email:  userReq.Email,
+					Error:  err.Error(),
+				})
+				logger.Error(fmt.Sprintf("Failed to sync user %s", userReq.Email), err)
+			} else {
+				response.SuccessCount++
+				response.SuccessUsers = append(response.SuccessUsers, *syncResp)
+			}
+			return nil
+		})
 	}
+	g.Wait()
 
 	logger.Info(fmt.Sprintf("Bulk sync completed: %d success, %d failed out of %d total",
 		response.SuccessCount, response.FailedCount, response.TotalUsers))
