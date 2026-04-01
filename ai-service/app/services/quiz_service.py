@@ -9,7 +9,6 @@ Phase 2: AI Smart Quiz + Spaced Repetition
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -24,18 +23,6 @@ settings = get_settings()
 BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"]
 
 
-@dataclass
-class GeneratedQuestion:
-    question_text: str
-    bloom_level: str
-    question_type: str
-    answer_options: list[dict]   # [{text, is_correct, explanation}]
-    explanation: str
-    source_quote: str
-    source_chunk_id: int | None
-    language: str
-
-
 class QuizGenerationService:
 
     async def generate_for_node(
@@ -47,14 +34,9 @@ class QuizGenerationService:
         language: str = "vi",
         questions_per_level: int = 1,
     ) -> list[int]:
-        """
-        Generate quiz questions for a knowledge node.
-        Returns list of ai_quiz_generations IDs (status=DRAFT).
-        """
         levels = bloom_levels or BLOOM_LEVELS
         gen_ids: list[int] = []
 
-        # ── Load node info ────────────────────────────────────────────────────
         async with get_async_conn() as conn:
             node = await conn.fetchrow(
                 "SELECT id, name, name_vi, name_en, course_id FROM knowledge_nodes WHERE id = $1",
@@ -65,7 +47,6 @@ class QuizGenerationService:
 
         node_name = node["name_vi"] if language == "vi" and node["name_vi"] else node["name"]
 
-        # ── Get existing questions for deduplication ───────────────────────────
         async with get_async_conn() as conn:
             existing = await conn.fetch(
                 "SELECT question_text FROM ai_quiz_generations WHERE node_id = $1",
@@ -102,18 +83,25 @@ class QuizGenerationService:
         language: str,
         existing_questions: list[str],
     ) -> int:
-        """Generate one question and store as DRAFT."""
-        # RAG: get relevant chunks for this node
-        chunks = await rag_service.search(
+        """
+        Generate one question.
+
+        RAG note: node_name may be Vietnamese (e.g. "Đa hình") while the
+        actual document is English.  search_multilingual translates the
+        node name to EN and searches both, so English-language chunks are
+        correctly surfaced.
+        """
+        # Cross-lingual: search with node name (may differ from doc language)
+        chunks = await rag_service.search_multilingual(
             query=node_name,
             course_id=course_id,
             node_id=node_id,
             top_k=4,
         )
 
-        # Fallback: broader search without node filter
+        # Fallback: broader cross-lingual search without node filter
         if not chunks:
-            chunks = await rag_service.search(
+            chunks = await rag_service.search_multilingual(
                 query=node_name,
                 course_id=course_id,
                 top_k=3,
@@ -139,11 +127,9 @@ class QuizGenerationService:
             temperature=0.5,
         )
 
-        # Validate result structure
         if "question_text" not in result or "answer_options" not in result:
             raise ValueError(f"Invalid LLM response structure: {list(result.keys())}")
 
-        # Persist as DRAFT
         async with get_async_conn() as conn:
             row = await conn.fetchrow(
                 """
@@ -157,7 +143,9 @@ class QuizGenerationService:
                 node_id, course_id, created_by, bloom_level,
                 result["question_text"],
                 result.get("question_type", "SINGLE_CHOICE"),
-                __import__("json").dumps(result.get("answer_options", []), ensure_ascii=False),
+                __import__("json").dumps(
+                    result.get("answer_options", []), ensure_ascii=False
+                ),
                 result.get("explanation", ""),
                 result.get("source_quote", ""),
                 best_chunk_id,
@@ -166,7 +154,6 @@ class QuizGenerationService:
         return row["id"]
 
     async def list_drafts(self, course_id: int, node_id: int | None = None) -> list[dict]:
-        """List all DRAFT AI-generated questions for instructor review."""
         sql = """
             SELECT aiqg.*, kn.name AS node_name
             FROM ai_quiz_generations aiqg
@@ -184,16 +171,8 @@ class QuizGenerationService:
         return [dict(r) for r in rows]
 
     async def approve_question(
-        self,
-        gen_id: int,
-        reviewer_id: int,
-        quiz_id: int,
-        review_note: str = "",
+        self, gen_id: int, reviewer_id: int, quiz_id: int, review_note: str = ""
     ) -> int:
-        """
-        Approve a DRAFT → publish to actual quiz_questions table.
-        Returns new quiz_question_id.
-        """
         import json as json_lib
 
         async with get_async_conn() as conn:
@@ -203,12 +182,10 @@ class QuizGenerationService:
             if not gen:
                 raise ValueError(f"Generation {gen_id} not found")
 
-            # Parse options from JSONB
             options = gen["answer_options"] or []
             if isinstance(options, str):
                 options = json_lib.loads(options)
 
-            # Insert into quiz_questions
             q_row = await conn.fetchrow(
                 """
                 INSERT INTO quiz_questions
@@ -226,7 +203,6 @@ class QuizGenerationService:
             )
             q_id = q_row["id"]
 
-            # Insert answer options
             for i, opt in enumerate(options):
                 await conn.execute(
                     """INSERT INTO quiz_answer_options
@@ -235,7 +211,6 @@ class QuizGenerationService:
                     q_id, opt.get("text", ""), bool(opt.get("is_correct")), i,
                 )
 
-            # Mark generation as PUBLISHED
             await conn.execute(
                 """UPDATE ai_quiz_generations
                    SET status='PUBLISHED', reviewed_by=$1, reviewed_at=NOW(),
@@ -259,32 +234,16 @@ class QuizGenerationService:
             )
 
 
-# ── SM-2 Spaced Repetition Engine ────────────────────────────────────────────
+# ── SM-2 Spaced Repetition Engine (unchanged) ─────────────────────────────────
 
 class SpacedRepetitionService:
-    """
-    Implements the SM-2 algorithm for intelligent review scheduling.
-    Quality ratings:
-      5 — perfect response
-      4 — correct with slight hesitation
-      3 — correct with difficulty
-      2 — incorrect but close (easy recall on re-show)
-      1 — incorrect, hard to recall
-      0 — total blackout
-    """
-
     MIN_EASINESS = 1.3
 
     def update(self, ef: float, interval: int, reps: int, quality: int) -> tuple[float, int, int]:
-        """
-        Core SM-2 update. Returns (new_ef, new_interval, new_reps).
-        """
-        # Update easiness factor
         new_ef = ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
         new_ef = max(self.MIN_EASINESS, new_ef)
 
         if quality < 3:
-            # Incorrect: reset to beginning
             new_interval = 1
             new_reps = 0
         else:
@@ -304,11 +263,9 @@ class SpacedRepetitionService:
         question_id: int,
         course_id: int,
         node_id: int | None,
-        quality: int,  # 0-5
+        quality: int,
     ) -> dict:
-        """Record a student response and update their SR schedule."""
         async with get_async_conn() as conn:
-            # Get current SR record or defaults
             row = await conn.fetchrow(
                 """SELECT easiness_factor, interval_days, repetitions
                    FROM spaced_repetitions
@@ -316,9 +273,9 @@ class SpacedRepetitionService:
                 student_id, question_id,
             )
 
-            ef = float(row["easiness_factor"]) if row else 2.5
-            interval = int(row["interval_days"]) if row else 1
-            reps = int(row["repetitions"]) if row else 0
+            ef       = float(row["easiness_factor"]) if row else 2.5
+            interval = int(row["interval_days"])     if row else 1
+            reps     = int(row["repetitions"])        if row else 0
 
             new_ef, new_interval, new_reps = self.update(ef, interval, reps, quality)
             next_date = date.today() + timedelta(days=new_interval)
@@ -351,7 +308,6 @@ class SpacedRepetitionService:
     async def get_due_reviews(
         self, student_id: int, course_id: int, limit: int = 20
     ) -> list[dict]:
-        """Get questions due for review today (for 5-min warm-up session)."""
         async with get_async_conn() as conn:
             rows = await conn.fetch(
                 """
@@ -373,16 +329,15 @@ class SpacedRepetitionService:
         return [dict(r) for r in rows]
 
     async def get_review_stats(self, student_id: int, course_id: int) -> dict:
-        """Summary stats for student review dashboard."""
         async with get_async_conn() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT
-                    COUNT(*) FILTER (WHERE next_review_date <= CURRENT_DATE)  AS due_today,
-                    COUNT(*) FILTER (WHERE next_review_date > CURRENT_DATE)   AS upcoming,
-                    COUNT(*)                                                    AS total_tracked,
-                    AVG(easiness_factor)                                        AS avg_easiness,
-                    AVG(repetitions)                                            AS avg_repetitions
+                    COUNT(*) FILTER (WHERE next_review_date <= CURRENT_DATE) AS due_today,
+                    COUNT(*) FILTER (WHERE next_review_date > CURRENT_DATE)  AS upcoming,
+                    COUNT(*)                                                   AS total_tracked,
+                    AVG(easiness_factor)                                       AS avg_easiness,
+                    AVG(repetitions)                                           AS avg_repetitions
                 FROM spaced_repetitions
                 WHERE student_id = $1 AND course_id = $2
                 """,
