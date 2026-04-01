@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { Menu, LogOut, Sun, Moon } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useUser } from "@/store/UserContext";
 import { useTheme } from "next-themes";
-import { userService } from "@/services/userService";
 import SafeImage from "../common/SafeImage";
 
 const MobileNav = () => {
@@ -21,10 +21,8 @@ const MobileNav = () => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = async () => {
-    try { userService.logout(); } catch { /* silent */ }
     setUser(null);
-    router.push("/login");
-    router.refresh();
+    await signOut({ callbackUrl: "/login" });
     setIsOpen(false);
   };
 

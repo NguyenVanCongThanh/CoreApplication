@@ -1,12 +1,19 @@
 import Footer from "@/components/layout/Footer";
 import MobileNav from "@/components/layout/MobileNav";
 import Sidebar from "@/components/layout/Sidebar";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 type MainLayoutProps = {
   children: React.ReactNode;
 };
 
 export default async function MainLayout({ children }: MainLayoutProps) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect("/");
+  }
   return (
     <div className="flex min-h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-1">

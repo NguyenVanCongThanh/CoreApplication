@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import React, { useEffect, useRef, useState } from "react";
 import { sidebarSections, LogoIcon } from "@/constants";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,6 @@ import {
 import { ChevronsLeft, ChevronsRight, LogOut, Sun, Moon } from "lucide-react";
 import { useUser } from "@/store/UserContext";
 import { useTheme } from "next-themes";
-import { userService } from "@/services/userService";
 import SafeImage from "../common/SafeImage";
 
 const MIN_WIDTH = 64;
@@ -79,10 +79,8 @@ const Sidebar: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    try { userService.logout(); } catch { /* silent */ }
     setUser(null);
-    router.push("/login");
-    router.refresh();
+    await signOut({ callbackUrl: "/login" });
   };
 
   return (
