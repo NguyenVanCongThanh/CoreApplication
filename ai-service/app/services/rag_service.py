@@ -2,6 +2,7 @@
 ai-service/app/services/rag_service.py
 Retrieval-Augmented Generation service.
 - Semantic search via pgvector cosine similarity
+- Cross-lingual search via translation + RRF (see search_multilingual)
 - Context assembly for LLM prompts
 - Chunk storage and retrieval
 """
@@ -20,10 +21,6 @@ settings = get_settings()
 
 
 def _sanitize(text: str) -> str:
-    """
-    Safety net: strip null bytes and other PostgreSQL-incompatible control chars.
-    Primary sanitization happens in chunker.py; this is a second line of defense.
-    """
     import re
     return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
 
@@ -33,7 +30,7 @@ class RetrievedChunk:
     chunk_id: int
     chunk_text: str
     similarity: float
-    source_type: str          # 'document' | 'video'
+    source_type: str
     page_number: int | None
     start_time_sec: int | None
     end_time_sec: int | None
@@ -43,11 +40,6 @@ class RetrievedChunk:
 
 
 class RAGService:
-    """
-    Core RAG engine.
-    Stores document chunks with embeddings and retrieves
-    the most relevant ones for a given query.
-    """
 
     # ── Storage ──────────────────────────────────────────────────────────────
 
@@ -106,11 +98,10 @@ class RAGService:
         
         # Process in smaller sub-batches to avoid memory spikes
         batch_size = 16
-        embeddings = []
+        embeddings: list[list[float]] = []
         for i in range(0, len(texts), batch_size):
-            sub_batch = texts[i : i + batch_size]
-            sub_embeddings = await create_embeddings_batch(sub_batch)
-            embeddings.extend(sub_embeddings)
+            sub = await create_embeddings_batch(texts[i : i + batch_size])
+            embeddings.extend(sub)
 
         chunk_ids: list[int] = []
         async with get_async_conn() as conn:
@@ -144,7 +135,7 @@ class RAGService:
 
         return chunk_ids
 
-    # ── Retrieval ─────────────────────────────────────────────────────────────
+    # ── Monolingual retrieval (internal) ──────────────────────────────────────
 
     async def search(
         self,
@@ -163,7 +154,6 @@ class RAGService:
         query_embedding = await create_embedding(query)
         embedding_str = "[" + ",".join(str(v) for v in query_embedding) + "]"
 
-        # Build dynamic WHERE clause
         conditions = ["status = 'ready'"]
         params: list = [embedding_str, top_k]
         idx = 3
@@ -214,6 +204,53 @@ class RAGService:
             for r in rows
         ]
 
+    # ── Cross-lingual retrieval (main entry point) ────────────────────────────
+
+    async def search_multilingual(
+        self,
+        query: str,
+        course_id: int | None = None,
+        node_id: int | None = None,
+        content_id: int | None = None,
+        top_k: int | None = None,
+        min_similarity: float = 0.25,   # slightly lower than mono — cross-lingual gap
+    ) -> list[RetrievedChunk]:
+        """
+        Cross-lingual semantic search.
+
+        Pipeline:
+          1. Detect query language (VI / EN)
+          2. Translate to the other language (fast LLM, cached)
+          3. Run both searches in parallel
+          4. Merge with Reciprocal Rank Fusion → best cross-lingual ranking
+
+        Use this everywhere instead of search() so that:
+          • Vietnamese questions find English course materials
+          • English questions find Vietnamese course materials
+          • Same-language queries still work perfectly (translation skipped
+            when result is identical / cache hit)
+
+        Cost: ~1 extra Groq call per unique query (cached after first use).
+        Latency: ≈ 0 extra latency (translation runs in parallel with first search).
+        """
+        from app.core.multilingual import multilingual_search
+
+        top_k = top_k or settings.top_k_chunks
+
+        return await multilingual_search(
+            search_fn=self.search,
+            query=query,
+            top_k=top_k,
+            id_fn=lambda chunk: chunk.chunk_id,
+            min_similarity=min_similarity,
+            # kwargs forwarded to self.search:
+            course_id=course_id,
+            node_id=node_id,
+            content_id=content_id,
+        )
+
+    # ── Question-pinned retrieval ──────────────────────────────────────────────
+
     async def search_for_question(
         self,
         question_id: int,
@@ -247,13 +284,17 @@ class RAGService:
                     RetrievedChunk(
                         chunk_id=c["id"], chunk_text=c["chunk_text"],
                         similarity=1.0, source_type=c["source_type"],
-                        page_number=c["page_number"], start_time_sec=c["start_time_sec"],
-                        end_time_sec=c["end_time_sec"], content_id=c["content_id"],
-                        node_id=c["node_id"], language=c["language"],
+                        page_number=c["page_number"],
+                        start_time_sec=c["start_time_sec"],
+                        end_time_sec=c["end_time_sec"],
+                        content_id=c["content_id"],
+                        node_id=c["node_id"],
+                        language=c["language"],
                     )
                 ]
 
-        semantic = await self.search(
+        # Cross-lingual semantic search for the rest
+        semantic = await self.search_multilingual(
             query=row["question_text"],
             course_id=course_id,
             node_id=row["node_id"],

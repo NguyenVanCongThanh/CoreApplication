@@ -44,7 +44,7 @@ class DiagnosisService:
         """
         Full diagnosis pipeline:
         1. Fetch question + correct answer from DB
-        2. Retrieve relevant chunks (RAG)
+        2. Cross-lingual RAG retrieval
         3. Call LLM with grounded context
         4. Store result
         5. Return with deep link metadata
@@ -72,36 +72,44 @@ class DiagnosisService:
         question_text = q_row["question_text"]
         correct_answer = " | ".join(r["option_text"] for r in options_rows if r["is_correct"])
         distractor_options = [r["option_text"] for r in options_rows if not r["is_correct"]]
-        all_options = [r["option_text"] for r in options_rows]
         node_id = q_row["node_id"]
 
-        # ── 2. RAG retrieval ──────────────────────────────────────────────────
-        query = f"{question_text} {wrong_answer}"
+        # ── 2. Detect student's language ────────────────────────────────────
+        from app.services.chunker import detect_language
+        language = detect_language(question_text)
+
+        # ── 3. Cross-lingual RAG retrieval ──────────────────────────────────
+        #
+        # Use question text + wrong answer as query so retrieval focuses on
+        # the specific misconception, not just the topic in general.
+        #
+        # search_multilingual handles:
+        #   • VI question → also searches EN translation → finds EN chunks
+        #   • EN question → also searches VI translation → finds VI chunks
+        #   • Same-language case → acts as plain search (no extra cost)
         chunks: list[RetrievedChunk] = await rag_service.search_for_question(
             question_id=question_id,
             course_id=course_id,
             top_k=settings.top_k_chunks,
         )
 
-        # Fallback: if question not linked to node, do broader search
+        # Fallback: broader cross-lingual search without node filter
         if not chunks:
-            chunks = await rag_service.search(
+            query = f"{question_text} {wrong_answer}"
+            chunks = await rag_service.search_multilingual(
                 query=query,
                 course_id=course_id,
                 top_k=settings.top_k_chunks,
             )
 
-        # ── 3. Detect language for bilingual support ──────────────────────────
-        from app.services.chunker import detect_language
-        language = detect_language(question_text)
-
-        # ── 4. Build LLM prompt with retrieved context ────────────────────────
+        # ── 4. Build LLM prompt ──────────────────────────────────────────────
         context_texts = [c.chunk_text for c in chunks] if chunks else []
 
-        # If no chunks, use question's own explanation as fallback
         if not context_texts and correct_answer:
             context_texts = [f"Đáp án đúng: {correct_answer}"]
 
+        # Pass context language info so the prompt can guide the LLM
+        # to explain in the *student's* language even when chunks are EN.
         messages = build_diagnosis_prompt(
             question_text=question_text,
             wrong_answer=wrong_answer,
@@ -111,52 +119,68 @@ class DiagnosisService:
             language=language,
         )
 
-        # ── 5. Call LLM ───────────────────────────────────────────────────────
+        # ── 5. Call LLM ──────────────────────────────────────────────────────
         try:
             llm_result = await chat_complete_json(messages=messages)
         except Exception as e:
             logger.error(f"LLM diagnosis failed: {e}")
             llm_result = {
-                "explanation": "Không thể phân tích lỗi lúc này." if language == "vi"
-                               else "Unable to analyze error at this time.",
+                "explanation": (
+                    "Không thể phân tích lỗi lúc này."
+                    if language == "vi"
+                    else "Unable to analyze error at this time."
+                ),
                 "gap_type": "other",
                 "knowledge_gap": "",
-                "study_suggestion": "Xem lại tài liệu liên quan." if language == "vi"
-                                    else "Review related materials.",
+                "study_suggestion": (
+                    "Xem lại tài liệu liên quan."
+                    if language == "vi"
+                    else "Review related materials."
+                ),
                 "confidence": 0.5,
             }
 
-        # ── 6. Build suggested documents from LLM indices ─────────────────────
+        # ── 6. Build suggested documents ────────────────────────────────────
         indices = llm_result.get("relevant_source_indices", [])
         if not isinstance(indices, list):
             indices = []
-            
+
         suggested_documents = []
-        seen_content_ids = set()
-        
+        seen_content_ids: set[int] = set()
+
         for idx in indices:
             if isinstance(idx, int) and 1 <= idx <= len(chunks):
                 chunk = chunks[idx - 1]
                 if chunk.content_id and chunk.content_id not in seen_content_ids:
                     link = self._build_deep_link(chunk)
-                    # Include snippet for preview
-                    snip = chunk.chunk_text[:150] + "..." if len(chunk.chunk_text) > 150 else chunk.chunk_text
+                    snip = chunk.chunk_text[:150]
+                    if len(chunk.chunk_text) > 150:
+                        snip += "..."
                     link["snippet"] = snip
+                    # Surface chunk language so frontend can show a badge
+                    link["chunk_language"] = chunk.language
                     suggested_documents.append(link)
                     seen_content_ids.add(chunk.content_id)
-        
-        # Fallback to first chunk if LLM didn't return any but we had pinned chunks
+
+        # Fallback: first chunk if LLM returned no indices
         if not suggested_documents and chunks:
             chunk = chunks[0]
             if chunk.content_id:
                 link = self._build_deep_link(chunk)
-                link["snippet"] = chunk.chunk_text[:150] + "..." if len(chunk.chunk_text) > 150 else chunk.chunk_text
+                link["snippet"] = chunk.chunk_text[:150] + (
+                    "..." if len(chunk.chunk_text) > 150 else ""
+                )
+                link["chunk_language"] = chunk.language
                 suggested_documents.append(link)
 
-        best_chunk = chunks[indices[0] - 1] if indices and isinstance(indices[0], int) and 1 <= indices[0] <= len(chunks) else (chunks[0] if chunks else None)
+        best_chunk = (
+            chunks[indices[0] - 1]
+            if indices and isinstance(indices[0], int) and 1 <= indices[0] <= len(chunks)
+            else (chunks[0] if chunks else None)
+        )
 
-        # ── 7. Persist diagnosis ──────────────────────────────────────────────
-        diagnosis_id = await self._save_diagnosis(
+        # ── 7. Persist diagnosis ────────────────────────────────────────────
+        await self._save_diagnosis(
             student_id=student_id,
             attempt_id=attempt_id,
             question_id=question_id,
@@ -180,11 +204,6 @@ class DiagnosisService:
         )
 
     def _build_deep_link(self, chunk: RetrievedChunk) -> dict:
-        """
-        Build deep link metadata for frontend.
-        Frontend uses this to open PDF at specific page
-        or jump video to specific timestamp.
-        """
         link: dict = {
             "content_id": chunk.content_id,
             "source_type": chunk.source_type,
@@ -195,7 +214,6 @@ class DiagnosisService:
         elif chunk.source_type == "video" and chunk.start_time_sec is not None:
             link["start_time_sec"] = chunk.start_time_sec
             link["end_time_sec"] = chunk.end_time_sec
-            # HTML5 video fragment for timestamp navigation
             link["url_fragment"] = f"#t={chunk.start_time_sec}"
         return link
 
@@ -231,13 +249,9 @@ class DiagnosisService:
             )
         return row["id"]
 
-    # ── Weakness Heatmap (Phase 1) ─────────────────────────────────────────────
+    # ── Heatmaps ──────────────────────────────────────────────────────────────
 
     async def get_class_heatmap(self, course_id: int) -> list[dict]:
-        """
-        Return heatmap data: knowledge nodes sorted by class-wide wrong rate.
-        Used by teacher dashboard.
-        """
         async with get_async_conn() as conn:
             rows = await conn.fetch(
                 """
@@ -264,7 +278,6 @@ class DiagnosisService:
         return [dict(r) for r in rows]
 
     async def get_student_heatmap(self, student_id: int, course_id: int) -> list[dict]:
-        """Per-student knowledge mastery map."""
         async with get_async_conn() as conn:
             rows = await conn.fetch(
                 """
