@@ -1,16 +1,16 @@
 import Footer from "@/components/layout/Footer";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
 };
 
 export default async function DashboardLayout({ children }: DashboardLayoutProps) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("authToken")?.value;
-  if (token) {
-    redirect("/");
+  const session = await getServerSession(authOptions);
+  if (session) {
+    redirect("/dashboard");
   }
 
   return (

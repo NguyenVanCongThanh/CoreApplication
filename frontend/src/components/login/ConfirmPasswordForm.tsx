@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { KeyRound, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { userService } from "@/services/userService";
 
 export default function ConfirmPasswordForm({ token }: { token: string }) {
-  const router = useRouter();
   const [formData, setFormData] = useState({ newPassword: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -36,7 +35,11 @@ export default function ConfirmPasswordForm({ token }: { token: string }) {
     try {
       const response = await userService.confirmPasswordChange({ token, newPassword: formData.newPassword });
       setMessage({ type: "success", text: response.message || "Đổi mật khẩu thành công!" });
-      setTimeout(() => router.push("/login"), 2000);
+      
+      // Logout after successful password change
+      setTimeout(() => {
+        signOut({ callbackUrl: "/login" });
+      }, 2000);
     } catch (error: any) {
       setMessage({ type: "error", text: error.response?.data?.message || "Có lỗi xảy ra. Vui lòng thử lại!" });
     } finally {

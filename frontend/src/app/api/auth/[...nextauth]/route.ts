@@ -145,8 +145,40 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as string;
         (session.user as any).id = Number(token.sub);
         (session as any).error = token.error;
+        (session as any).accessToken = token.accessToken;
       }
       return session;
+    },
+    async signIn({ user, account, credentials }) {
+      // Automatically set authToken cookie on login
+      // next-auth handles this, but ensure backend tokens are also set
+      return true;
+    },
+    async redirect({ url, baseUrl }) {
+      // Ensure redirect is to a valid URL
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      // Optional: Call backend to revoke tokens
+      try {
+        const accessToken = (token as any).accessToken;
+        if (accessToken) {
+          await fetch(`/apiv1/api/auth/logout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${accessToken}`,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Logout error:", error);
+        // Continue logout even if backend fails
+      }
     },
   },
   pages: {

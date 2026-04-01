@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { Logo } from "@/components/layout/Logo";
-import { userService } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function Navbar() {
   const router = useRouter();
@@ -21,14 +20,7 @@ export default function Navbar() {
   }, []);
 
   const handleLogout = async () => {
-    try {
-      userService.logout();
-      signOut({ callbackUrl: "/login" });
-    } catch (err) {
-      console.error("Logout error:", err);
-      // Fallback
-      router.push("/login");
-    }
+    await signOut({ callbackUrl: "/login" });
   };
 
   const navItems = [
