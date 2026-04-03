@@ -453,8 +453,18 @@ services:
       CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      EMBEDDING_PREFIX_MODE: ${EMBEDDING_PREFIX_MODE:-bge}
+      RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      USE_RERANKER: ${USE_RERANKER:-true}
+      USE_NATIVE_MULTILINGUAL: ${USE_NATIVE_MULTILINGUAL:-true}
+      RERANK_FETCH_K: ${RERANK_FETCH_K:-15}
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+      SENTENCE_TRANSFORMERS_HOME: /app/.cache/models
 
       AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
 
@@ -481,23 +491,23 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 90s
 
     deploy:
       resources:
         limits:
           cpus: '2.0'
-          memory: 1G
+          memory: 2.5G
         reservations:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
 
     labels:
       - "service.type=ai"
       - "service.name=ai-service"
 
     volumes:
-      - ai_model_cache:/app/.cache/fastembed
+      - ai_model_cache:/app/.cache/models
 
   ai-worker:
     build:
@@ -507,8 +517,9 @@ services:
     container_name: ai-worker
     restart: unless-stopped
  
-    # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    # concurrency=1: mỗi process load cả 2 model (~900 MB).
+    # Scale bằng cách thêm replica, không tăng concurrency.
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=50
  
     environment:
       APP_ENV: ${APP_ENV:-production}
@@ -530,10 +541,20 @@ services:
       CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
       QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
 
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      EMBEDDING_PREFIX_MODE: ${EMBEDDING_PREFIX_MODE:-bge}
+      USE_RERANKER: "false"          # worker chỉ index, không cần reranker
+      USE_NATIVE_MULTILINGUAL: "true"
+      REINDEX_BATCH_SIZE: ${REINDEX_BATCH_SIZE:-5}
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+      SENTENCE_TRANSFORMERS_HOME: /app/.cache/models
       CHUNK_SIZE: 500
       CHUNK_OVERLAP: 50
+      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
 
     depends_on:
       postgres-lms:
@@ -548,17 +569,17 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 3G
         reservations:
           cpus: '0.5'
-          memory: 256M
+          memory: 1G
  
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
 
     volumes:
-      - ai_model_cache:/app/.cache/fastembed
+      - ai_model_cache:/app/.cache/models
 
   # MinIO: Object Storage
   minio:

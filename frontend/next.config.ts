@@ -47,6 +47,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   
   experimental: {
+    proxyTimeout: 120000,
     optimizePackageImports: [
       '@radix-ui/react-avatar',
       '@radix-ui/react-dialog',

@@ -1,21 +1,20 @@
-"""
-ai-service/main.py
-FastAPI application entry point.
-"""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
 
 from app.core.config import get_settings
 from app.core.database import init_async_pool, close_async_pool
-from app.api.endpoints.process import router as process_router
-from app.api.endpoints.diagnose import router as diagnose_router, nodes_router
-from app.api.endpoints.quiz_gen import router as quiz_router, sr_router
+from app.api.endpoints.process    import router as process_router
+from app.api.endpoints.diagnose   import router as diagnose_router, nodes_router
+from app.api.endpoints.quiz_gen   import router as quiz_router, sr_router
 from app.api.endpoints.flashcards import router as flashcards_router
 from app.api.endpoints.auto_index import router as auto_index_router, graph_router
+from app.api.endpoints.admin      import router as admin_router
 
 settings = get_settings()
 
@@ -33,9 +32,10 @@ app = FastAPI(
         "and Phase 2 (Smart Quiz & Spaced Repetition). "
         "Internal microservice — not exposed to public internet."
     ),
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    default_response_class=ORJSONResponse,
 )
 
 app.add_middleware(
@@ -48,19 +48,19 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    logger.info("Starting AI Service...")
+    logger.info("Starting AI Service v2 (bge-m3 + reranker + orjson)...")
     await init_async_pool()
-    logger.info("Database pool initialized.")
-    
-    logger.info("Pre-loading embedding model (may take a few minutes on first run)...")
-    try:
-        from app.core.llm import get_embed_model
-        import asyncio
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, get_embed_model)
-        logger.info("Embedding model loaded successfully.")
-    except Exception as e:
-        logger.error(f"Failed to pre-load embedding model: {e}")
+    logger.info("Database pool initialised.")
+
+    loop = asyncio.get_event_loop()
+
+    def _warm():
+        from app.core.embeddings import warm_up_models
+        warm_up_models()
+
+    loop.run_in_executor(None, _warm)
+    logger.info("Model warm-up queued (background thread).")
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -68,20 +68,19 @@ async def shutdown():
     logger.info("AI Service shut down.")
 
 
-# ── Health ────────────────────────────────────────────────────────────────────
-
+# Health 
 @app.get("/health", tags=["System"])
 async def health():
-    return {"status": "healthy", "service": "ai-service", "version": "1.0.0"}
+    return {"status": "healthy", "service": "ai-service", "version": "2.0.0"}
 
 
-# ── Routers (all under /ai prefix) ───────────────────────────────────────────
-
-app.include_router(process_router, prefix="/ai")
-app.include_router(diagnose_router, prefix="/ai")
-app.include_router(nodes_router, prefix="/ai")
-app.include_router(quiz_router, prefix="/ai")
-app.include_router(sr_router, prefix="/ai")
+# Routers 
+app.include_router(process_router,    prefix="/ai")
+app.include_router(diagnose_router,   prefix="/ai")
+app.include_router(nodes_router,      prefix="/ai")
+app.include_router(quiz_router,       prefix="/ai")
+app.include_router(sr_router,         prefix="/ai")
 app.include_router(flashcards_router, prefix="/ai")
 app.include_router(auto_index_router, prefix="/ai")
-app.include_router(graph_router, prefix="/ai")
+app.include_router(graph_router,      prefix="/ai")
+app.include_router(admin_router,      prefix="/ai")

@@ -29,29 +29,47 @@ class Settings(BaseSettings):
     minio_bucket: str = "lms-files"
     minio_use_ssl: bool = False
 
-    # ════════════════════════════════════════════
-    # Groq — FREE tier, rất nhanh
-    # ════════════════════════════════════════════
+    # Groq LLM
     groq_api_key: str = ""
+    chat_model: str = "llama-3.1-8b-instant"   # fast, for diagnosis
+    quiz_model: str = "llama-3.3-70b-versatile" # smart, for quiz/node extraction
 
-    # llama-3.1-8b-instant  → 560 tok/s, rẻ nhất, dùng cho diagnosis
-    # llama-3.3-70b-versatile → 280 tok/s, tốt hơn, dùng cho quiz gen
-    chat_model: str = "llama-3.1-8b-instant"
-    quiz_model: str = "llama-3.3-70b-versatile"
+    # Embedding 
+    # BAAI/bge-m3: natively multilingual (VI+EN in same vector space),
+    # eliminates the translation round-trip from multilingual.py.
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimensions: int = 1024   # bge-m3 output dim
 
-    # Embedding (FastEmbed - chạy local, không cần server)
-    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
-    embedding_dimensions: int = 768
+    # E5-style prefix mode — set "e5" for intfloat/multilingual-e5-* models,
+    # "bge" for BAAI/bge-m3 (uses "query: " / "passage: " prefixes),
+    # "none" for nomic (no prefix needed).
+    embedding_prefix_mode: str = "bge"
 
-    # RAG
+    # Reranker 
+    # bge-reranker-v2-m3 is a cross-encoder that re-scores (query, passage)
+    # pairs for much higher precision than cosine alone.
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    use_reranker: bool = True
+
+    # Fetch this many candidates from pgvector, then rerank down to top_k_chunks.
+    # Higher = better recall but slower reranking. 15 is a good trade-off.
+    rerank_fetch_k: int = 15
+
+    # RAG 
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k_chunks: int = 3
 
-    # Celery
-    celery_task_time_limit: int = 3600
+    # When True (bge-m3), skip LLM translation — model handles cross-lingual natively.
+    # Set to False only if you revert to nomic-ai model.
+    use_native_multilingual: bool = True
 
-    # Internal
+    # Celery 
+    celery_task_time_limit: int = 3600
+    # How many content items to re-embed per batch during migration
+    reindex_batch_size: int = 5
+
+    # Internal 
     lms_service_url: str = "http://lms-backend:8081"
     ai_service_secret: str = "ai-service-secret-change-me"
 
@@ -70,7 +88,10 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            return (
+                f"redis://:{self.redis_password}"
+                f"@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 

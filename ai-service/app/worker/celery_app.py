@@ -34,10 +34,9 @@ celery_app.conf.update(
 )
 
 
-#  Async runner 
-
+# Async runner 
 def run_async(coro):
-    """Chạy coroutine trong sync Celery context."""
+    """Run a coroutine from a synchronous Celery task."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -49,8 +48,58 @@ def run_async(coro):
         pass
     return asyncio.run(coro)
 
+@celery_app.task(
+    bind=True,
+    name="tasks.reindex_content",
+    max_retries=3,
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=360,
+)
+def reindex_content_task(self, content_id: int, course_id: int):
+    """
+    Re-embed all document_chunks for content_id using bge-m3, writing
+    results into the embedding_v2 shadow column.
 
-#  Task: Auto-Index document 
+    Called by ReindexService.enqueue_all().  Safe to retry.
+    """
+    logger.info(f"reindex_content_task: content_id={content_id}")
+
+    async def _run():
+        from app.core.database import init_async_pool, close_async_pool
+        from app.services.reindex_service import reindex_service
+
+        await init_async_pool()
+        try:
+            return await reindex_service.reindex_content_sync(
+                content_id=content_id,
+                course_id=course_id,
+            )
+        finally:
+            await close_async_pool()
+
+    try:
+        return run_async(_run())
+    except Exception as exc:
+        logger.error(f"reindex_content_task failed content_id={content_id}: {exc}", exc_info=True)
+
+        # Mark job as failed in DB
+        async def _fail():
+            from app.core.database import init_async_pool, close_async_pool, get_async_conn
+            await init_async_pool()
+            try:
+                async with get_async_conn() as conn:
+                    await conn.execute(
+                        """UPDATE embedding_reindex_jobs
+                           SET status='failed', error_message=$1, updated_at=NOW()
+                           WHERE content_id=$2""",
+                        str(exc)[:300], content_id,
+                    )
+            finally:
+                await close_async_pool()
+
+        run_async(_fail())
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 @celery_app.task(
     bind=True,
@@ -66,31 +115,18 @@ def auto_index_task(
     course_id: int,
     file_url: str,
     content_type: str,
-    force: bool = False,   # NEW: force re-index ngay cả khi đã indexed
+    force: bool = False,
 ):
-    """
-    Celery task: Auto-index tài liệu → tạo knowledge nodes → build graph.
-
-    Cải tiến vs cũ:
-    - Download file TRONG task này (1 lần duy nhất), pass bytes vào service
-    - Idempotency: skip nếu đã 'indexed' và force=False
-    - Progress state: PROGRESS với metadata để frontend poll được
-    - Retry với exponential backoff
-    """
-    logger.info(
-        f"auto_index_task start: content_id={content_id}, "
-        f"course_id={course_id}, type={content_type}, force={force}"
-    )
+    logger.info(f"auto_index_task: content_id={content_id}, force={force}")
 
     def _update_progress(stage: str, pct: int):
-        """Cập nhật Celery task state để frontend có thể poll progress."""
         self.update_state(
             state="PROGRESS",
             meta={"stage": stage, "progress": pct, "content_id": content_id},
         )
 
     try:
-        result = run_async(
+        return run_async(
             _async_auto_index_with_download(
                 task=self,
                 content_id=content_id,
@@ -101,13 +137,8 @@ def auto_index_task(
                 progress_callback=_update_progress,
             )
         )
-        return result
-
     except Exception as exc:
-        logger.error(
-            f"auto_index_task failed content_id={content_id}: {exc}", exc_info=True
-        )
-        # Exponential backoff: lần 1 sau 30s, lần 2 sau 90s
+        logger.error(f"auto_index_task failed content_id={content_id}: {exc}", exc_info=True)
         countdown = 30 * (2 ** self.request.retries)
         raise self.retry(exc=exc, countdown=countdown)
 
@@ -121,56 +152,35 @@ async def _async_auto_index_with_download(
     force: bool,
     progress_callback,
 ) -> dict:
-    """
-    Async core của auto_index_task:
-    1. Idempotency check
-    2. Download file bytes (1 lần)
-    3. Gọi auto_index_service với bytes đã có
-    """
     from app.core.database import init_async_pool, close_async_pool, get_async_conn
     from app.services.auto_index_service import auto_index_service
 
     await init_async_pool()
     try:
-        #  Idempotency check 
         if not force:
             async with get_async_conn() as conn:
                 row = await conn.fetchrow(
-                    "SELECT ai_index_status FROM section_content WHERE id=$1",
-                    content_id,
+                    "SELECT ai_index_status FROM section_content WHERE id=$1", content_id
                 )
             if row and row["ai_index_status"] == "indexed":
-                logger.info(
-                    f"content_id={content_id} already indexed, skipping "
-                    f"(use force=True to re-index)"
-                )
                 return {"ok": True, "skipped": True, "reason": "already_indexed"}
 
-        #  Download file (1 lần duy nhất) 
         progress_callback("download", 5)
         file_bytes = await auto_index_service._download_bytes(file_url)
-        logger.info(
-            f"Downloaded {len(file_bytes) / 1024:.1f} KB for content_id={content_id}"
-        )
 
-        #  Chạy full pipeline 
-        result = await auto_index_service.auto_index(
+        return await auto_index_service.auto_index(
             content_id=content_id,
             course_id=course_id,
             file_url=file_url,
             content_type=content_type,
-            file_bytes=file_bytes,          # pass bytes, không download lại
+            file_bytes=file_bytes,
             progress_callback=progress_callback,
         )
-
-        return result
-
     finally:
         await close_async_pool()
 
 
 #  Task: Process document (PDF/Video embedding pipeline) 
-
 @celery_app.task(
     bind=True,
     name="tasks.process_document",
@@ -184,118 +194,74 @@ def process_document_task(
     course_id: int,
     node_id: int | None,
     file_url: str,
-    content_type: str,   # 'application/pdf' | 'video/mp4' | 'application/vnd.openxmlformats...'
+    content_type: str,
 ):
-    """
-    Download file từ MinIO, chunk, embed, store vào pgvector.
-    Cập nhật document_processing_jobs status xuyên suốt.
-
-    Hỗ trợ: PDF, DOCX, PPTX, XLSX, TXT, video (với transcript).
-    """
     from app.core.database import get_sync_conn, get_sync_cursor
 
-    logger.info(f"process_document_task: job_id={job_id}, content_id={content_id}")
+    logger.info(f"process_document_task: job_id={job_id}")
 
-    # Đánh dấu đang xử lý
     with get_sync_conn() as conn:
         with get_sync_cursor(conn) as cur:
             cur.execute(
-                "UPDATE document_processing_jobs "
-                "SET status='processing', started_at=NOW() WHERE id=%s",
+                "UPDATE document_processing_jobs SET status='processing', started_at=NOW() WHERE id=%s",
                 (job_id,),
             )
 
     try:
-        #  Download 
         file_bytes = _download_file(file_url)
 
-        #  Extract chunks theo file type 
         from app.services.chunker import (
             PDFChunker, DocxChunker, PptxChunker, ExcelChunker,
             VideoTranscriptChunker, DocumentChunk, detect_language,
         )
 
-        file_url_lower = file_url.lower()
-        ct_lower = content_type.lower()
-        chunk_size = settings.chunk_size
-        overlap = settings.chunk_overlap
+        url_lower = file_url.lower()
+        ct_lower  = content_type.lower()
+        cs, co    = settings.chunk_size, settings.chunk_overlap
 
-        if file_url_lower.endswith(".pdf") or "pdf" in ct_lower:
-            chunks = PDFChunker(chunk_size, overlap).chunk_bytes(file_bytes)
-
-        elif any(file_url_lower.endswith(e) for e in (".docx", ".doc")) or "word" in ct_lower:
-            chunks = DocxChunker(chunk_size, overlap).chunk_bytes(file_bytes)
-
-        elif any(file_url_lower.endswith(e) for e in (".pptx", ".ppt")) or "presentation" in ct_lower:
-            chunks = PptxChunker(chunk_size, overlap).chunk_bytes(file_bytes)
-
-        elif any(file_url_lower.endswith(e) for e in (".xlsx", ".xls")) or "spreadsheet" in ct_lower or "excel" in ct_lower:
-            chunks = ExcelChunker(chunk_size, overlap).chunk_bytes(file_bytes)
-
-        elif (
-            any(file_url_lower.endswith(e) for e in (".mp4", ".webm", ".mov", ".avi"))
-            or "video" in ct_lower
-        ):
+        if url_lower.endswith(".pdf") or "pdf" in ct_lower:
+            chunks = PDFChunker(cs, co).chunk_bytes(file_bytes)
+        elif any(url_lower.endswith(e) for e in (".docx", ".doc")) or "word" in ct_lower:
+            chunks = DocxChunker(cs, co).chunk_bytes(file_bytes)
+        elif any(url_lower.endswith(e) for e in (".pptx", ".ppt")) or "presentation" in ct_lower:
+            chunks = PptxChunker(cs, co).chunk_bytes(file_bytes)
+        elif any(url_lower.endswith(e) for e in (".xlsx", ".xls")) or "excel" in ct_lower:
+            chunks = ExcelChunker(cs, co).chunk_bytes(file_bytes)
+        elif any(url_lower.endswith(e) for e in (".mp4", ".webm", ".mov")) or "video" in ct_lower:
             transcript = _get_or_generate_transcript(content_id, file_bytes)
-            if transcript:
-                chunks = VideoTranscriptChunker().chunk_whisper_json(transcript)
-            else:
-                logger.warning(f"No transcript for content {content_id}, skipping")
-                chunks = []
-
-        elif file_url_lower.endswith(".txt") or "text/plain" in ct_lower:
-            text = file_bytes.decode("utf-8", errors="replace")
-            chunker = PDFChunker(chunk_size, overlap)
-            raw = chunker._split_text(text)
-            chunks = [
-                DocumentChunk(
-                    text=c, index=i, source_type="document",
-                    page_number=1, language=detect_language(c),
-                )
-                for i, c in enumerate(raw)
-            ]
-
+            chunks = VideoTranscriptChunker().chunk_whisper_json(transcript) if transcript else []
         else:
-            logger.warning(f"Unsupported content type: {content_type} for {file_url}")
-            chunks = []
+            text = file_bytes.decode("utf-8", errors="replace")
+            raw  = PDFChunker(cs, co)._split_text(text)
+            chunks = [DocumentChunk(text=c, index=i, source_type="document",
+                                    page_number=1, language=detect_language(c))
+                      for i, c in enumerate(raw)]
 
         if not chunks:
             _mark_job(job_id, "completed", 0)
             return {"chunks_created": 0}
 
-        #  Store chunks (async in sync context) 
-        async def _store_all():
+        async def _store():
             from app.services.rag_service import rag_service
             from app.core.database import init_async_pool, close_async_pool
-
             chunk_dicts = [
-                {
-                    "text": c.text,
-                    "index": c.index,
-                    "source_type": c.source_type,
-                    "page_number": c.page_number,
-                    "start_time_sec": c.start_time_sec,
-                    "end_time_sec": c.end_time_sec,
-                    "language": c.language,
-                }
+                {"text": c.text, "index": c.index, "source_type": c.source_type,
+                 "page_number": c.page_number, "start_time_sec": c.start_time_sec,
+                 "end_time_sec": c.end_time_sec, "language": c.language}
                 for c in chunks
             ]
-
             await init_async_pool()
             try:
                 ids = await rag_service.store_chunks_batch(
-                    content_id=content_id,
-                    course_id=course_id,
-                    chunks=chunk_dicts,
-                    node_id=node_id,
+                    content_id=content_id, course_id=course_id,
+                    chunks=chunk_dicts, node_id=node_id,
                 )
                 return len(ids)
             finally:
                 await close_async_pool()
 
-        n_chunks = run_async(_store_all())
+        n_chunks = run_async(_store())
         _mark_job(job_id, "completed", n_chunks)
-        logger.info(f"Job {job_id}: created {n_chunks} chunks")
         return {"chunks_created": n_chunks}
 
     except Exception as exc:
@@ -304,23 +270,17 @@ def process_document_task(
         raise self.retry(exc=exc)
 
 
-#  Helpers 
+# Helpers 
 
 def _download_file(url: str) -> bytes:
-    """
-    Download file từ MinIO, dùng streaming để giảm peak memory.
-    """
     from minio import Minio
-
     client = Minio(
         os.getenv("MINIO_ENDPOINT", ""),
         access_key=os.getenv("MINIO_ACCESS_KEY", ""),
         secret_key=os.getenv("MINIO_SECRET_KEY", ""),
         secure=False,
     )
-    bucket = os.getenv("MINIO_BUCKET", "lms-files")
-
-    response = client.get_object(bucket, url)
+    response = client.get_object(os.getenv("MINIO_BUCKET", "lms-files"), url)
     try:
         buf = io.BytesIO()
         for chunk in response.stream(1 * 1024 * 1024):
@@ -332,18 +292,10 @@ def _download_file(url: str) -> bytes:
 
 
 def _get_or_generate_transcript(content_id: int, video_bytes: bytes) -> dict | None:
-    """
-    Tải transcript từ DB hoặc chạy Whisper nếu có.
-    Trả về Whisper-format dict hoặc None.
-    """
     from app.core.database import get_sync_conn, get_sync_cursor
-
-    # Kiểm tra transcript đã có trong DB chưa
     with get_sync_conn() as conn:
         with get_sync_cursor(conn) as cur:
-            cur.execute(
-                "SELECT metadata FROM section_content WHERE id=%s", (content_id,)
-            )
+            cur.execute("SELECT metadata FROM section_content WHERE id=%s", (content_id,))
             row = cur.fetchone()
             if row and row.get("metadata"):
                 meta = row["metadata"]
@@ -352,20 +304,16 @@ def _get_or_generate_transcript(content_id: int, video_bytes: bytes) -> dict | N
                 if "transcript" in meta:
                     return meta["transcript"]
 
-    # Fallback: chạy Whisper nếu có
     try:
         import whisper
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(video_bytes)
             tmp_path = tmp.name
-
-        model = whisper.load_model("base")
-        result = model.transcribe(tmp_path, task="transcribe")
+        model  = whisper.load_model("base")
+        result = model.transcribe(tmp_path)
         os.unlink(tmp_path)
         return result
-
     except ImportError:
-        logger.info("Whisper not installed — skipping video transcription")
         return None
 
 
@@ -374,11 +322,9 @@ def _mark_job(job_id: int, status: str, chunks: int = 0, error: str = "") -> Non
     with get_sync_conn() as conn:
         with get_sync_cursor(conn) as cur:
             cur.execute(
-                """
-                UPDATE document_processing_jobs
-                SET status=%s, chunks_created=%s, completed_at=NOW(),
-                    error_message=%s, updated_at=NOW()
-                WHERE id=%s
-                """,
+                """UPDATE document_processing_jobs
+                   SET status=%s, chunks_created=%s, completed_at=NOW(),
+                       error_message=%s, updated_at=NOW()
+                   WHERE id=%s""",
                 (status, chunks, error or None, job_id),
             )

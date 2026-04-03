@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_text     TEXT NOT NULL,
     chunk_index    INTEGER NOT NULL,
     chunk_hash     VARCHAR(64) UNIQUE,         -- SHA-256 for deduplication
-    embedding      VECTOR(768),
+    embedding      VECTOR(1024),
     source_type    VARCHAR(20) DEFAULT 'document'
                        CHECK (source_type IN ('document', 'video')),
     page_number    INTEGER,                    -- PDF deep-link

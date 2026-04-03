@@ -14,7 +14,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
+import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
+
 import quizService from "@/services/quizService";
 import { cn } from "@/lib/utils";
 
@@ -83,13 +84,7 @@ function CompletionBadge({ isCompleted }: { isCompleted: boolean }) {
 
 function TextRenderer({ content }: { content: ContentItem }) {
   return (
-    <div className="prose prose-slate dark:prose-invert max-w-none">
-      {content.metadata?.content ? (
-        <ReactMarkdown>{content.metadata.content}</ReactMarkdown>
-      ) : (
-        <p className="text-slate-400 dark:text-slate-500 italic">Chưa có nội dung.</p>
-      )}
-    </div>
+    <MarkdownRenderer content={content.metadata?.content || ""} />
   );
 }
 
@@ -545,8 +540,8 @@ function AnnouncementRenderer({ content }: { content: ContentItem }) {
         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">{content.description}</p>
       )}
       {content.metadata?.content && (
-        <div className="prose prose-sm dark:prose-invert max-w-none pt-4 border-t border-slate-200 dark:border-slate-800">
-          <ReactMarkdown>{content.metadata.content}</ReactMarkdown>
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+          <MarkdownRenderer content={content.metadata.content} />
         </div>
       )}
     </div>

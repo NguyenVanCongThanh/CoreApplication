@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import FileUpload from "@/components/lms/teacher/FileUpload";
+import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import QuizSettingsForm, { QuizSettings } from "./QuizSettingsForm";
+
 import lmsService from "@/services/lmsService";
 import quizService from "@/services/quizService";
 import { Content, FileInfo } from "@/types";
@@ -369,22 +371,12 @@ export default function EditContentModal({
 
           {/* Text Content for TEXT type */}
           {content.type === "TEXT" && (
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Nội dung văn bản *
-              </label>
-              <textarea
-                value={textContent}
-                onChange={(e) => setTextContent(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500"
-                rows={8}
-                placeholder="Nhập nội dung bài học..."
-                disabled={loading}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Hỗ trợ Markdown. Bạn có thể sử dụng **bold**, *italic*, `code`, etc.
-              </p>
-            </div>
+            <MarkdownEditor
+              label="Nội dung văn bản *"
+              value={textContent}
+              onChange={setTextContent}
+              placeholder="Nhập nội dung bài học..."
+            />
           )}
 
           {/* File Upload Section for File-based Content */}
