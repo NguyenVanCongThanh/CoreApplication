@@ -28,7 +28,7 @@ class ReindexService:
                 FROM section_content sc
                 JOIN course_sections cs ON cs.id = sc.section_id
                 JOIN document_chunks dc ON dc.content_id = sc.id
-                WHERE dc.embedding_v2 IS NULL
+                WHERE dc.embedding IS NULL
                   AND ($1::BIGINT IS NULL OR cs.course_id = $1)
                 ORDER BY sc.id
                 """,
@@ -106,7 +106,7 @@ class ReindexService:
             batch_embs = await create_passage_embeddings_batch(chunk_texts[i: i + BATCH])
             all_embeddings.extend(batch_embs)
 
-        # Bulk-update embedding_v2
+        # Bulk-update embedding
         records = [
             ("[" + ",".join(str(v) for v in emb) + "]", cid)
             for cid, emb in zip(chunk_ids, all_embeddings)
@@ -115,11 +115,11 @@ class ReindexService:
         async with get_async_conn() as conn:
             async with conn.transaction():
                 await conn.executemany(
-                    "UPDATE document_chunks SET embedding_v2 = $1::vector, embedding_model = 'bge-m3' WHERE id = $2",
+                    "UPDATE document_chunks SET embedding = $1::vector, embedding_model = 'bge-m3' WHERE id = $2",
                     records,
                 )
 
-        # Update knowledge_nodes description_embedding_v2 for this content
+        # Update knowledge_nodes description_embedding for this content
         await self._reindex_node_embeddings(content_id)
 
         await self._mark_job(content_id, "done", len(chunk_ids), len(chunk_ids))
@@ -151,7 +151,7 @@ class ReindexService:
         async with get_async_conn() as conn:
             async with conn.transaction():
                 await conn.executemany(
-                    "UPDATE knowledge_nodes SET description_embedding_v2 = $1::vector WHERE id = $2",
+                    "UPDATE knowledge_nodes SET description_embedding = $1::vector WHERE id = $2",
                     records,
                 )
 

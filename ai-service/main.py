@@ -48,17 +48,21 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    logger.info("Starting AI Service v2 (bge-m3 + reranker + orjson)...")
+    logger.info("Starting AI Service...")
     await init_async_pool()
-    logger.info("Database pool initialised.")
 
     loop = asyncio.get_event_loop()
 
-    def _warm():
+    def _init_models():
+        import subprocess, sys
+        subprocess.run(
+            [sys.executable, "/app/scripts/download_models.py"],
+            check=True
+        )
         from app.core.embeddings import warm_up_models
         warm_up_models()
 
-    loop.run_in_executor(None, _warm)
+    loop.run_in_executor(None, _init_models)
     logger.info("Model warm-up queued (background thread).")
 
 

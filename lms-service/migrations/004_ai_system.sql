@@ -1,10 +1,18 @@
 -- ============================================================
--- 004_ai_system.sql
+-- 004_ai_system_unified.sql
 -- AI / RAG Infrastructure, Knowledge Graph, Flashcards
+-- Integrated with bge-m3 (1024d) by default
 -- ============================================================
 
 -- pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
+
+-- ============================================================
+-- EXTERNAL TABLE UPDATES (Migrated from 005)
+-- ============================================================
+-- Track embedding model for content
+ALTER TABLE section_content
+    ADD COLUMN IF NOT EXISTS embedding_model VARCHAR(64) DEFAULT 'bge-m3';
 
 -- ============================================================
 -- KNOWLEDGE NODES
@@ -18,7 +26,7 @@ CREATE TABLE IF NOT EXISTS knowledge_nodes (
     name_vi               VARCHAR(255),
     name_en               VARCHAR(255),
     description           TEXT,
-    description_embedding VECTOR(768),          -- for graph-edge auto-generation
+    description_embedding VECTOR(1024),         -- 1024d for bge-m3
     level                 INTEGER DEFAULT 0,    -- depth in the tree
     order_index           INTEGER DEFAULT 0,
     source_content_id     BIGINT REFERENCES section_content(id) ON DELETE SET NULL,
@@ -32,9 +40,11 @@ CREATE INDEX idx_knowledge_nodes_parent         ON knowledge_nodes(parent_id);
 CREATE INDEX idx_knowledge_nodes_level          ON knowledge_nodes(course_id, level);
 CREATE INDEX idx_knowledge_nodes_source_content ON knowledge_nodes(source_content_id)
     WHERE source_content_id IS NOT NULL;
+
+-- HNSW index updated to ef_construction = 128 for 1024d better recall
 CREATE INDEX idx_knowledge_nodes_embedding
     ON knowledge_nodes USING hnsw (description_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
+    WITH (m = 16, ef_construction = 128);
 
 CREATE TRIGGER update_knowledge_nodes_updated_at
     BEFORE UPDATE ON knowledge_nodes
@@ -42,10 +52,6 @@ CREATE TRIGGER update_knowledge_nodes_updated_at
 
 -- ============================================================
 -- KNOWLEDGE NODE RELATIONS  (Knowledge Graph edges)
--- relation_type:
---   prerequisite — source must be understood before target
---   related      — bidirectional affinity, no ordering
---   extends      — target deepens / expands source
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS knowledge_node_relations (
@@ -77,7 +83,8 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_text     TEXT NOT NULL,
     chunk_index    INTEGER NOT NULL,
     chunk_hash     VARCHAR(64) UNIQUE,         -- SHA-256 for deduplication
-    embedding      VECTOR(1024),
+    embedding      VECTOR(1024),               -- 1024d for bge-m3
+    embedding_model VARCHAR(64) DEFAULT 'bge-m3', -- Track current model
     source_type    VARCHAR(20) DEFAULT 'document'
                        CHECK (source_type IN ('document', 'video')),
     page_number    INTEGER,                    -- PDF deep-link
@@ -89,10 +96,10 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- HNSW index — critical for low-latency cosine similarity search
+-- HNSW index updated to ef_construction = 128 for 1024d better recall
 CREATE INDEX idx_chunks_embedding_hnsw ON document_chunks
     USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
+    WITH (m = 16, ef_construction = 128);
 
 CREATE INDEX idx_chunks_content ON document_chunks(content_id);
 CREATE INDEX idx_chunks_node    ON document_chunks(node_id);

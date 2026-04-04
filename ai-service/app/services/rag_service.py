@@ -15,13 +15,8 @@ def _sanitize(text: str) -> str:
     import re
     return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
 
-
-# Which embedding column to use for search
-# During migration: use embedding_v2 (1024d bge-m3) when populated,
-# fall back to embedding (768d nomic) for not-yet-reindexed chunks.
-# After Part B cutover migration, there is only one column (embedding).
 _IS_BGE = "bge" in settings.embedding_model.lower()
-_SEARCH_COL   = "embedding_v2" if _IS_BGE else "embedding"
+_SEARCH_COL   = "embedding"
 _SEARCH_OP    = f"{_SEARCH_COL} <=> $1::vector"
 
 

@@ -457,12 +457,12 @@ services:
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
       EMBEDDING_PREFIX_MODE: ${EMBEDDING_PREFIX_MODE:-bge}
       RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
-      USE_RERANKER: ${USE_RERANKER:-true}
+      USE_RERANKER: "false"
       USE_NATIVE_MULTILINGUAL: ${USE_NATIVE_MULTILINGUAL:-true}
       RERANK_FETCH_K: ${RERANK_FETCH_K:-15}
-      OMP_NUM_THREADS: "2"
-      OPENBLAS_NUM_THREADS: "2"
-      MKL_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
       TOKENIZERS_PARALLELISM: "false"
       SENTENCE_TRANSFORMERS_HOME: /app/.cache/models
 
@@ -496,8 +496,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2.5G
+          cpus: '1.5'
+          memory: 1.5G
         reservations:
           cpus: '0.5'
           memory: 512M
@@ -547,9 +547,9 @@ services:
       USE_RERANKER: "false"          # worker chỉ index, không cần reranker
       USE_NATIVE_MULTILINGUAL: "true"
       REINDEX_BATCH_SIZE: ${REINDEX_BATCH_SIZE:-5}
-      OMP_NUM_THREADS: "2"
-      OPENBLAS_NUM_THREADS: "2"
-      MKL_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
       TOKENIZERS_PARALLELISM: "false"
       SENTENCE_TRANSFORMERS_HOME: /app/.cache/models
       CHUNK_SIZE: 500
@@ -568,8 +568,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 3G
+          cpus: '1.5'
+          memory: 2G
         reservations:
           cpus: '0.5'
           memory: 1G

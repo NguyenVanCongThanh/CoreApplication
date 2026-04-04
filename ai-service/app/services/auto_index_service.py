@@ -537,7 +537,6 @@ class AutoIndexService:
         """
         Batch insert knowledge_nodes bằng asyncpg executemany.
         Nhanh hơn loop đơn lẻ với nhiều nodes.
-        Sử dụng description_embedding_v2 (1024d) cho BAAI/bge-m3.
         """
         if not nodes:
             return []
@@ -565,7 +564,7 @@ class AutoIndexService:
                         """
                         INSERT INTO knowledge_nodes
                             (course_id, name, name_vi, name_en, description,
-                             description_embedding_v2, level, order_index,
+                             description_embedding, level, order_index,
                              source_content_id, auto_generated)
                         VALUES ($1,$2,$3,$4,$5,$6::vector,0,$7,$8,true)
                         RETURNING id
@@ -678,7 +677,6 @@ class AutoIndexService:
         """
         Insert tất cả chunks trong 1 transaction để đảm bảo atomicity.
         Dùng ON CONFLICT DO UPDATE để idempotent khi re-index.
-        Sử dụng embedding_v2 (1024d) cho BAAI/bge-m3.
         """
         from app.services.rag_service import _sanitize
 
@@ -699,11 +697,11 @@ class AutoIndexService:
                         """
                         INSERT INTO document_chunks
                             (content_id, course_id, node_id, chunk_text, chunk_index,
-                             chunk_hash, embedding_v2, source_type, page_number,
+                             chunk_hash, embedding, source_type, page_number,
                              start_time_sec, end_time_sec, language, status)
                         VALUES ($1,$2,$3,$4,$5,$6,$7::vector,$8,$9,$10,$11,$12,'ready')
                         ON CONFLICT (chunk_hash) DO UPDATE SET
-                            embedding_v2 = EXCLUDED.embedding_v2,
+                            embedding = EXCLUDED.embedding,
                             node_id     = EXCLUDED.node_id,
                             status      = 'ready'
                         """,
@@ -730,7 +728,6 @@ class AutoIndexService:
         """
         So sánh nodes mới với existing nodes trong course.
         Giới hạn MAX_EXISTING_NODES_FOR_GRAPH để tránh N² explosion.
-        Sử dụng description_embedding_v2 (1024d) cho BAAI/bge-m3.
         """
         if not new_node_ids:
             return
@@ -738,11 +735,11 @@ class AutoIndexService:
         async with get_async_conn() as conn:
             existing_rows = await conn.fetch(
                 """
-                SELECT id, description_embedding_v2
+                SELECT id, description_embedding
                 FROM knowledge_nodes
                 WHERE course_id = $1
                   AND id != ALL($2::bigint[])
-                  AND description_embedding_v2 IS NOT NULL
+                  AND description_embedding IS NOT NULL
                 ORDER BY created_at DESC
                 LIMIT $3
                 """,
@@ -760,7 +757,7 @@ class AutoIndexService:
         existing_ids: list[int] = []
         existing_embs: list[list[float]] = []
         for r in existing_rows:
-            emb_str = r["description_embedding_v2"]
+            emb_str = r["description_embedding"]
             if isinstance(emb_str, str):
                 emb = [float(x) for x in emb_str.strip("[]").split(",")]
             else:
