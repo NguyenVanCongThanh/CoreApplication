@@ -143,6 +143,83 @@ def auto_index_task(
         raise self.retry(exc=exc, countdown=countdown)
 
 
+@celery_app.task(
+    bind=True,
+    name="tasks.auto_index_text",
+    max_retries=3,
+    default_retry_delay=30,
+    time_limit=660,
+)
+def auto_index_text_task(
+    self,
+    content_id: int,
+    course_id: int,
+    title: str,
+    text_content: str,
+    force: bool = False,
+):
+    logger.info(f"auto_index_text_task: content_id={content_id}, title={title}, force={force}")
+
+    def _update_progress(stage: str, pct: int):
+        self.update_state(
+            state="PROGRESS",
+            meta={"stage": stage, "progress": pct, "content_id": content_id},
+        )
+
+    try:
+        return run_async(
+            _async_auto_index_text(
+                task=self,
+                content_id=content_id,
+                course_id=course_id,
+                title=title,
+                text_content=text_content,
+                force=force,
+                progress_callback=_update_progress,
+            )
+        )
+    except Exception as exc:
+        logger.error(f"auto_index_text_task failed content_id={content_id}: {exc}", exc_info=True)
+        countdown = 30 * (2 ** self.request.retries)
+        raise self.retry(exc=exc, countdown=countdown)
+
+
+async def _async_auto_index_text(
+    task,
+    content_id: int,
+    course_id: int,
+    title: str,
+    text_content: str,
+    force: bool,
+    progress_callback,
+) -> dict:
+    from app.core.database import init_async_pool, close_async_pool, get_async_conn
+    from app.services.auto_index_service import auto_index_service
+
+    await init_async_pool()
+    try:
+        if not force:
+            async with get_async_conn() as conn:
+                row = await conn.fetchrow(
+                    "SELECT ai_index_status FROM section_content WHERE id=$1", content_id
+                )
+            if row and row["ai_index_status"] == "indexed":
+                return {"ok": True, "skipped": True, "reason": "already_indexed"}
+
+        progress_callback("parse", 5)
+
+        # For TEXT content, process directly without download
+        return await auto_index_service.auto_index_text(
+            content_id=content_id,
+            course_id=course_id,
+            title=title,
+            text_content=text_content,
+            progress_callback=progress_callback,
+        )
+    finally:
+        await close_async_pool()
+
+
 async def _async_auto_index_with_download(
     task,
     content_id: int,
@@ -219,23 +296,49 @@ def process_document_task(
         ct_lower  = content_type.lower()
         cs, co    = settings.chunk_size, settings.chunk_overlap
 
+        url_lower = file_url.lower()
+        ct_lower  = content_type.lower()
+        cs, co    = settings.chunk_size, settings.chunk_overlap
+    
         if url_lower.endswith(".pdf") or "pdf" in ct_lower:
             chunks = PDFChunker(cs, co).chunk_bytes(file_bytes)
+    
         elif any(url_lower.endswith(e) for e in (".docx", ".doc")) or "word" in ct_lower:
             chunks = DocxChunker(cs, co).chunk_bytes(file_bytes)
+    
         elif any(url_lower.endswith(e) for e in (".pptx", ".ppt")) or "presentation" in ct_lower:
             chunks = PptxChunker(cs, co).chunk_bytes(file_bytes)
+    
         elif any(url_lower.endswith(e) for e in (".xlsx", ".xls")) or "excel" in ct_lower:
             chunks = ExcelChunker(cs, co).chunk_bytes(file_bytes)
+    
         elif any(url_lower.endswith(e) for e in (".mp4", ".webm", ".mov")) or "video" in ct_lower:
             transcript = _get_or_generate_transcript(content_id, file_bytes)
             chunks = VideoTranscriptChunker().chunk_whisper_json(transcript) if transcript else []
+    
+        elif (
+            any(url_lower.endswith(e) for e in (".md", ".markdown", ".txt"))
+            or ct_lower in ("text", "markdown", "text/markdown", "text/plain", "TEXT")
+        ):
+            from app.services.chunker import MarkdownChunker
+            chunks = MarkdownChunker(cs, co).chunk_bytes(file_bytes)
+            # NOTE: Celery sync path uses alt text for images (no VLM).
+            # For full VLM processing, trigger auto-index from the API instead.
+    
+        elif (
+            any(url_lower.endswith(e) for e in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+            or ct_lower.startswith("image/")
+            or ct_lower in ("image", "IMAGE")
+        ):
+            from app.services.chunker import ImageChunker
+            chunks = ImageChunker().chunk_bytes(file_bytes)
+    
         else:
             text = file_bytes.decode("utf-8", errors="replace")
             raw  = PDFChunker(cs, co)._split_text(text)
             chunks = [DocumentChunk(text=c, index=i, source_type="document",
                                     page_number=1, language=detect_language(c))
-                      for i, c in enumerate(raw)]
+                    for i, c in enumerate(raw)]
 
         if not chunks:
             _mark_job(job_id, "completed", 0)

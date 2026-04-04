@@ -284,6 +284,14 @@ type AutoIndexRequest struct {
 	FileURL     string `json:"file_url"`
 	ContentType string `json:"content_type"`
 }
+
+// AutoIndexTextRequest triggers auto-indexing for TEXT content.
+type AutoIndexTextRequest struct {
+	ContentID   int64  `json:"content_id"`
+	CourseID    int64  `json:"course_id"`
+	Title       string `json:"title"`
+	TextContent string `json:"text_content"`
+}
  
 type AutoIndexResponse struct {
 	JobID     string `json:"job_id"`
@@ -300,11 +308,20 @@ type AutoIndexStatus struct {
 	Error        string `json:"error,omitempty"`
 }
  
-// AutoIndex triggers the auto-index pipeline.
+// AutoIndex triggers the auto-index pipeline for file content.
 func (c *Client) AutoIndex(ctx context.Context, req AutoIndexRequest) (*AutoIndexResponse, error) {
 	var resp AutoIndexResponse
 	if err := c.post(ctx, "/ai/auto-index", req, &resp); err != nil {
 		return nil, fmt.Errorf("ai.AutoIndex: %w", err)
+	}
+	return &resp, nil
+}
+
+// AutoIndexText triggers auto-indexing for TEXT content.
+func (c *Client) AutoIndexText(ctx context.Context, req AutoIndexTextRequest) (*AutoIndexResponse, error) {
+	var resp AutoIndexResponse
+	if err := c.post(ctx, "/ai/auto-index/text", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.AutoIndexText: %w", err)
 	}
 	return &resp, nil
 }

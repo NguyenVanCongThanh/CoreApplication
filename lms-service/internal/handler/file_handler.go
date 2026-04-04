@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -285,6 +286,63 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dto.NewMessageResponse("File deleted successfully"))
+}
+
+// GetPresignedURL godoc
+// @Summary Get presigned URL for a file (for remote access)
+// @Description Generate a temporary presigned URL for accessing a file directly from MinIO.
+// @Description Useful for VLM image descriptions and external integrations.
+// @Tags Files
+// @Produce json
+// @Param filepath path string true "File path"
+// @Param expires query int false "Expiration in seconds" default(3600)
+// @Success 200 {object} dto.SuccessResponse{data=map[string]interface{}} "Presigned URL"
+// @Failure 400 {object} dto.ErrorResponse "Invalid filename"
+// @Failure 404 {object} dto.ErrorResponse "File not found"
+// @Failure 500 {object} dto.ErrorResponse "Failed to generate presigned URL"
+// @Router /files/presigned/{filepath} [get]
+func (h *FileHandler) GetPresignedURL(c *gin.Context) {
+	filename, ok := sanitizeFilePath(c.Param("filepath"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_filename", "Invalid file path"))
+		return
+	}
+
+	expiresStr := c.DefaultQuery("expires", "3600")
+	expires, err := strconv.Atoi(expiresStr)
+	if err != nil || expires <= 0 || expires > 24*3600 {
+		expires = 3600 // default 1 hour
+	}
+
+	// Check file exists first
+	result, err := h.storage.GetObject(c.Request.Context(), filename)
+	if err != nil {
+		logger.Error(fmt.Sprintf("File not found: %s", filename), err)
+		c.JSON(http.StatusNotFound, dto.NewErrorResponse("file_not_found", "File not found"))
+		return
+	}
+	result.Body.Close()
+
+	// Cast to MinIO storage and generate presigned URL
+	minioStorage, ok := h.storage.(*storage.MinIOStorage)
+	if !ok {
+		logger.Error("Storage is not MinIO, cannot generate presigned URL", nil)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("unsupported", "Presigned URLs not supported for this storage backend"))
+		return
+	}
+
+	presignedURL, err := minioStorage.GetPresignedURL(c.Request.Context(), filename, time.Duration(expires)*time.Second)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to generate presigned URL for %s", filename), err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("presign_failed", "Failed to generate presigned URL"))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(map[string]interface{}{
+		"file_path":      filename,
+		"presigned_url":  presignedURL,
+		"expires_in_sec": expires,
+	}))
 }
 
 func sanitizeFilePath(rawPath string) (string, bool) {

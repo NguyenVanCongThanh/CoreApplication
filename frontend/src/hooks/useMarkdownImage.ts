@@ -50,8 +50,8 @@ export const useMarkdownImage = () => {
 
       // Create FormData
       const formData = new FormData();
-      formData.append('file', fileToUpload);
       formData.append('type', 'image');
+      formData.append('file', fileToUpload);
 
       // Upload using lmsApiClient (wraps /lmsapiv1)
       const response = await lmsApiClient.post<{ data: { file_path: string } }>(
@@ -69,10 +69,10 @@ export const useMarkdownImage = () => {
       }
 
       // The backend returns a file_path like "uploads/..."
-      // We assume it can be accessed via /lmsapiv1/files/download or similar, 
+      // We assume it can be accessed via /files/download or similar, 
       // but usually the app serves it through the lmsapi proxy.
       // According to the hint: /files/${data.data.file_path}
-      return `/lmsapiv1/files/${response.data.data.file_path}`;
+      return `/files/${response.data.data.file_path}`;
     } catch (err: any) {
       console.error('Markdown Image Upload Error:', err);
       

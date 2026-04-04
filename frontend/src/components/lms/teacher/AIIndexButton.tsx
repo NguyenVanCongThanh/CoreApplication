@@ -19,7 +19,7 @@ interface AIIndexButtonProps {
   onIndexed?: (contentId: number) => void;
 }
 
-const INDEXABLE_TYPES = new Set(["DOCUMENT", "VIDEO"]);
+const INDEXABLE_TYPES = new Set(["TEXT", "DOCUMENT", "VIDEO", "IMAGE"]);
 const POLL_INTERVAL_MS = 4000;
 
 export function AIIndexButton({
@@ -34,7 +34,7 @@ export function AIIndexButton({
   const [loading, setLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
-  const isIndexable = INDEXABLE_TYPES.has(contentType) && filePath;
+  const isIndexable = INDEXABLE_TYPES.has(contentType);
 
   // ── Poll status khi đang processing ────────────────────────────────────────
   const startPolling = useCallback(() => {

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024   # bge-m3 output dim
 
+    vlm_model: str = "llama-3.2-11b-vision-preview"
+    vlm_enabled: bool = True
+
     # E5-style prefix mode — set "e5" for intfloat/multilingual-e5-* models,
     # "bge" for BAAI/bge-m3 (uses "query: " / "passage: " prefixes),
     # "none" for nomic (no prefix needed).

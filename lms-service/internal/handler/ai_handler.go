@@ -33,7 +33,9 @@ func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository) 
 // DiagnoseWrongAnswer godoc
 // @Summary      AI Error Diagnosis
 // @Description  Analyze why a student answered incorrectly, with deep link to source material.
-//               Called automatically when student submits a wrong answer.
+//
+//	Called automatically when student submits a wrong answer.
+//
 // @Tags         AI - Phase 1
 // @Produce      json
 // @Param        attemptId path  int true "Quiz Attempt ID"
@@ -206,7 +208,9 @@ func (h *AIHandler) ListKnowledgeNodes(c *gin.Context) {
 // GenerateQuiz godoc
 // @Summary      AI Auto Quiz Generator (Bloom's Taxonomy)
 // @Description  Generate quiz questions for a knowledge node using Bloom's Taxonomy.
-//               Questions are saved as DRAFT — require instructor review before publish.
+//
+//	Questions are saved as DRAFT — require instructor review before publish.
+//
 // @Tags         AI - Phase 2
 // @Accept       json
 // @Produce      json
@@ -354,7 +358,9 @@ func (h *AIHandler) RejectQuestion(c *gin.Context) {
 // GetDueReviews godoc
 // @Summary      Get Due Review Questions (Spaced Repetition)
 // @Description  Returns questions due for review today based on SM-2 algorithm.
-//               Used for the 5-minute warm-up session on student login.
+//
+//	Used for the 5-minute warm-up session on student login.
+//
 // @Tags         AI - Phase 2
 // @Produce      json
 // @Param        courseId path int true "Course ID"
@@ -432,41 +438,43 @@ func (h *AIHandler) GetReviewStats(c *gin.Context) {
 }
 
 func (h *AIHandler) TriggerDocumentProcess(c *gin.Context) {
-    contentID, _ := strconv.ParseInt(c.Param("contentId"), 10, 64)
-    
-    var body struct {
-        CourseID    int64  `json:"course_id" binding:"required"`
-        NodeID      *int64 `json:"node_id"`
-        FileURL     string `json:"file_url"`
-        ContentType string `json:"content_type"`
-    }
-    if err := c.ShouldBindJSON(&body); err != nil {
-        c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_request", err.Error()))
-        return
-    }
-    if body.ContentType == "" {
-        body.ContentType = "application/pdf"
-    }
+	contentID, _ := strconv.ParseInt(c.Param("contentId"), 10, 64)
 
-    result, err := h.aiClient.ProcessDocument(c.Request.Context(), ai.ProcessDocumentRequest{
-        ContentID:   contentID,
-        CourseID:    body.CourseID,
-        NodeID:      body.NodeID,
-        FileURL:     body.FileURL,
-        ContentType: body.ContentType,
-    })
-    if err != nil {
-        logger.Error("Document processing trigger failed", err)
-        c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
-        return
-    }
-    c.JSON(http.StatusAccepted, dto.NewDataResponse(result))
+	var body struct {
+		CourseID    int64  `json:"course_id" binding:"required"`
+		NodeID      *int64 `json:"node_id"`
+		FileURL     string `json:"file_url"`
+		ContentType string `json:"content_type"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_request", err.Error()))
+		return
+	}
+	if body.ContentType == "" {
+		body.ContentType = "application/pdf"
+	}
+
+	result, err := h.aiClient.ProcessDocument(c.Request.Context(), ai.ProcessDocumentRequest{
+		ContentID:   contentID,
+		CourseID:    body.CourseID,
+		NodeID:      body.NodeID,
+		FileURL:     body.FileURL,
+		ContentType: body.ContentType,
+	})
+	if err != nil {
+		logger.Error("Document processing trigger failed", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		return
+	}
+	c.JSON(http.StatusAccepted, dto.NewDataResponse(result))
 }
 
 // TriggerContentAutoIndex godoc
 // @Summary      Trigger auto-index for a content document
 // @Description  Giáo viên click nút "Index" → AI tự động tạo knowledge nodes.
-//               Trả về ngay; frontend poll /content/:id/ai-index-status.
+//
+//	Trả về ngay; frontend poll /content/:id/ai-index-status.
+//
 // @Tags         AI - Auto Index
 // @Accept       json
 // @Produce      json
@@ -480,10 +488,10 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_id", "Invalid content ID"))
 		return
 	}
- 
+
 	userID := c.MustGet("user_id").(int64)
 	userRole := c.GetString("user_role")
- 
+
 	// Lấy content để verify quyền và lấy file_path
 	content, err := h.courseRepo.GetContentByID(c.Request.Context(), contentID)
 	if err != nil {
@@ -491,9 +499,9 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 		c.JSON(http.StatusNotFound, dto.NewErrorResponse("not_found", "Content not found"))
 		return
 	}
- 
+
 	// Log content details for debugging
-	logger.Info(fmt.Sprintf("Auto-index debug: ContentID=%d, Type=%s, FilePath.Valid=%v, FilePath.String='%s'", 
+	logger.Info(fmt.Sprintf("Auto-index debug: ContentID=%d, Type=%s, FilePath.Valid=%v, FilePath.String='%s'",
 		contentID, content.Type, content.FilePath.Valid, content.FilePath.String))
 
 	// Chỉ TEACHER hoặc ADMIN mới được index
@@ -517,63 +525,106 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 			return
 		}
 	}
- 
-	// Kiểm tra content có file không
+
+	// Kiểm tra content có file hoặc text không
 	finalFilePath := ""
 	finalFileType := "application/pdf"
+	finalTextContent := ""
 
-	if content.FilePath.Valid && content.FilePath.String != "" {
-		finalFilePath = content.FilePath.String
-		if content.FileType.Valid {
-			finalFileType = content.FileType.String
+	// Xử lý TEXT content: lấy từ metadata.content (nơi frontend lưu text markdown)
+	if content.Type == "TEXT" {
+		// Priority 1: Check metadata.content (where frontend saves TEXT markdown)
+		if len(content.Metadata) > 0 {
+			var meta map[string]interface{}
+			if err := json.Unmarshal(content.Metadata, &meta); err == nil {
+				if val, ok := meta["content"].(string); ok && val != "" {
+					finalTextContent = val
+					logger.Info(fmt.Sprintf("Auto-index TEXT: Content %d, text length: %d chars from metadata.content",
+						contentID, len(finalTextContent)))
+				}
+			}
 		}
-	} else if len(content.Metadata) > 0 {
-		// Fallback: Thử lấy từ metadata JSON
-		var meta map[string]interface{}
-		if err := json.Unmarshal(content.Metadata, &meta); err == nil {
-			if path, ok := meta["file_path"].(string); ok && path != "" {
-				finalFilePath = path
-				logger.Info(fmt.Sprintf("Auto-index fallback: Using file_path from metadata for content %d: %s", contentID, path))
+
+		// Priority 2: Fallback to Description field
+		if finalTextContent == "" && content.Description.Valid && content.Description.String != "" {
+			finalTextContent = content.Description.String
+			logger.Info(fmt.Sprintf("Auto-index TEXT: Content %d, text length: %d chars from Description",
+				contentID, len(finalTextContent)))
+		}
+
+		if finalTextContent == "" {
+			logger.Warn(fmt.Sprintf("Auto-index TEXT fail: Content %d has no text in metadata.content or Description", contentID))
+			c.JSON(http.StatusBadRequest, dto.NewErrorResponse("no_content", "TEXT content has no text to index"))
+			return
+		}
+	} else {
+		// Xử lý FILE content: lấy từ FilePath
+		if content.FilePath.Valid && content.FilePath.String != "" {
+			finalFilePath = content.FilePath.String
+			if content.FileType.Valid {
+				finalFileType = content.FileType.String
 			}
-			if ftype, ok := meta["file_type"].(string); ok && ftype != "" {
-				finalFileType = ftype
+		} else if len(content.Metadata) > 0 {
+			// Fallback: Thử lấy từ metadata JSON
+			var meta map[string]interface{}
+			if err := json.Unmarshal(content.Metadata, &meta); err == nil {
+				if path, ok := meta["file_path"].(string); ok && path != "" {
+					finalFilePath = path
+					logger.Info(fmt.Sprintf("Auto-index fallback: Using file_path from metadata for content %d: %s", contentID, path))
+				}
+				if ftype, ok := meta["file_type"].(string); ok && ftype != "" {
+					finalFileType = ftype
+				}
 			}
+		}
+
+		if finalFilePath == "" {
+			logger.Warn(fmt.Sprintf("Auto-index fail: Content %d (Type: %s) has no file_path in column or metadata",
+				contentID, content.Type))
+			c.JSON(http.StatusBadRequest, dto.NewErrorResponse("no_file", "Content has no file to index"))
+			return
 		}
 	}
 
-	if finalFilePath == "" {
-		// Thêm log để biết chính xác lỗi 400 từ đây
-		logger.Warn(fmt.Sprintf("Auto-index fail: Content %d (Type: %s) has no file_path in column or metadata", 
-			contentID, content.Type))
-		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("no_file", "Content has no file to index"))
-		return
-	}
- 
 	// Xác định courseID từ section
 	section, _ := h.courseRepo.GetSectionByID(c.Request.Context(), content.SectionID)
 	course, _ := h.courseRepo.GetByID(c.Request.Context(), section.CourseID)
- 
+
 	// Gọi AI service
-	resp, err := h.aiClient.AutoIndex(c.Request.Context(), ai.AutoIndexRequest{
-		ContentID:   contentID,
-		CourseID:    course.ID,
-		FileURL:     finalFilePath,
-		ContentType: finalFileType,
-	})
+	var resp *ai.AutoIndexResponse
+
+	if content.Type == "TEXT" {
+		// Với TEXT content, gửi nội dung text trực tiếp
+		resp, err = h.aiClient.AutoIndexText(c.Request.Context(), ai.AutoIndexTextRequest{
+			ContentID:   contentID,
+			CourseID:    course.ID,
+			Title:       content.Title,
+			TextContent: finalTextContent,
+		})
+	} else {
+		// Với FILE content, gửi file URL
+		resp, err = h.aiClient.AutoIndex(c.Request.Context(), ai.AutoIndexRequest{
+			ContentID:   contentID,
+			CourseID:    course.ID,
+			FileURL:     finalFilePath,
+			ContentType: finalFileType,
+		})
+	}
+
 	if err != nil {
 		logger.Error("Auto-index trigger failed", err)
 		// Vẫn trả về thông báo lỗi nhưng không fail request
 		c.JSON(http.StatusServiceUnavailable, dto.NewErrorResponse("ai_unavailable", err.Error()))
 		return
 	}
- 
+
 	c.JSON(http.StatusAccepted, dto.NewDataResponse(map[string]interface{}{
 		"job_id":     resp.JobID,
 		"content_id": contentID,
 		"status":     resp.Status,
 	}))
 }
- 
+
 // GetContentAutoIndexStatus godoc
 // @Summary      Get auto-index status for a content item
 // @Tags         AI - Auto Index
@@ -587,7 +638,7 @@ func (h *AIHandler) GetContentAutoIndexStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_id", "Invalid content ID"))
 		return
 	}
- 
+
 	status, err := h.aiClient.GetAutoIndexStatus(c.Request.Context(), contentID)
 	if err != nil {
 		// Fallback: đọc thẳng từ DB nếu AI service không available
@@ -601,10 +652,10 @@ func (h *AIHandler) GetContentAutoIndexStatus(c *gin.Context) {
 		}))
 		return
 	}
- 
+
 	c.JSON(http.StatusOK, dto.NewDataResponse(status))
 }
- 
+
 // GetCourseKnowledgeGraph godoc
 // @Summary      Get knowledge graph for a course
 // @Tags         AI - Auto Index
@@ -614,12 +665,12 @@ func (h *AIHandler) GetContentAutoIndexStatus(c *gin.Context) {
 // @Router       /courses/{courseId}/ai/knowledge-graph [get]
 func (h *AIHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 	courseID, _ := strconv.ParseInt(c.Param("courseId"), 10, 64)
- 
+
 	graph, err := h.aiClient.GetKnowledgeGraph(c.Request.Context(), courseID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
 		return
 	}
- 
+
 	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
 }

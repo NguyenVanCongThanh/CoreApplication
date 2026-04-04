@@ -188,6 +188,7 @@ func main() {
 			{
 				protected.POST("/upload", fileHandler.UploadFile)
 				protected.DELETE("/delete/*filepath", fileHandler.DeleteFile)
+				protected.GET("/presigned/*filepath", fileHandler.GetPresignedURL)
 			}
 		}
 
@@ -390,47 +391,47 @@ func main() {
 				aiCourses.GET("/heatmap",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.GetClassHeatmap)
-			
+
 				aiCourses.GET("/my-heatmap",
 					aiHandler.GetStudentHeatmap)
-			
+
 				// ── Knowledge Graph ───────────────────────────────────────────────────
 				aiCourses.POST("/nodes",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.CreateKnowledgeNode)
-			
+
 				aiCourses.GET("/nodes",
 					aiHandler.ListKnowledgeNodes)
-			
+
 				// ── Phase 2: Quiz Generation ──────────────────────────────────────────
 				aiCourses.POST("/generate-quiz",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.GenerateQuiz)
-			
+
 				aiCourses.GET("/drafts",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.ListDraftQuestions)
-			
+
 				// ── Phase 2: Spaced Repetition ────────────────────────────────────────
 				aiCourses.GET("/reviews/due",
 					aiHandler.GetDueReviews)
-			
+
 				aiCourses.POST("/reviews/record",
 					aiHandler.RecordReviewResponse)
-			
+
 				aiCourses.GET("/reviews/stats",
 					aiHandler.GetReviewStats)
 
 				aiCourses.GET("/knowledge-graph", aiHandler.GetCourseKnowledgeGraph)
 			}
-			
+
 			// Quiz draft review (outside course context)
 			quizDrafts := auth.Group("/ai/quiz-drafts")
 			{
 				quizDrafts.POST("/:genId/approve",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.ApproveQuestion)
-			
+
 				quizDrafts.POST("/:genId/reject",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.RejectQuestion)

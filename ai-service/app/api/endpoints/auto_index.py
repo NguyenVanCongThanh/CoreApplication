@@ -33,6 +33,14 @@ class AutoIndexRequest(BaseModel):
     force: bool = False
 
 
+class AutoIndexTextRequest(BaseModel):
+    content_id: int
+    course_id: int
+    title: str
+    text_content: str
+    force: bool = False
+
+
 class AutoIndexResponse(BaseModel):
     job_id: str
     content_id: int
@@ -117,6 +125,61 @@ async def trigger_auto_index(body: AutoIndexRequest, request: Request):
         content_type=body.content_type,
         force=body.force,
     )
+
+    return AutoIndexResponse(
+        job_id=task.id,
+        content_id=body.content_id,
+        status="queued",
+    )
+
+
+@router.post("/text", response_model=AutoIndexResponse)
+async def trigger_auto_index_text(body: AutoIndexTextRequest, request: Request):
+    """
+    LMS gọi để index TEXT content.
+    - Gửi text_content trực tiếp thay vì file_url
+    - Tạo Celery task để xử lý asynchronously
+    """
+    _verify_internal(request)
+
+    # Nếu force, xóa chunks và nodes cũ
+    if body.force:
+        from app.services.rag_service import rag_service
+        await rag_service.delete_chunks_for_content(body.content_id)
+
+        async with get_async_conn() as conn:
+            await conn.execute(
+                "DELETE FROM knowledge_nodes WHERE source_content_id=$1",
+                body.content_id,
+            )
+
+    # Cập nhật trạng thái → processing
+    async with get_async_conn() as conn:
+        await conn.execute(
+            "UPDATE section_content SET ai_index_status='processing' WHERE id=$1",
+            body.content_id,
+        )
+
+    # Enqueue Celery task for text content
+    from app.worker.celery_app import auto_index_text_task
+    
+    try:
+        task = auto_index_text_task.delay(
+            content_id=body.content_id,
+            course_id=body.course_id,
+            title=body.title,
+            text_content=body.text_content,
+            force=body.force,
+        )
+    except Exception as e:
+        logger.error("Failed to enqueue auto_index_text_task: %s", e)
+        # Fallback: mark as failed
+        async with get_async_conn() as conn:
+            await conn.execute(
+                "UPDATE section_content SET ai_index_status='failed' WHERE id=$1",
+                body.content_id,
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to queue task: {str(e)}")
 
     return AutoIndexResponse(
         job_id=task.id,

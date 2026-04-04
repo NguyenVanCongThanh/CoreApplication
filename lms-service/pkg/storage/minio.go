@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
+
+	"example/hello/internal/config"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"example/hello/internal/config"
 )
 
 // MinIOStorage implements Storage interface for MinIO / S3-compatible object storage
@@ -120,6 +122,24 @@ func (s *MinIOStorage) Delete(ctx context.Context, filename string) error {
 	}
 
 	return nil
+}
+
+// GetPresignedURL generates a temporary presigned URL for direct file access.
+// Useful for VLM image descriptions and external integrations.
+func (s *MinIOStorage) GetPresignedURL(ctx context.Context, filename string, expires time.Duration) (string, error) {
+	// Cap expires at 7 days max for security
+	maxExpires := 7 * 24 * time.Hour
+	if expires > maxExpires {
+		expires = maxExpires
+	}
+
+	reqParams := make(url.Values)
+	presignedURL, err := s.client.PresignedGetObject(ctx, s.bucket, filename, expires, reqParams)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned URL for %q: %w", filename, err)
+	}
+
+	return presignedURL.String(), nil
 }
 
 // isNotFound kiểm tra xem MinIO error có phải "not found" không
