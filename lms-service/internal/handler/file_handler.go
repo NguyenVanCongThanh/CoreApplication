@@ -95,10 +95,19 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 			continue
 		}
 
+		// Auto-detect file type from extension if not explicitly provided or mismatched
+		ext := strings.ToLower(filepath.Ext(filename))
+		if fileType == "document" {
+			// Try to auto-detect from extension
+			detectedType := detectFileTypeFromExt(ext)
+			if detectedType != "document" {
+				fileType = detectedType
+			}
+		}
+
 		// Validate extension
 		if !isValidFileType(fileType, filename) {
 			part.Close()
-			ext := strings.ToLower(filepath.Ext(filename))
 			c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
 				"invalid_file_type",
 				fmt.Sprintf("File type %s is not allowed for %s uploads.", ext, fileType),
@@ -137,7 +146,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 
 		fileID := uuid.New().String()
 		timestamp := time.Now().Format("20060102150405")
-		ext := strings.ToLower(filepath.Ext(filename))
+		ext = strings.ToLower(filepath.Ext(filename))
 		cleanName := cleanFilename(filename)
 		nameWithoutExt := strings.TrimSuffix(cleanName, ext)
 		storedFilename := fmt.Sprintf("%s/%s_%s_%s%s", fileType, timestamp, fileID[:8], nameWithoutExt, ext)
@@ -389,6 +398,24 @@ func cleanFilename(filename string) string {
 		clean = clean[:50]
 	}
 	return clean + ext
+}
+
+// detectFileTypeFromExt auto-detects file type based on extension
+func detectFileTypeFromExt(ext string) string {
+	imageExts := []string{".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp"}
+	videoExts := []string{".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
+
+	for _, e := range imageExts {
+		if ext == e {
+			return "image"
+		}
+	}
+	for _, e := range videoExts {
+		if ext == e {
+			return "video"
+		}
+	}
+	return "document"
 }
 
 func isValidFileType(fileType, filename string) bool {

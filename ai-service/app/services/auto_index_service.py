@@ -145,33 +145,51 @@ Trả về JSON theo schema (không thêm bất kỳ text nào ngoài JSON):
 # ── File type detection ────────────────────────────────────────────────────────
 
 def _detect_file_type(file_url: str, content_type: str) -> str:
+    """
+    Detect file type from URL path FIRST (most reliable),
+    then fall back to content_type header.
+    """
     url_lower = file_url.lower()
     ct_lower = content_type.lower()
 
-    if url_lower.endswith(".pdf") or "pdf" in ct_lower:
-        return "pdf"
-    if url_lower.endswith((".docx", ".doc")) or "word" in ct_lower:
-        return "docx"
-    if url_lower.endswith((".pptx", ".ppt")) or "presentation" in ct_lower:
-        return "pptx"
-    if url_lower.endswith((".xlsx", ".xls")) or "spreadsheet" in ct_lower or "excel" in ct_lower:
-        return "xlsx"
-    if url_lower.endswith((".mp4", ".webm", ".mov", ".avi")) or "video" in ct_lower:
-        return "video"
-    # TEXT / MARKDOWN
-    if (
-        url_lower.endswith((".md", ".markdown", ".txt"))
-        or content_type in ("text/markdown", "text/plain", "TEXT", "text")
-        or ct_lower in ("text", "markdown", "text/markdown", "text/plain")
-    ):
-        return "text"
-    # IMAGE
-    if (
-        url_lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"))
-        or ct_lower.startswith("image/")
-        or ct_lower in ("image", "IMAGE")
-    ):
+    # ── Priority 1: Check URL path (most reliable) ──────────────────────────
+    # Check for /image/ folder in path
+    if "/image/" in url_lower or "/images/" in url_lower:
         return "image"
+    
+    # Check file extension in URL
+    if url_lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")):
+        return "image"
+    if url_lower.endswith(".pdf"):
+        return "pdf"
+    if url_lower.endswith((".docx", ".doc")):
+        return "docx"
+    if url_lower.endswith((".pptx", ".ppt")):
+        return "pptx"
+    if url_lower.endswith((".xlsx", ".xls")):
+        return "xlsx"
+    if url_lower.endswith((".mp4", ".webm", ".mov", ".avi")):
+        return "video"
+    if url_lower.endswith((".md", ".markdown")):
+        return "text"
+    
+    # ── Priority 2: Fall back to content_type header ───────────────────────
+    if "pdf" in ct_lower:
+        return "pdf"
+    if "word" in ct_lower or "document" in ct_lower:
+        return "docx"
+    if "presentation" in ct_lower:
+        return "pptx"
+    if "spreadsheet" in ct_lower or "excel" in ct_lower:
+        return "xlsx"
+    if "video" in ct_lower:
+        return "video"
+    if "text" in ct_lower or "markdown" in ct_lower:
+        return "text"
+    if "image" in ct_lower or ct_lower.startswith("image/"):
+        return "image"
+    
+    # Default fallback
     return "txt"
 
 
@@ -314,7 +332,18 @@ class AutoIndexService:
         file_bytes: Optional[bytes] = None,
         progress_callback: Optional[Callable[[str, int], None]] = None,
     ) -> dict:
-        logger.info("AutoIndex start: content_id=%d, course_id=%d, type=%s", content_id, course_id, content_type)
+        logger.info(
+            "AutoIndex start: content_id=%d, course_id=%d, type=%s",
+            content_id, course_id, content_type,
+        )
+        
+        # Validate file_bytes
+        if not file_bytes:
+            logger.error("AutoIndex: file_bytes is empty for content_id=%d", content_id)
+            await self._update_content_status(content_id, "failed", "Empty file bytes")
+            return {"ok": False, "error": "Empty file bytes"}
+        
+        logger.debug("AutoIndex: file_bytes size=%d KB for content_id=%d", len(file_bytes) // 1024, content_id)
 
         def _progress(stage: str, pct: int):
             logger.debug("AutoIndex [%d] %s: %d%%", content_id, stage, pct)
@@ -585,23 +614,31 @@ class AutoIndexService:
         loop = asyncio.get_event_loop()
 
         def _sync_download() -> bytes:
-            from minio import Minio
-            client = Minio(
-                os.getenv("MINIO_ENDPOINT", ""),
-                access_key=os.getenv("MINIO_ACCESS_KEY", ""),
-                secret_key=os.getenv("MINIO_SECRET_KEY", ""),
-                secure=False,
-            )
-            bucket = os.getenv("MINIO_BUCKET", "lms-files")
-            response = client.get_object(bucket, file_url)
             try:
-                buf = io.BytesIO()
-                for chunk in response.stream(1 * 1024 * 1024):
-                    buf.write(chunk)
-                return buf.getvalue()
-            finally:
-                response.close()
-                response.release_conn()
+                from minio import Minio
+                client = Minio(
+                    os.getenv("MINIO_ENDPOINT", ""),
+                    access_key=os.getenv("MINIO_ACCESS_KEY", ""),
+                    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
+                    secure=False,
+                )
+                bucket = os.getenv("MINIO_BUCKET", "lms-files")
+                logger.debug("Downloading file_url=%s from bucket=%s", file_url[:80], bucket)
+                
+                response = client.get_object(bucket, file_url)
+                try:
+                    buf = io.BytesIO()
+                    for chunk in response.stream(1 * 1024 * 1024):
+                        buf.write(chunk)
+                    file_data = buf.getvalue()
+                    logger.debug("Downloaded %d bytes from %s", len(file_data), file_url[:80])
+                    return file_data
+                finally:
+                    response.close()
+                    response.release_conn()
+            except Exception as exc:
+                logger.error("Failed to download file_url=%s: %s", file_url[:80], exc, exc_info=True)
+                return b""
 
         return await loop.run_in_executor(None, _sync_download)
 
@@ -666,7 +703,16 @@ class AutoIndexService:
                 "xlsx": ExcelChunker(chunk_size=settings.chunk_size, overlap=settings.chunk_overlap),
             }
             if file_type in chunker_map:
-                return chunker_map[file_type].chunk_bytes(file_bytes)
+                try:
+                    chunks = chunker_map[file_type].chunk_bytes(file_bytes)
+                    if not chunks:
+                        logger.warning("Extract %s returned empty chunks for content_id=%d", file_type, content_id)
+                    else:
+                        logger.info("Extracted %d chunks from %s (content_id=%d)", len(chunks), file_type, content_id)
+                    return chunks
+                except Exception as exc:
+                    logger.error("Failed to extract %s (content_id=%d): %s", file_type, content_id, exc, exc_info=True)
+                    return []
 
             if file_type == "video":
                 logger.warning("Video type: transcript must be pre-generated (content_id=%d)", content_id)
@@ -687,6 +733,11 @@ class AutoIndexService:
 
         chunks = await loop.run_in_executor(None, _sync_extract)
         raw_text = "\n\n".join(c.text for c in chunks)
+        
+        if not raw_text.strip():
+            logger.warning("_extract_text_and_chunks: empty text for file_type=%s, content_id=%d, chunks=%d", 
+                          file_type, content_id, len(chunks))
+        
         return raw_text, chunks
 
     # ─ Step 3: LLM node + relation extraction ─────────────────────────────

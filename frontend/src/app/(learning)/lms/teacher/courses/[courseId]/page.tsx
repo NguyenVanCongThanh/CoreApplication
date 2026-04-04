@@ -14,7 +14,6 @@ import { StudentsTab } from "@/components/lms/teacher/StudentTab";
 import { AIQuizGenPanel } from "@/components/lms/teacher/AIQuizGenPanel";
 import { AIHeatmapSection } from "@/components/lms/AIHeatmapSection";
 import { AIIndexButton } from "@/components/lms/teacher/AIIndexButton";
-import { KnowledgeGraphPanel } from "@/components/lms/teacher/KnowledgeGraphPanel";
 import {
   ArrowLeft, Plus, Users, ChevronDown, ChevronRight,
   Trash2, Eye, CheckCircle2,
@@ -575,11 +574,6 @@ export default function TeacherCourseDetailPage() {
             )}
             {tab === "ai" && (
               <div className="space-y-8">
-                <section>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 mb-4">Lược đồ kiến thức (Knowledge Graph)</h3>
-                  <KnowledgeGraphPanel courseId={id} />
-                </section>
-
                 <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
                   <AIQuizGenPanel courseId={id} />
                 </div>
