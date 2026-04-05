@@ -8,7 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 from app.core.config import get_settings
-from app.core.database import init_async_pool, close_async_pool
+from app.core.database import (
+    init_lms_pool, close_lms_pool,
+    init_ai_pool,  close_ai_pool,
+)
 from app.api.endpoints.process    import router as process_router
 from app.api.endpoints.diagnose   import router as diagnose_router, nodes_router
 from app.api.endpoints.quiz_gen   import router as quiz_router, sr_router
@@ -49,7 +52,13 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     logger.info("Starting AI Service...")
-    await init_async_pool()
+
+    # Initialise both DB pools concurrently for a faster startup
+    await asyncio.gather(
+        init_lms_pool(),
+        init_ai_pool(),
+    )
+    logger.info("LMS pool and AI pool ready.")
 
     loop = asyncio.get_event_loop()
 
@@ -57,7 +66,7 @@ async def startup():
         import subprocess, sys
         subprocess.run(
             [sys.executable, "/app/scripts/download_models.py"],
-            check=True
+            check=True,
         )
         from app.core.embeddings import warm_up_models
         warm_up_models()
@@ -68,17 +77,22 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    await close_async_pool()
+    await asyncio.gather(
+        close_lms_pool(),
+        close_ai_pool(),
+    )
     logger.info("AI Service shut down.")
 
 
-# Health 
+# ── Health ─────────────────────────────────────────────────────────────────────
+
 @app.get("/health", tags=["System"])
 async def health():
     return {"status": "healthy", "service": "ai-service", "version": "2.0.0"}
 
 
-# Routers 
+# ── Routers ────────────────────────────────────────────────────────────────────
+
 app.include_router(process_router,    prefix="/ai")
 app.include_router(diagnose_router,   prefix="/ai")
 app.include_router(nodes_router,      prefix="/ai")

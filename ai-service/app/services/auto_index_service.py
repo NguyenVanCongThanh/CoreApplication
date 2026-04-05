@@ -290,7 +290,7 @@ def _get_minio_presigned_url(path_key: str, expires_in_seconds: int = 3600) -> O
         import httpx
         
         # LMS backend URL from settings
-        lms_base = settings.lms_api_url.rstrip("/")  # e.g. "http://lms-backend:8081"
+        lms_base = settings.lms_service_url.rstrip("/")  # e.g. "http://lms-backend:8081"
         presigned_endpoint = f"{lms_base}/api/v1/files/presigned/{path_key}"
         
         # Make synchronous request

@@ -1,16 +1,9 @@
-"""
-ai-service/app/services/diagnosis_service.py
-Phase 1: AI Error Diagnosis
-- Retrieve relevant document chunks for a wrong answer
-- Call LLM with grounded context (prevents hallucination)
-- Store diagnosis and update knowledge progress heatmap
-"""
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
-from app.core.database import get_async_conn
+from app.core.database import get_lms_conn, get_ai_conn
 from app.core.llm import chat_complete_json, build_diagnosis_prompt
 from app.services.rag_service import rag_service, RetrievedChunk
 from app.core.config import get_settings
@@ -41,106 +34,70 @@ class DiagnosisService:
         wrong_answer: str,
         course_id: int,
     ) -> DiagnosisResult:
-        """
-        Full diagnosis pipeline:
-        1. Fetch question + correct answer from DB
-        2. Cross-lingual RAG retrieval
-        3. Call LLM with grounded context
-        4. Store result
-        5. Return with deep link metadata
-        """
-        # ── 1. Load question ──────────────────────────────────────────────────
-        async with get_async_conn() as conn:
+        # ── 1. Load question from LMS DB ──────────────────────────────────────
+        async with get_lms_conn() as conn:
             q_row = await conn.fetchrow(
-                """SELECT qq.question_text, qq.node_id, qq.explanation,
-                    qq.question_type
-                    FROM quiz_questions qq
-                    WHERE qq.id = $1""",
+                """SELECT qq.question_text, qq.node_id, qq.explanation, qq.question_type
+                   FROM quiz_questions qq WHERE qq.id = $1""",
                 question_id,
             )
             options_rows = await conn.fetch(
                 """SELECT option_text, is_correct
-                FROM quiz_answer_options
-                WHERE question_id = $1
-                ORDER BY order_index""",
+                   FROM quiz_answer_options WHERE question_id = $1 ORDER BY order_index""",
                 question_id,
             )
 
         if not q_row:
             raise ValueError(f"Question {question_id} not found")
 
-        question_text = q_row["question_text"]
-        correct_answer = " | ".join(r["option_text"] for r in options_rows if r["is_correct"])
-        distractor_options = [r["option_text"] for r in options_rows if not r["is_correct"]]
-        node_id = q_row["node_id"]
+        question_text   = q_row["question_text"]
+        correct_answer  = " | ".join(r["option_text"] for r in options_rows if r["is_correct"])
+        distractor_opts = [r["option_text"] for r in options_rows if not r["is_correct"]]
+        node_id         = q_row["node_id"]
 
-        # ── 2. Detect student's language ────────────────────────────────────
+        # ── 2. Detect language ────────────────────────────────────────────────
         from app.services.chunker import detect_language
         language = detect_language(question_text)
 
-        # ── 3. Cross-lingual RAG retrieval ──────────────────────────────────
-        #
-        # Use question text + wrong answer as query so retrieval focuses on
-        # the specific misconception, not just the topic in general.
-        #
-        # search_multilingual handles:
-        #   • VI question → also searches EN translation → finds EN chunks
-        #   • EN question → also searches VI translation → finds VI chunks
-        #   • Same-language case → acts as plain search (no extra cost)
+        # ── 3. Cross-lingual RAG (reads AI DB via rag_service) ────────────────
         chunks: list[RetrievedChunk] = await rag_service.search_for_question(
             question_id=question_id,
             course_id=course_id,
             top_k=settings.top_k_chunks,
         )
-
-        # Fallback: broader cross-lingual search without node filter
         if not chunks:
             query = f"{question_text} {wrong_answer}"
             chunks = await rag_service.search_multilingual(
-                query=query,
-                course_id=course_id,
-                top_k=settings.top_k_chunks,
+                query=query, course_id=course_id, top_k=settings.top_k_chunks,
             )
 
-        # ── 4. Build LLM prompt ──────────────────────────────────────────────
+        # ── 4. Build prompt + call LLM ────────────────────────────────────────
         context_texts = [c.chunk_text for c in chunks] if chunks else []
-
         if not context_texts and correct_answer:
             context_texts = [f"Đáp án đúng: {correct_answer}"]
 
-        # Pass context language info so the prompt can guide the LLM
-        # to explain in the *student's* language even when chunks are EN.
         messages = build_diagnosis_prompt(
             question_text=question_text,
             wrong_answer=wrong_answer,
             correct_answer=correct_answer,
-            distractor_options=distractor_options,
+            distractor_options=distractor_opts,
             context_chunks=context_texts,
             language=language,
         )
 
-        # ── 5. Call LLM ──────────────────────────────────────────────────────
         try:
             llm_result = await chat_complete_json(messages=messages)
         except Exception as e:
-            logger.error(f"LLM diagnosis failed: {e}")
+            logger.error("LLM diagnosis failed: %s", e)
             llm_result = {
-                "explanation": (
-                    "Không thể phân tích lỗi lúc này."
-                    if language == "vi"
-                    else "Unable to analyze error at this time."
-                ),
-                "gap_type": "other",
-                "knowledge_gap": "",
-                "study_suggestion": (
-                    "Xem lại tài liệu liên quan."
-                    if language == "vi"
-                    else "Review related materials."
-                ),
-                "confidence": 0.5,
+                "explanation":     "Không thể phân tích lỗi lúc này." if language == "vi" else "Unable to analyze error at this time.",
+                "gap_type":        "other",
+                "knowledge_gap":   "",
+                "study_suggestion":"Xem lại tài liệu liên quan." if language == "vi" else "Review related materials.",
+                "confidence":      0.5,
             }
 
-        # ── 6. Build suggested documents ────────────────────────────────────
+        # ── 5. Build suggested documents ──────────────────────────────────────
         indices = llm_result.get("relevant_source_indices", [])
         if not isinstance(indices, list):
             indices = []
@@ -156,20 +113,16 @@ class DiagnosisService:
                     snip = chunk.chunk_text[:150]
                     if len(chunk.chunk_text) > 150:
                         snip += "..."
-                    link["snippet"] = snip
-                    # Surface chunk language so frontend can show a badge
+                    link["snippet"]        = snip
                     link["chunk_language"] = chunk.language
                     suggested_documents.append(link)
                     seen_content_ids.add(chunk.content_id)
 
-        # Fallback: first chunk if LLM returned no indices
         if not suggested_documents and chunks:
             chunk = chunks[0]
             if chunk.content_id:
                 link = self._build_deep_link(chunk)
-                link["snippet"] = chunk.chunk_text[:150] + (
-                    "..." if len(chunk.chunk_text) > 150 else ""
-                )
+                link["snippet"]        = chunk.chunk_text[:150] + ("..." if len(chunk.chunk_text) > 150 else "")
                 link["chunk_language"] = chunk.language
                 suggested_documents.append(link)
 
@@ -179,14 +132,11 @@ class DiagnosisService:
             else (chunks[0] if chunks else None)
         )
 
-        # ── 7. Persist diagnosis ────────────────────────────────────────────
+        # ── 6. Persist diagnosis to AI DB ─────────────────────────────────────
         await self._save_diagnosis(
-            student_id=student_id,
-            attempt_id=attempt_id,
-            question_id=question_id,
-            node_id=node_id,
-            wrong_answer=wrong_answer,
-            correct_answer=correct_answer,
+            student_id=student_id, attempt_id=attempt_id,
+            question_id=question_id, node_id=node_id,
+            wrong_answer=wrong_answer, correct_answer=correct_answer,
             llm_result=llm_result,
             source_chunk_id=best_chunk.chunk_id if best_chunk else None,
             language=language,
@@ -204,32 +154,21 @@ class DiagnosisService:
         )
 
     def _build_deep_link(self, chunk: RetrievedChunk) -> dict:
-        link: dict = {
-            "content_id": chunk.content_id,
-            "source_type": chunk.source_type,
-        }
+        link: dict = {"content_id": chunk.content_id, "source_type": chunk.source_type}
         if chunk.source_type == "document" and chunk.page_number:
-            link["page_number"] = chunk.page_number
+            link["page_number"]  = chunk.page_number
             link["url_fragment"] = f"#page={chunk.page_number}"
         elif chunk.source_type == "video" and chunk.start_time_sec is not None:
             link["start_time_sec"] = chunk.start_time_sec
-            link["end_time_sec"] = chunk.end_time_sec
-            link["url_fragment"] = f"#t={chunk.start_time_sec}"
+            link["end_time_sec"]   = chunk.end_time_sec
+            link["url_fragment"]   = f"#t={chunk.start_time_sec}"
         return link
 
     async def _save_diagnosis(
-        self,
-        student_id: int,
-        attempt_id: int,
-        question_id: int,
-        node_id: int | None,
-        wrong_answer: str,
-        correct_answer: str,
-        llm_result: dict,
-        source_chunk_id: int | None,
-        language: str,
+        self, student_id, attempt_id, question_id, node_id,
+        wrong_answer, correct_answer, llm_result, source_chunk_id, language,
     ) -> int:
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO ai_diagnoses
@@ -244,15 +183,14 @@ class DiagnosisService:
                 llm_result.get("explanation", ""),
                 llm_result.get("gap_type", "other"),
                 float(llm_result.get("confidence", 0.7)),
-                source_chunk_id,
-                language,
+                source_chunk_id, language,
             )
         return row["id"]
 
     # ── Heatmaps ──────────────────────────────────────────────────────────────
 
     async def get_class_heatmap(self, course_id: int) -> list[dict]:
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT
@@ -260,13 +198,13 @@ class DiagnosisService:
                     kn.name        AS node_name,
                     kn.name_vi,
                     kn.name_en,
-                    COUNT(DISTINCT skp.student_id) AS student_count,
-                    AVG(skp.mastery_level)         AS avg_mastery,
-                    SUM(skp.wrong_count)           AS total_wrong,
-                    SUM(skp.total_attempts)        AS total_attempts,
+                    COUNT(DISTINCT skp.student_id)                               AS student_count,
+                    AVG(skp.mastery_level)                                       AS avg_mastery,
+                    SUM(skp.wrong_count)                                         AS total_wrong,
+                    SUM(skp.total_attempts)                                      AS total_attempts,
                     CASE WHEN SUM(skp.total_attempts) > 0
                          THEN SUM(skp.wrong_count)::FLOAT / SUM(skp.total_attempts) * 100
-                         ELSE 0 END                AS wrong_rate
+                         ELSE 0 END                                              AS wrong_rate
                 FROM knowledge_nodes kn
                 LEFT JOIN student_knowledge_progress skp ON skp.node_id = kn.id
                 WHERE kn.course_id = $1
@@ -278,7 +216,7 @@ class DiagnosisService:
         return [dict(r) for r in rows]
 
     async def get_student_heatmap(self, student_id: int, course_id: int) -> list[dict]:
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT

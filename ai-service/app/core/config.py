@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
 
-    # PostgreSQL
+    # ── LMS PostgreSQL (read-only access to LMS entities) ────────────────────
+    # Used for: quiz_questions, section_content, quiz_attempts, users, courses
     db_host: str = "postgres-lms"
     db_port: int = 5432
     db_user: str = "lms_user"
@@ -15,6 +16,17 @@ class Settings(BaseSettings):
     db_name: str = "lms_db"
     db_min_connections: int = 2
     db_max_connections: int = 10
+
+    # ── AI PostgreSQL (read-write for all AI-domain data) ────────────────────
+    # Used for: knowledge_nodes, document_chunks, ai_diagnoses, flashcards, …
+    # Isolated instance — no shared state with LMS.
+    ai_db_host: str = "postgres-ai"
+    ai_db_port: int = 5432
+    ai_db_user: str = "ai_user"
+    ai_db_password: str = "ai_password"
+    ai_db_name: str = "ai_db"
+    ai_db_min_connections: int = 2
+    ai_db_max_connections: int = 15  # AI service is write-heavy
 
     # Redis
     redis_host: str = "redis-lms"
@@ -31,48 +43,32 @@ class Settings(BaseSettings):
 
     # Groq LLM
     groq_api_key: str = ""
-    chat_model: str = "llama-3.1-8b-instant"   # fast, for diagnosis
-    quiz_model: str = "llama-3.3-70b-versatile" # smart, for quiz/node extraction
+    chat_model: str = "llama-3.1-8b-instant"
+    quiz_model: str = "llama-3.3-70b-versatile"
 
-    # Embedding 
-    # BAAI/bge-m3: natively multilingual (VI+EN in same vector space),
-    # eliminates the translation round-trip from multilingual.py.
+    # Embedding
     embedding_model: str = "BAAI/bge-m3"
-    embedding_dimensions: int = 1024   # bge-m3 output dim
-
+    embedding_dimensions: int = 1024
     vlm_model: str = "llama-3.2-11b-vision-preview"
     vlm_enabled: bool = True
-
-    # E5-style prefix mode — set "e5" for intfloat/multilingual-e5-* models,
-    # "bge" for BAAI/bge-m3 (uses "query: " / "passage: " prefixes),
-    # "none" for nomic (no prefix needed).
     embedding_prefix_mode: str = "bge"
 
-    # Reranker 
-    # bge-reranker-v2-m3 is a cross-encoder that re-scores (query, passage)
-    # pairs for much higher precision than cosine alone.
+    # Reranker
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     use_reranker: bool = True
-
-    # Fetch this many candidates from pgvector, then rerank down to top_k_chunks.
-    # Higher = better recall but slower reranking. 15 is a good trade-off.
     rerank_fetch_k: int = 15
 
-    # RAG 
+    # RAG
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k_chunks: int = 3
-
-    # When True (bge-m3), skip LLM translation — model handles cross-lingual natively.
-    # Set to False only if you revert to nomic-ai model.
     use_native_multilingual: bool = True
 
-    # Celery 
+    # Celery
     celery_task_time_limit: int = 3600
-    # How many content items to re-embed per batch during migration
     reindex_batch_size: int = 5
 
-    # Internal 
+    # Internal
     lms_service_url: str = "http://lms-backend:8081"
     ai_service_secret: str = "ai-service-secret-change-me"
 
@@ -82,10 +78,19 @@ class Settings(BaseSettings):
         extra = "ignore"
 
     @property
-    def database_url(self) -> str:
+    def lms_database_url(self) -> str:
+        """asyncpg DSN for LMS PostgreSQL (entity reads)."""
         return (
             f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    @property
+    def ai_database_url(self) -> str:
+        """asyncpg DSN for AI PostgreSQL (all AI data)."""
+        return (
+            f"postgresql+asyncpg://{self.ai_db_user}:{self.ai_db_password}"
+            f"@{self.ai_db_host}:{self.ai_db_port}/{self.ai_db_name}"
         )
 
     @property
@@ -96,6 +101,11 @@ class Settings(BaseSettings):
                 f"@{self.redis_host}:{self.redis_port}/{self.redis_db}"
             )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    # Legacy alias — kept for any code that reads settings.database_url
+    @property
+    def database_url(self) -> str:
+        return self.lms_database_url
 
 
 @lru_cache

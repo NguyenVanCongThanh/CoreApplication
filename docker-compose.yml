@@ -416,6 +416,41 @@ services:
       - "traefik.http.routers.lms.rule=Host(`bdc.hpcc.vn`) && PathPrefix(`/lmsapiv1`)"
       - "traefik.http.services.lms.loadbalancer.server.port=8081"
 
+  postgres-ai:
+    image: pgvector/pgvector:pg15
+    container_name: postgres-ai
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AI_POSTGRES_DB:-ai_db}
+      POSTGRES_USER: ${AI_POSTGRES_USER:-ai_user}
+      POSTGRES_PASSWORD: ${AI_POSTGRES_PASSWORD:-ai_password}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "${AI_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - postgres_ai_data:/var/lib/postgresql/data
+      # Schema is applied automatically on first start
+      - ./ai-service/migrations/001_ai_core.sql:/docker-entrypoint-initdb.d/001_ai_core.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      <<: *common-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U $${AI_POSTGRES_USER} -d $${AI_POSTGRES_DB}"]
+    logging: *common-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "service.type=database"
+      - "service.name=postgres-ai"
+
   ai-service:
     build:
       context: ./ai-service
@@ -430,11 +465,18 @@ services:
       LOG_LEVEL: INFO
  
       # Database (shared with lms-service)
-      DB_HOST: postgres-lms
-      DB_PORT: 5432
-      DB_USER: ${LMS_POSTGRES_USER}
-      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
-      DB_NAME: ${LMS_POSTGRES_DB}
+      LMS_DB_HOST: postgres-lms
+      LMS_DB_PORT: 5432
+      LMS_DB_USER: ${LMS_POSTGRES_USER}
+      LMS_DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
+      LMS_DB_NAME: ${LMS_POSTGRES_DB}
+
+      # AI PostgreSQL (all AI-domain reads/writes)
+      AI_DB_HOST: postgres-ai
+      AI_DB_PORT: 5432
+      AI_DB_USER: ${AI_POSTGRES_USER}
+      AI_DB_PASSWORD: ${AI_POSTGRES_PASSWORD}
+      AI_DB_NAME: ${AI_POSTGRES_DB}
  
       # Redis (shared)
       REDIS_HOST: redis-lms
@@ -477,6 +519,8 @@ services:
 
     depends_on:
       postgres-lms:
+        condition: service_healthy
+      postgres-ai:
         condition: service_healthy
       redis-lms:
         condition: service_healthy
@@ -528,6 +572,13 @@ services:
       DB_USER: ${LMS_POSTGRES_USER}
       DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
       DB_NAME: ${LMS_POSTGRES_DB}
+
+      AI_DB_HOST: postgres-ai
+      AI_DB_PORT: 5432
+      AI_DB_USER: ${AI_POSTGRES_USER}
+      AI_DB_PASSWORD: ${AI_POSTGRES_PASSWORD}
+      AI_DB_NAME: ${AI_POSTGRES_DB}
+
       REDIS_HOST: redis-lms
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -558,6 +609,8 @@ services:
 
     depends_on:
       postgres-lms:
+        condition: service_healthy
+      postgres-ai:
         condition: service_healthy
       redis-lms:
         condition: service_healthy
@@ -627,6 +680,11 @@ volumes:
       - "backup.enabled=true"
       - "backup.schedule=daily"
   postgres_lms_data:
+    driver: local
+    labels:
+      - "backup.enabled=true"
+      - "backup.schedule=daily"
+  postgres_ai_data:
     driver: local
     labels:
       - "backup.enabled=true"
