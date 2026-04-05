@@ -464,6 +464,7 @@ export function AIQuizGenPanel({ courseId }: Props) {
         <AINodeManager
           courseId={courseId}
           nodes={nodes}
+          relations={[]}
           onNodesChange={loadNodes}
         />
       )}
