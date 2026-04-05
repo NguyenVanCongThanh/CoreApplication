@@ -85,6 +85,17 @@ type DiagnoseResponse struct {
 	Language        string                   `json:"language"`
 }
 
+type ChunkItem struct {
+    ID           int64   `json:"id"`
+    ChunkText    string  `json:"chunk_text"`
+    ChunkIndex   int     `json:"chunk_index"`
+    SourceType   string  `json:"source_type"`
+    PageNumber   *int    `json:"page_number"`
+    StartTimeSec *int    `json:"start_time_sec"`
+    EndTimeSec   *int    `json:"end_time_sec"`
+    Language     string  `json:"language"`
+}
+
 func (c *Client) DiagnoseError(ctx context.Context, req DiagnoseRequest) (*DiagnoseResponse, error) {
 	var resp DiagnoseResponse
 	if err := c.post(ctx, "/ai/diagnose", req, &resp); err != nil {
@@ -334,6 +345,11 @@ func (c *Client) GetAutoIndexStatus(ctx context.Context, contentID int64) (*Auto
 		return nil, fmt.Errorf("ai.GetAutoIndexStatus: %w", err)
 	}
 	return &resp, nil
+}
+
+func (c *Client) GetNodeChunks(ctx context.Context, nodeID int64, limit int) ([]ChunkItem, error) {
+    var resp []ChunkItem
+    return resp, c.get(ctx, fmt.Sprintf("/ai/knowledge-nodes/%d/chunks?limit=%d", nodeID, limit), &resp)
 }
  
 // KnowledgeGraphNode represents a node in the knowledge graph.

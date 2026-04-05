@@ -1,240 +1,790 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactFlow, {
-  Node,
-  Edge,
-  Controls,
   Background,
-  useNodesState,
-  useEdgesState,
+  BackgroundVariant,
+  Controls,
+  Edge,
+  MarkerType,
   MiniMap,
+  Node,
+  NodeProps,
   NodeTypes,
+  Panel,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
 } from "reactflow";
-import { BookOpen, AlertCircle } from "lucide-react";
+import {
+  AlertCircle,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  FileText,
+  Loader2,
+  Search,
+  Video,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KnowledgeNode } from "@/services/aiService";
+import { ChunkItem, KnowledgeNode } from "@/services/aiService";
+import aiService from "@/services/aiService";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface NodeData extends KnowledgeNode {
+  isSelected: boolean;
+  onSelect: (node: KnowledgeNode) => void;
+}
 
 interface Props {
   nodes: KnowledgeNode[];
+  courseId: number;
   onNodeClick?: (node: KnowledgeNode) => void;
 }
 
-// Custom Node Component
-const KnowledgeNodeComponent = ({
-  data,
-  isConnecting,
-  selected,
-}: {
-  data: KnowledgeNode & { onClick?: () => void };
-  isConnecting: boolean;
-  selected: boolean;
-}) => {
-  const hasContent = (data.chunk_count ?? 0) > 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Layout — hierarchical positioning based on node.level
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NODE_W = 214;
+const NODE_H = 86;
+const H_GAP = 72;
+const V_GAP = 108;
+
+function computeLayout(nodes: KnowledgeNode[]): Map<number, { x: number; y: number }> {
+  // Group by level, sort by order_index within each level
+  const levels = new Map<number, KnowledgeNode[]>();
+  nodes.forEach((n) => {
+    const lv = n.level ?? 0;
+    if (!levels.has(lv)) levels.set(lv, []);
+    levels.get(lv)!.push(n);
+  });
+  levels.forEach((arr) => arr.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)));
+
+  const pos = new Map<number, { x: number; y: number }>();
+  levels.forEach((arr, lv) => {
+    const totalW = arr.length * NODE_W + (arr.length - 1) * H_GAP;
+    const startX = -totalW / 2;
+    arr.forEach((n, i) => {
+      pos.set(n.id, {
+        x: startX + i * (NODE_W + H_GAP),
+        y: lv * (NODE_H + V_GAP),
+      });
+    });
+  });
+  return pos;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunk health — color scheme by chunk count
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HealthColors {
+  border: string;
+  bg: string;
+  badge: string;
+  dot: string;
+  minimap: string;
+}
+
+function chunkHealth(count: number): HealthColors {
+  if (count === 0)
+    return {
+      border: "border-amber-300 dark:border-amber-600",
+      bg: "bg-amber-50 dark:bg-amber-950/30",
+      badge:
+        "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-400",
+      minimap: "#fcd34d",
+    };
+  if (count < 5)
+    return {
+      border: "border-yellow-300 dark:border-yellow-600",
+      bg: "bg-yellow-50/70 dark:bg-yellow-950/20",
+      badge:
+        "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300",
+      dot: "bg-yellow-400",
+      minimap: "#a3e635",
+    };
+  if (count < 10)
+    return {
+      border: "border-emerald-300 dark:border-emerald-600",
+      bg: "bg-emerald-50 dark:bg-emerald-950/20",
+      badge:
+        "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300",
+      dot: "bg-emerald-400",
+      minimap: "#34d399",
+    };
+  return {
+    border: "border-teal-300 dark:border-teal-600",
+    bg: "bg-teal-50 dark:bg-teal-950/20",
+    badge:
+      "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300",
+    dot: "bg-teal-400",
+    minimap: "#2dd4bf",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom ReactFlow node
+// ─────────────────────────────────────────────────────────────────────────────
+
+function KnowledgeNodeCard({ data }: NodeProps<NodeData>) {
+  const h = chunkHealth(data.chunk_count);
+  const primary = data.name_vi || data.name;
+  const secondary = data.name_vi ? data.name : null;
 
   return (
     <div
-      onClick={data.onClick}
+      onClick={() => data.onSelect(data)}
       className={cn(
-        "px-4 py-3 rounded-lg border-2 cursor-pointer transition-all shadow-md hover:shadow-lg",
-        "bg-white dark:bg-slate-800 backdrop-blur-sm",
-        selected
-          ? "border-violet-500 shadow-lg shadow-violet-500/20"
-          : "border-slate-200 dark:border-slate-700",
-        hasContent
-          ? "border-green-400 dark:border-green-600"
-          : "border-amber-400 dark:border-amber-600",
-        isConnecting && "opacity-50"
+        "w-[214px] rounded-xl border-2 cursor-pointer select-none",
+        "transition-all duration-150 active:scale-[0.98]",
+        "shadow-sm hover:shadow-md",
+        h.bg,
+        data.isSelected
+          ? "border-blue-500 dark:border-blue-400 shadow-blue-100 dark:shadow-blue-900/30 shadow-md ring-2 ring-blue-500/20"
+          : cn(h.border, "hover:brightness-95 dark:hover:brightness-110")
       )}
-      style={{
-        minWidth: "180px",
-      }}
     >
-      <div className="flex items-start gap-2">
-        <BookOpen
-          className={cn(
-            "w-4 h-4 mt-0.5 flex-shrink-0",
-            hasContent
-              ? "text-green-500 dark:text-green-400"
-              : "text-amber-500 dark:text-amber-400"
-          )}
+      {/* Auto-generated dot */}
+      {data.auto_generated && (
+        <div
+          title="Auto-generated by AI"
+          className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-500"
         />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-            {data.name_vi || data.name}
+      )}
+
+      {/* Name */}
+      <div className="px-3 pt-2.5 pb-1.5">
+        <p className="text-[13px] font-semibold leading-tight truncate pr-4 text-slate-800 dark:text-slate-100">
+          {primary}
+        </p>
+        {secondary && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+            {secondary}
           </p>
-          {data.description && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
-              {data.description}
-            </p>
-          )}
-        </div>
+        )}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
+
+      {/* Bottom strip */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-black/[0.06] dark:border-white/[0.06]">
         <span
           className={cn(
-            "text-xs px-2 py-1 rounded-full font-medium",
-            hasContent
-              ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300"
-              : "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+            "inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5",
+            h.badge
           )}
         >
-          {data.chunk_count ?? 0} chunks
+          <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", h.dot)} />
+          {data.chunk_count === 0
+            ? "No chunks"
+            : `${data.chunk_count} chunk${data.chunk_count !== 1 ? "s" : ""}`}
+        </span>
+        <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">
+          L{data.level ?? 0}
         </span>
       </div>
     </div>
   );
-};
+}
 
-const nodeTypes: NodeTypes = {
-  knowledge: KnowledgeNodeComponent as any,
-};
+const nodeTypes: NodeTypes = { knowledge: KnowledgeNodeCard };
 
-export function KnowledgeGraph({ nodes, onNodeClick }: Props) {
-  // Build hierarchical layout
-  const { graphNodes, graphEdges } = useMemo(() => {
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const rootNodes = nodes.filter((n) => !n.parent_id);
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunk card — individual chunk display in the panel
+// ─────────────────────────────────────────────────────────────────────────────
 
-    // Calculate positions using tree layout algorithm
-    const positionMap = new Map<number, { x: number; y: number }>();
-    const levelWidth = 250;
-    const levelHeight = 150;
+function ChunkCard({
+  chunk,
+  index,
+  highlight,
+}: {
+  chunk: ChunkItem;
+  index: number;
+  highlight?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-    const positionNode = (
-      nodeId: number,
-      x: number,
-      y: number,
-      childrenPerLevel: Map<number, KnowledgeNode[]>
-    ) => {
-      positionMap.set(nodeId, { x, y });
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(chunk.chunk_text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
-      const children = childrenPerLevel.get(nodeId) || [];
-      if (children.length === 0) return;
-
-      const totalWidth = children.length * levelWidth;
-      const startX = x - (totalWidth - levelWidth) / 2;
-
-      children.forEach((child, index) => {
-        const childX = startX + index * levelWidth;
-        const childY = y + levelHeight;
-        positionNode(child.id, childX, childY, childrenPerLevel);
-      });
-    };
-
-    // Group children by parent
-    const childrenPerLevel = new Map<number, KnowledgeNode[]>();
-    nodes.forEach((node) => {
-      if (node.parent_id) {
-        if (!childrenPerLevel.has(node.parent_id)) {
-          childrenPerLevel.set(node.parent_id, []);
-        }
-        childrenPerLevel.get(node.parent_id)!.push(node);
-      }
-    });
-
-    // Position root nodes
-    const totalWidth = rootNodes.length * levelWidth;
-    const startX = -(totalWidth - levelWidth) / 2;
-    rootNodes.forEach((node, index) => {
-      positionNode(node.id, startX + index * levelWidth, 0, childrenPerLevel);
-    });
-
-    // Create graph nodes
-    const graphNodes = nodes.map((node) => {
-      const pos = positionMap.get(node.id) || { x: 0, y: 0 };
-      return {
-        id: node.id.toString(),
-        data: {
-          ...node,
-          onClick: () => onNodeClick?.(node),
-        },
-        position: pos,
-        type: "knowledge",
-      } as Node;
-    });
-
-    // Create edges
-    const graphEdges = nodes
-      .filter((n) => n.parent_id != null)
-      .map((node) => ({
-        id: `${node.parent_id}-${node.id}`,
-        source: (node.parent_id as number).toString(),
-        target: node.id.toString(),
-        animated: false,
-        style: {
-          stroke: "#cbd5e1",
-          strokeWidth: 2,
-        },
-      })) as Edge[];
-
-    return { graphNodes, graphEdges };
-  }, [nodes, onNodeClick]);
-
-  const [flowNodes, setNodes, onNodesChange] = useNodesState(graphNodes);
-  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(graphEdges);
-
-  // Update nodes when props change
-  React.useEffect(() => {
-    setNodes(graphNodes);
-  }, [graphNodes, setNodes]);
-
-  React.useEffect(() => {
-    setEdges(graphEdges);
-  }, [graphEdges, setEdges]);
-
-  if (nodes.length === 0) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl">
-        <div className="text-center">
-          <BookOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-600 dark:text-slate-400">
-            Chưa có Knowledge Node nào
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-            Tạo node mới để bắt đầu xây dựng knowledge graph
-          </p>
-        </div>
-      </div>
+  // Highlight matching text
+  const renderText = (text: string) => {
+    if (!highlight) return text;
+    const parts = text.split(new RegExp(`(${highlight})`, "gi"));
+    return parts.map((part, i) =>
+      part.toLowerCase() === highlight.toLowerCase() ? (
+        <mark key={i} className="bg-yellow-200 dark:bg-yellow-800/60 rounded-sm px-0.5">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
     );
-  }
+  };
 
-  const hasEmptyNodes = nodes.some((n) => (n.chunk_count ?? 0) === 0);
+  const isLong = chunk.chunk_text.length > 240;
+
+  // Format timestamp
+  const fmtTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
 
   return (
-    <div className="w-full h-screen relative rounded-xl overflow-hidden">
-      <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-      >
-        <Background color="#aaa" gap={16} />
-        <Controls />
-        <MiniMap
-          nodeColor={(node) => {
-            const data = node.data as KnowledgeNode;
-            return (data.chunk_count ?? 0) > 0 ? "#10b981" : "#f59e0b";
-          }}
-          style={{
-            backgroundColor: "#f1f5f9",
-            borderRadius: "8px",
-          }}
-          className="dark:bg-slate-800"
-        />
-      </ReactFlow>
+    <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden mb-2 last:mb-0">
+      {/* Meta row */}
+      <div className="flex items-center gap-1.5 flex-wrap px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+        {/* Index */}
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
+          #{index + 1}
+        </span>
 
-      {/* Info hint */}
-      {hasEmptyNodes && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-start gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400 shadow-lg max-w-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <p>
-            Một số nodes <strong>chưa có tài liệu</strong>. Upload PDF/video và liên kết để tạo quiz.
-          </p>
-        </div>
+        {/* Source type */}
+        {chunk.source_type === "video" ? (
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+            <Video className="w-2.5 h-2.5" /> video
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300">
+            <FileText className="w-2.5 h-2.5" /> doc
+          </span>
+        )}
+
+        {/* Location */}
+        {chunk.page_number != null && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+            p.{chunk.page_number}
+          </span>
+        )}
+        {chunk.start_time_sec != null && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+            {fmtTime(chunk.start_time_sec)}
+            {chunk.end_time_sec != null ? `–${fmtTime(chunk.end_time_sec)}` : ""}
+          </span>
+        )}
+
+        {/* Language */}
+        <span
+          className={cn(
+            "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+            chunk.language === "vi"
+              ? "bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300"
+              : "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+          )}
+        >
+          {chunk.language}
+        </span>
+
+        {/* Copy button */}
+        <button
+          onClick={handleCopy}
+          className="ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
+        >
+          {copied ? (
+            <>
+              <Check className="w-2.5 h-2.5 text-emerald-500" />
+              copied
+            </>
+          ) : (
+            <>
+              <Copy className="w-2.5 h-2.5" />
+              copy
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Text body */}
+      <div className="px-2.5 py-2">
+        <p
+          className={cn(
+            "text-[12px] leading-relaxed text-slate-700 dark:text-slate-300",
+            !expanded && isLong && "line-clamp-3"
+          )}
+        >
+          {renderText(chunk.chunk_text)}
+        </p>
+        {isLong && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-1.5 flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="w-3 h-3" /> show less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" /> show more
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunk inspector panel — slides in from the right
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ChunkPanelProps {
+  node: KnowledgeNode | null;
+  courseId: number;
+  onClose: () => void;
+}
+
+function ChunkPanel({ node, courseId, onClose }: ChunkPanelProps) {
+  const [chunks, setChunks] = useState<ChunkItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const prevNodeId = useRef<number | null>(null);
+
+  // Fetch chunks whenever selected node changes
+  useEffect(() => {
+    if (!node) return;
+    if (node.id === prevNodeId.current) return;
+    prevNodeId.current = node.id;
+
+    setSearch("");
+    setError(null);
+    setChunks([]);
+
+    if (node.chunk_count === 0) return;
+
+    setLoading(true);
+    aiService
+      .getNodeChunks(courseId, node.id)
+      .then((data) => setChunks(data ?? []))
+      .catch((e) =>
+        setError(e?.response?.data?.message ?? e?.message ?? "Failed to load chunks")
+      )
+      .finally(() => setLoading(false));
+  }, [node?.id, courseId]);
+
+  // Focus search on open
+  useEffect(() => {
+    if (node) setTimeout(() => searchRef.current?.focus(), 250);
+  }, [node?.id]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return chunks;
+    return chunks.filter((c) => c.chunk_text.toLowerCase().includes(q));
+  }, [chunks, search]);
+
+  const h = node ? chunkHealth(node.chunk_count) : null;
+
+  return (
+    <div
+      className={cn(
+        "absolute top-0 right-0 h-full flex flex-col z-20",
+        "bg-white dark:bg-slate-900",
+        "border-l border-slate-200 dark:border-slate-700",
+        "shadow-2xl dark:shadow-black/40",
+        "transition-all duration-200 ease-out",
+        node
+          ? "w-[308px] opacity-100 translate-x-0"
+          : "w-[308px] opacity-0 translate-x-full pointer-events-none"
+      )}
+    >
+      {node && (
+        <>
+          {/* ── Header ── */}
+          <div className="flex-shrink-0 px-4 pt-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex items-start justify-between gap-2 mb-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold leading-tight text-slate-800 dark:text-slate-100">
+                  {node.name_vi || node.name}
+                </p>
+                {node.name_vi && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                    {node.name}
+                  </p>
+                )}
+                {node.description && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                    {node.description}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={onClose}
+                className="flex-shrink-0 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                title="Close panel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Stats pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5",
+                  h?.badge
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", h?.dot)} />
+                {node.chunk_count === 0
+                  ? "No chunks"
+                  : `${node.chunk_count} chunk${node.chunk_count !== 1 ? "s" : ""}`}
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                Level {node.level ?? 0}
+              </span>
+              {node.auto_generated && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                  AI-generated
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* ── Search ── */}
+          {node.chunk_count > 0 && (
+            <div className="flex-shrink-0 px-3 py-2.5 border-b border-slate-200 dark:border-slate-700">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={`Search ${node.chunk_count} chunks…`}
+                  className={cn(
+                    "w-full pl-8 pr-8 py-1.5 text-[12px] rounded-lg",
+                    "border border-slate-200 dark:border-slate-700",
+                    "bg-slate-50 dark:bg-slate-800",
+                    "text-slate-800 dark:text-slate-200",
+                    "placeholder-slate-400 dark:placeholder-slate-500",
+                    "focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500"
+                  )}
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {search && (
+                <p className="text-[11px] text-slate-400 mt-1.5 ml-0.5">
+                  {filtered.length} of {chunks.length} chunks
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Chunk list ── */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {/* Loading */}
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
+                <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                <p className="text-[12px] text-slate-400">Loading chunks…</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {!loading && error && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-red-500" />
+                <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p>
+              </div>
+            )}
+
+            {/* Empty — no chunks indexed */}
+            {!loading && !error && node.chunk_count === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 flex items-center justify-center mb-3">
+                  <AlertCircle className="w-5 h-5 text-amber-500" />
+                </div>
+                <p className="text-[13px] font-medium text-slate-700 dark:text-slate-300">
+                  No chunks yet
+                </p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                  Index a document to this node to populate content chunks for
+                  verification.
+                </p>
+              </div>
+            )}
+
+            {/* Empty search */}
+            {!loading && !error && node.chunk_count > 0 && filtered.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-[12px] text-slate-400">
+                  No chunks match &ldquo;{search}&rdquo;
+                </p>
+              </div>
+            )}
+
+            {/* Chunk cards */}
+            {!loading &&
+              !error &&
+              filtered.map((chunk, i) => (
+                <ChunkCard
+                  key={chunk.id}
+                  chunk={chunk}
+                  index={chunks.indexOf(chunk)}
+                  highlight={search.trim() || undefined}
+                />
+              ))}
+          </div>
+        </>
       )}
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inner graph — requires ReactFlowProvider context
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildEdges(
+  rawNodes: KnowledgeNode[],
+  selectedNodeId: number | null
+): Edge[] {
+  const nodeMap = new Set(rawNodes.map((n) => n.id));
+  return rawNodes
+    .filter((n) => n.parent_id != null && nodeMap.has(n.parent_id!))
+    .map((n) => {
+      const isActive =
+        selectedNodeId === n.id || selectedNodeId === n.parent_id;
+      return {
+        id: `e-${n.parent_id}-${n.id}`,
+        source: String(n.parent_id),
+        target: String(n.id),
+        type: "smoothstep",
+        animated: isActive,
+        style: {
+          stroke: isActive ? "#3b82f6" : "#a5b4fc",
+          strokeWidth: isActive ? 2 : 1.5,
+          strokeDasharray: undefined,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isActive ? "#3b82f6" : "#a5b4fc",
+          width: 15,
+          height: 15,
+        },
+      };
+    });
+}
+
+function KnowledgeGraphInner({ nodes: rawNodes, courseId, onNodeClick }: Props) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [panelNode, setPanelNode] = useState<KnowledgeNode | null>(null);
+  const { fitView } = useReactFlow();
+
+  // Stable select handler — uses functional setState to avoid stale closures
+  const handleSelect = useCallback(
+    (node: KnowledgeNode) => {
+      setSelectedId((prev) => {
+        const next = prev === node.id ? null : node.id;
+        setPanelNode(next === null ? null : node);
+        return next;
+      });
+      onNodeClick?.(node);
+    },
+    [onNodeClick]
+  );
+
+  const handleClosePanel = useCallback(() => {
+    setSelectedId(null);
+    setPanelNode(null);
+  }, []);
+
+  // Build RF nodes
+  const buildRFNodes = useCallback(
+    (nodes: KnowledgeNode[], selId: number | null): Node<NodeData>[] => {
+      const pos = computeLayout(nodes);
+      return nodes.map((n) => ({
+        id: String(n.id),
+        type: "knowledge",
+        position: pos.get(n.id) ?? { x: 0, y: 0 },
+        data: { ...n, isSelected: selId === n.id, onSelect: handleSelect },
+        draggable: true,
+      }));
+    },
+    [handleSelect]
+  );
+
+  const [rfNodes, setRFNodes, onNodesChange] = useNodesState<NodeData>(
+    buildRFNodes(rawNodes, null)
+  );
+  const [rfEdges, setRFEdges, onEdgesChange] = useEdgesState(
+    buildEdges(rawNodes, null)
+  );
+
+  // Sync nodes/edges when rawNodes or selection changes
+  useEffect(() => {
+    setRFNodes(buildRFNodes(rawNodes, selectedId));
+    setRFEdges(buildEdges(rawNodes, selectedId));
+  }, [rawNodes, selectedId, buildRFNodes]);
+
+  // Fit view when node count changes
+  useEffect(() => {
+    if (rawNodes.length > 0) {
+      setTimeout(() => fitView({ padding: 0.15, duration: 450 }), 80);
+    }
+  }, [rawNodes.length, fitView]);
+
+  // Aggregate stats
+  const totalChunks = rawNodes.reduce((s, n) => s + n.chunk_count, 0);
+  const indexedCount = rawNodes.filter((n) => n.chunk_count > 0).length;
+
+  return (
+    <div className="relative w-full h-full">
+      <ReactFlow
+        nodes={rfNodes}
+        edges={rfEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.25}
+        maxZoom={2.5}
+        nodesDraggable
+        nodesConnectable={false}
+        elementsSelectable={false}
+        proOptions={{ hideAttribution: true }}
+        onPaneClick={handleClosePanel}
+      >
+        {/* Dot grid background */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={22}
+          size={1.2}
+          className="opacity-40 dark:opacity-20"
+        />
+
+        {/* Controls (zoom in/out/fit) */}
+        <Controls
+          showInteractive={false}
+          className="!shadow-none !border !border-slate-200 dark:!border-slate-700 !rounded-xl overflow-hidden"
+        />
+
+        {/* Mini-map */}
+        <MiniMap
+          nodeColor={(n) => chunkHealth((n.data as NodeData).chunk_count ?? 0).minimap}
+          maskColor="rgba(0,0,0,0.06)"
+          pannable
+          zoomable
+          className="!rounded-xl !border !border-slate-200 dark:!border-slate-700 !shadow-none"
+        />
+
+        {/* ── Legend panel (top-left) ── */}
+        <Panel position="top-left">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm select-none">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-600 flex-shrink-0" />
+                <span className="text-[11px] text-slate-600 dark:text-slate-400">AI-generated</span>
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        {/* ── Stats panel (top-right, shifts left when panel open) ── */}
+        <Panel
+          position="top-right"
+          className={cn("transition-all duration-200", panelNode && "mr-[320px]")}
+        >
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 shadow-sm select-none">
+            <div className="flex items-center gap-3 text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {rawNodes.length}
+                </span>{" "}
+                nodes
+              </span>
+              <span className="w-px h-3 bg-slate-200 dark:bg-slate-700" />
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {totalChunks}
+                </span>{" "}
+                chunks
+              </span>
+              <span className="w-px h-3 bg-slate-200 dark:bg-slate-700" />
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {indexedCount}
+                </span>
+                /{rawNodes.length} indexed
+              </span>
+            </div>
+          </div>
+        </Panel>
+      </ReactFlow>
+
+      {/* ── Chunk inspector panel ── */}
+      <ChunkPanel
+        node={panelNode}
+        courseId={courseId}
+        onClose={handleClosePanel}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public export — wraps inner component with ReactFlowProvider
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function KnowledgeGraph({ nodes, courseId, onNodeClick }: Props) {
+  if (nodes.length === 0) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl">
+        <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4 shadow-sm">
+          <BookOpen className="w-6 h-6 text-slate-400 dark:text-slate-500" />
+        </div>
+        <p className="text-[13px] font-medium text-slate-600 dark:text-slate-400">
+          No knowledge nodes yet
+        </p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 text-center px-8">
+          Create nodes and index documents to build the graph
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ReactFlowProvider>
+      <KnowledgeGraphInner
+        nodes={nodes}
+        courseId={courseId}
+        onNodeClick={onNodeClick}
+      />
+    </ReactFlowProvider>
+  );
+}
+
+export default KnowledgeGraph;

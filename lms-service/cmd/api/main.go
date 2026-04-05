@@ -423,6 +423,8 @@ func main() {
 					aiHandler.GetReviewStats)
 
 				aiCourses.GET("/knowledge-graph", aiHandler.GetCourseKnowledgeGraph)
+
+				aiCourses.GET("/nodes/:nodeId/chunks", aiHandler.GetNodeChunks)
 			}
 
 			// Quiz draft review (outside course context)

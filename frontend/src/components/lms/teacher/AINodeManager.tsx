@@ -271,6 +271,7 @@ export function AINodeManager({ courseId, nodes, onNodesChange }: Props) {
             <div className="h-96 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800">
               <KnowledgeGraph
                 nodes={nodes}
+                courseId={courseId}
                 onNodeClick={(node) => {
                   console.log("Node clicked:", node);
                 }}

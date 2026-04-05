@@ -674,3 +674,14 @@ func (h *AIHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 
 	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
 }
+
+func (h *AIHandler) GetNodeChunks(c *gin.Context) {
+    nodeID, _ := strconv.ParseInt(c.Param("nodeId"), 10, 64)
+    limit := 50
+    chunks, err := h.aiClient.GetNodeChunks(c.Request.Context(), nodeID, limit)
+    if err != nil {
+        c.JSON(500, dto.NewErrorResponse("ai_error", err.Error()))
+        return
+    }
+    c.JSON(200, dto.NewDataResponse(chunks))
+}

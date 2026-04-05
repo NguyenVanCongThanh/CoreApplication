@@ -91,6 +91,18 @@ export interface KnowledgeNode {
   level: number;
   order_index: number;
   chunk_count: number;
+  auto_generated?: boolean;
+}
+
+export interface ChunkItem {
+  id: number;
+  chunk_text: string;
+  chunk_index: number;
+  source_type: string;
+  page_number?: number;
+  start_time_sec?: number;
+  end_time_sec?: number;
+  language: string;
 }
 
 class AIService {
@@ -198,6 +210,11 @@ class AIService {
   async getReviewStats(courseId: number): Promise<ReviewStats> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/reviews/stats`);
     return res.data?.data ?? res.data ?? { due_today: 0, upcoming: 0, total_tracked: 0 };
+  }
+
+  async getNodeChunks(courseId: number, nodeId: number): Promise<ChunkItem[]> {
+      const res = await lmsApiClient.get(`/courses/${courseId}/ai/nodes/${nodeId}/chunks`)
+      return res.data?.data ?? []
   }
 }
 

@@ -272,6 +272,20 @@ async def delete_knowledge_node(node_id: int, request: Request):
 
     return {"ok": True, "deleted_node_id": node_id}
 
+@router.get("/{content_id}/chunks")
+async def get_node_chunks(node_id: int, request: Request, limit: int = 50):
+    _verify(request)
+    async with get_ai_conn() as conn:
+        rows = await conn.fetch(
+            """SELECT id, chunk_text, chunk_index, source_type,
+                      page_number, start_time_sec, end_time_sec, language
+               FROM document_chunks
+               WHERE node_id = $1 AND status = 'ready'
+               ORDER BY chunk_index LIMIT $2""",
+            node_id, limit,
+        )
+    return [dict(r) for r in rows]
+
 
 def _verify(request: Request):
     if request.headers.get("X-AI-Secret", "") != settings.ai_service_secret:
