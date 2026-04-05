@@ -35,7 +35,7 @@ app = FastAPI(
         "and Phase 2 (Smart Quiz & Spaced Repetition). "
         "Internal microservice — not exposed to public internet."
     ),
-    version="2.0.0",
+    version="2.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     default_response_class=ORJSONResponse,
@@ -51,15 +51,26 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    logger.info("Starting AI Service...")
+    logger.info("Starting AI Service v2.1.0 ...")
 
-    # Initialise both DB pools concurrently for a faster startup
-    await asyncio.gather(
-        init_lms_pool(),
-        init_ai_pool(),
-    )
+    # 1. Database connection pools
+    await asyncio.gather(init_lms_pool(), init_ai_pool())
     logger.info("LMS pool and AI pool ready.")
 
+    # 2. Qdrant collections (idempotent — safe to call on every restart)
+    if settings.use_qdrant:
+        try:
+            from app.services.qdrant_service import qdrant_service
+            await qdrant_service.init_collections()
+            logger.info("Qdrant collections initialised.")
+        except Exception as exc:
+            # Non-fatal: service can still start; Qdrant may be warming up.
+            # Writes will fail until Qdrant is healthy, but reads from PG fallback work.
+            logger.error("Qdrant init failed (non-fatal): %s", exc)
+    else:
+        logger.info("USE_QDRANT=false — using pgvector backend.")
+
+    # 3. ML model warm-up (background thread, non-blocking)
     loop = asyncio.get_event_loop()
 
     def _init_models():
@@ -77,10 +88,13 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    await asyncio.gather(
-        close_lms_pool(),
-        close_ai_pool(),
-    )
+    if settings.use_qdrant:
+        try:
+            from app.services.qdrant_service import qdrant_service
+            await qdrant_service.close()
+        except Exception:
+            pass
+    await asyncio.gather(close_lms_pool(), close_ai_pool())
     logger.info("AI Service shut down.")
 
 
@@ -88,7 +102,16 @@ async def shutdown():
 
 @app.get("/health", tags=["System"])
 async def health():
-    return {"status": "healthy", "service": "ai-service", "version": "2.0.0"}
+    status: dict = {
+        "status":  "healthy",
+        "service": "ai-service",
+        "version": "2.1.0",
+        "backend": "qdrant" if settings.use_qdrant else "pgvector",
+    }
+    if settings.use_qdrant:
+        from app.services.qdrant_service import qdrant_service
+        status["qdrant"] = await qdrant_service.health()
+    return status
 
 
 # ── Routers ────────────────────────────────────────────────────────────────────

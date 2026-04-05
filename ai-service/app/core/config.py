@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # ── LMS PostgreSQL (read-only access to LMS entities) ────────────────────
-    # Used for: quiz_questions, section_content, quiz_attempts, users, courses
     db_host: str = "postgres-lms"
     db_port: int = 5432
     db_user: str = "lms_user"
@@ -17,16 +16,30 @@ class Settings(BaseSettings):
     db_min_connections: int = 2
     db_max_connections: int = 10
 
-    # ── AI PostgreSQL (read-write for all AI-domain data) ────────────────────
-    # Used for: knowledge_nodes, document_chunks, ai_diagnoses, flashcards, …
-    # Isolated instance — no shared state with LMS.
+    # ── AI PostgreSQL (operational AI data) ───────────────────────────────────
+    # Stores: ai_diagnoses, flashcards, spaced_repetitions, ai_quiz_generations,
+    #         student_knowledge_progress, embedding_reindex_jobs, document_chunks
+    #         (metadata only — vectors live in Qdrant when USE_QDRANT=true)
     ai_db_host: str = "postgres-ai"
     ai_db_port: int = 5432
     ai_db_user: str = "ai_user"
     ai_db_password: str = "ai_password"
     ai_db_name: str = "ai_db"
     ai_db_min_connections: int = 2
-    ai_db_max_connections: int = 15  # AI service is write-heavy
+    ai_db_max_connections: int = 15
+
+    # ── Qdrant Vector Store ────────────────────────────────────────────────────
+    # Collections: document_chunks (1024d) + knowledge_nodes (1024d)
+    # Replaces pgvector for all semantic search when use_qdrant=true.
+    qdrant_host: str = "qdrant"
+    qdrant_port: int = 6333          # HTTP/REST port
+    qdrant_grpc_port: int = 6334     # gRPC port (prefer for batch ops)
+    qdrant_prefer_grpc: bool = True  # gRPC is significantly faster for batches
+    qdrant_api_key: str = ""         # Set for Qdrant Cloud / auth-enabled deployments
+
+    # Feature flag: enables Qdrant backend.
+    # Set to false to keep legacy pgvector behaviour for safe rollback.
+    use_qdrant: bool = True
 
     # Redis
     redis_host: str = "redis-lms"
@@ -79,7 +92,6 @@ class Settings(BaseSettings):
 
     @property
     def lms_database_url(self) -> str:
-        """asyncpg DSN for LMS PostgreSQL (entity reads)."""
         return (
             f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
@@ -87,7 +99,6 @@ class Settings(BaseSettings):
 
     @property
     def ai_database_url(self) -> str:
-        """asyncpg DSN for AI PostgreSQL (all AI data)."""
         return (
             f"postgresql+asyncpg://{self.ai_db_user}:{self.ai_db_password}"
             f"@{self.ai_db_host}:{self.ai_db_port}/{self.ai_db_name}"
@@ -102,7 +113,6 @@ class Settings(BaseSettings):
             )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
-    # Legacy alias — kept for any code that reads settings.database_url
     @property
     def database_url(self) -> str:
         return self.lms_database_url
