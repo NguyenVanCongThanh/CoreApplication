@@ -227,7 +227,8 @@ class DiagnosisService:
                     COALESCE(skp.mastery_level, 0)   AS mastery_level,
                     COALESCE(skp.total_attempts, 0)  AS total_attempts,
                     COALESCE(skp.wrong_count, 0)     AS wrong_count,
-                    skp.last_tested_at
+                    skp.last_tested_at,
+                    (SELECT COUNT(*) FROM flashcards f WHERE f.node_id = kn.id AND f.student_id = $1) AS flashcard_count
                 FROM knowledge_nodes kn
                 LEFT JOIN student_knowledge_progress skp
                     ON skp.node_id = kn.id AND skp.student_id = $1

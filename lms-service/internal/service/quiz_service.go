@@ -13,6 +13,7 @@ import (
 	"example/hello/internal/dto"
 	"example/hello/internal/models"
 	"example/hello/internal/repository"
+	"example/hello/pkg/ai"
 	"example/hello/pkg/logger"
 )
 
@@ -21,6 +22,7 @@ type QuizService struct {
 	courseRepo     *repository.CourseRepository
 	userRepo       *repository.UserRepository
 	progressRepo   *repository.ProgressRepository
+	aiClient       *ai.Client
 }
 
 func NewQuizService(
@@ -28,12 +30,14 @@ func NewQuizService(
 	courseRepo *repository.CourseRepository,
 	userRepo *repository.UserRepository,
 	progressRepo *repository.ProgressRepository,
+	aiClient *ai.Client,
 ) *QuizService {
 	return &QuizService{
 		quizRepo:     quizRepo,
 		courseRepo:   courseRepo,
 		userRepo:     userRepo,
 		progressRepo: progressRepo,
+		aiClient:     aiClient,
 	}
 }
 
@@ -796,6 +800,34 @@ func (s *QuizService) SubmitQuiz(ctx context.Context, attemptID, studentID int64
 				if s.canAutoGrade(question.QuestionType) {
 					if err := s.autoGradeAnswer(gCtx, &ans, question); err != nil {
 						logger.Error(fmt.Sprintf("Auto-grade failed for question %d", ans.QuestionID), err)
+					} else {
+						// Send result to AI service for mastery/spaced repetition tracking
+						if question.NodeID.Valid {
+							quality := 0
+							if ans.IsCorrect.Valid && ans.IsCorrect.Bool {
+								quality = 4 // Correct gets quality 4 (good) for SM-2
+							} else {
+								quality = 1 // Wrong gets quality 1
+							}
+							
+							courseID, _ := s.quizRepo.GetQuizCourseID(gCtx, quiz.ID)
+							
+							nodeID := int64(question.NodeID.Int64)
+							req := ai.RecordReviewRequest{
+								StudentID:  studentID,
+								QuestionID: question.ID,
+								CourseID:   courseID,
+								NodeID:     &nodeID,
+								Quality:    quality,
+							}
+							
+							// Best-effort send to AI Service in the background so it doesn't block
+							go func() {
+								bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+								defer cancel()
+								_, _ = s.aiClient.RecordReviewResponse(bgCtx, req)
+							}()
+						}
 					}
 				}
 				return nil

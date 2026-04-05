@@ -237,6 +237,23 @@ class SpacedRepetitionService:
                 new_ef, new_interval, new_reps, quality, next_date,
             )
 
+            # Update student_knowledge_progress
+            is_correct = 1 if quality >= 3 else 0
+            is_wrong = 1 if quality < 3 else 0
+            await conn.execute(
+                """INSERT INTO student_knowledge_progress
+                       (student_id, node_id, course_id, total_attempts, correct_count, wrong_count, mastery_level, last_tested_at)
+                   VALUES ($1, $2, $3, 1, $4, $5, $6, NOW())
+                   ON CONFLICT (student_id, node_id) DO UPDATE SET
+                       total_attempts = student_knowledge_progress.total_attempts + 1,
+                       correct_count = student_knowledge_progress.correct_count + $4,
+                       wrong_count = student_knowledge_progress.wrong_count + $5,
+                       mastery_level = (student_knowledge_progress.correct_count + $4)::FLOAT / (student_knowledge_progress.total_attempts + 1),
+                       last_tested_at = NOW(),
+                       updated_at = NOW()""",
+                student_id, node_id, course_id, is_correct, is_wrong, float(is_correct),
+            )
+
         return {
             "next_review_date": next_date.isoformat(),
             "interval_days":    new_interval,

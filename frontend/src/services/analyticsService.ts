@@ -82,6 +82,7 @@ export interface WeakNode {
   mastery_level: number;
   status_level: "Rất tốt" | "TB" | "Yếu" | "Cần cải thiện";
   wrong_count: number;
+  flashcard_count: number;
 }
 
 export interface WeaknessOverviewResponse {

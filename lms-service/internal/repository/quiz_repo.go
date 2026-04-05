@@ -1244,6 +1244,22 @@ func (r *QuizRepository) GetQuizCourseOwner(ctx context.Context, quizID int64) (
 	return ownerID, err
 }
 
+// GetQuizCourseID retrieves the course ID containing the quiz
+func (r *QuizRepository) GetQuizCourseID(ctx context.Context, quizID int64) (int64, error) {
+	var courseID int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT cs.course_id
+		FROM quizzes q
+		JOIN section_content sc ON sc.id = q.content_id
+		JOIN course_sections cs ON cs.id = sc.section_id
+		WHERE q.id = $1
+	`, quizID).Scan(&courseID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return courseID, err
+}
+
 // GetQuestionsByIDs retrieves a batch of questions by their IDs
 func (r *QuizRepository) GetQuestionsByIDs(ctx context.Context, ids []int64) ([]models.QuizQuestion, error) {
 	if len(ids) == 0 {

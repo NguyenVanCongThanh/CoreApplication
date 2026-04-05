@@ -244,8 +244,13 @@ type GenerateFlashcardsRequest struct {
 }
 
 type AIFlashcard struct {
-	FrontText string `json:"front_text"`
-	BackText  string `json:"back_text"`
+	ID        int64     `json:"id"`
+	CourseID  int64     `json:"course_id"`
+	NodeID    int64     `json:"node_id"`
+	FrontText string    `json:"front_text"`
+	BackText  string    `json:"back_text"`
+	Status    string    `json:"status"`
+	CreatedAt string    `json:"created_at"`
 }
 
 type GenerateFlashcardsResponse struct {
@@ -258,6 +263,38 @@ func (c *Client) GenerateFlashcards(ctx context.Context, req GenerateFlashcardsR
 		return nil, fmt.Errorf("ai.GenerateFlashcards: %w", err)
 	}
 	return &resp, nil
+}
+
+func (c *Client) GetDueFlashcards(ctx context.Context, studentID, courseID int64) ([]map[string]interface{}, error) {
+	var resp []map[string]interface{}
+	path := fmt.Sprintf("/ai/flashcards/due/student/%d/course/%d", studentID, courseID)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetDueFlashcards: %w", err)
+	}
+	return resp, nil
+}
+
+func (c *Client) GetNodeFlashcards(ctx context.Context, nodeID, courseID, studentID int64) ([]map[string]interface{}, error) {
+	var resp []map[string]interface{}
+	path := fmt.Sprintf("/ai/flashcards/node/%d/course/%d/student/%d", nodeID, courseID, studentID)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetNodeFlashcards: %w", err)
+	}
+	return resp, nil
+}
+
+type ReviewFlashcardRequest struct {
+	StudentID   int64 `json:"student_id"`
+	FlashcardID int64 `json:"flashcard_id"`
+	Quality     int   `json:"quality"`
+}
+
+func (c *Client) ReviewFlashcard(ctx context.Context, req ReviewFlashcardRequest) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.post(ctx, "/ai/flashcards/review", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.ReviewFlashcard: %w", err)
+	}
+	return resp, nil
 }
 
 // ── Knowledge Nodes ────────────────────────────────────────────────────────────
@@ -318,7 +355,18 @@ type AutoIndexStatus struct {
 	ChunksCreated int   `json:"chunks_created"`
 	Error        string `json:"error,omitempty"`
 }
- 
+
+type WeaknessNode struct {
+	NodeID       int64   `json:"node_id"`
+	NodeName     string  `json:"node_name"`
+	NameVI       string  `json:"name_vi"`
+	WrongCount   int     `json:"wrong_count"`
+	TotalAttempt int     `json:"total_attempts"`
+	MasteryLevel float64 `json:"mastery_level"`
+	StatusLevel    string  `json:"status_level"`
+	FlashcardCount int     `json:"flashcard_count"`
+}
+
 // AutoIndex triggers the auto-index pipeline for file content.
 func (c *Client) AutoIndex(ctx context.Context, req AutoIndexRequest) (*AutoIndexResponse, error) {
 	var resp AutoIndexResponse
@@ -394,6 +442,95 @@ func (c *Client) GetKnowledgeGraph(ctx context.Context, courseID int64) (*Knowle
 func (c *Client) DeleteKnowledgeNode(ctx context.Context, nodeID int64) error {
 	var resp map[string]interface{}
 	return c.post(ctx, fmt.Sprintf("/ai/knowledge-graph/node/%d", nodeID), nil, &resp)
+}
+
+// GetStudentWeaknesses calls the AI service heatmap endpoint and transforms
+// the response into weakness nodes with status labels.
+// AI service owns student_knowledge_progress — LMS never queries it directly.
+func (c *Client) GetStudentWeaknesses(ctx context.Context, studentID, courseID int64) ([]WeaknessNode, error) {
+	raw, err := c.GetStudentHeatmap(ctx, studentID, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("ai.GetStudentWeaknesses: %w", err)
+	}
+ 
+	nodes := make([]WeaknessNode, 0, len(raw))
+	for _, r := range raw {
+		mastery := GetFloatField(r, "mastery_level")
+		wrongCount := GetIntField(r, "wrong_count")
+		totalAttempt := GetIntField(r, "total_attempts")
+		nodeID := GetInt64Field(r, "node_id")
+		flashcardCount := GetIntField(r, "flashcard_count")
+		fmt.Println("flashcardCount", flashcardCount)
+
+		// Map mastery_level to Vietnamese status label
+		statusLevel := "Rất tốt"
+		switch {
+		case mastery < 0.4:
+			statusLevel = "Cần cải thiện"
+		case mastery < 0.6:
+			statusLevel = "Yếu"
+		case mastery < 0.8:
+			statusLevel = "TB"
+		}
+ 
+		nodes = append(nodes, WeaknessNode{
+			NodeID:         nodeID,
+			NodeName:       GetStringField(r, "node_name"),
+			NameVI:         GetStringField(r, "name_vi"),
+			WrongCount:     wrongCount,
+			TotalAttempt:   totalAttempt,
+			MasteryLevel:   mastery,
+			StatusLevel:    statusLevel,
+			FlashcardCount: flashcardCount,
+		})
+	}
+	return nodes, nil
+}
+ 
+// GetIntField safely extracts an int from map[string]interface{}
+func GetIntField(m map[string]interface{}, key string) int {
+	if v, ok := m[key]; ok {
+		switch tv := v.(type) {
+		case float64:
+			return int(tv)
+		case int:
+			return tv
+		case int64:
+			return int(tv)
+		}
+	}
+	return 0
+}
+
+// GetInt64Field safely extracts an int64 from map[string]interface{}
+func GetInt64Field(m map[string]interface{}, key string) int64 {
+	if v, ok := m[key]; ok {
+		switch tv := v.(type) {
+		case float64:
+			return int64(tv)
+		case int:
+			return int64(tv)
+		case int64:
+			return tv
+		}
+	}
+	return 0
+}
+
+// GetFloatField safely extracts a float64 from map[string]interface{}
+func GetFloatField(m map[string]interface{}, key string) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return 0
+}
+
+// GetStringField safely extracts a string from a map[string]interface{}
+func GetStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────

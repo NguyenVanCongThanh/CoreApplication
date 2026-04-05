@@ -108,12 +108,12 @@ func main() {
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
 	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo)
-	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo)
+	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo, aiClient)
 	userSyncService := service.NewUserSyncService(userRepo)
 	forumService := service.NewForumService(forumRepo, courseRepo)
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
 	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
-	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo)
+	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo, aiClient)
 	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient)
 
 	// Initialize handlers
@@ -125,7 +125,7 @@ func main() {
 	quizHandler := handler.NewQuizHandler(quizService, storageProvider)
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
-	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
 	aiHandler := handler.NewAIHandler(aiClient, courseRepo)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
 

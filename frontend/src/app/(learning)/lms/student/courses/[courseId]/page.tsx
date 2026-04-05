@@ -30,7 +30,6 @@ import { Badge, ContentTypeBadge, PageLoader, GhostBtn, ProgressBar } from "@/co
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
 import { WeaknessTracker } from "@/components/lms/student/WeaknessTracker";
-import { FlashcardWidget } from "@/components/lms/student/FlashcardWidget";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 
@@ -739,9 +738,6 @@ export default function StudentCourseDetailPage() {
               </section>              
               {/* Weakness Tracker */}
               <WeaknessTracker courseId={id} />
-              
-              {/* Spaced Repetition (Flashcard) */}
-              <FlashcardWidget courseId={id} />
             </div>
           )}
 
