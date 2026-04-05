@@ -6,7 +6,7 @@ import {
   CheckCircle2, XCircle, BookOpen, AlertCircle,
   Layers, Zap, Clock
 } from "lucide-react";
-import aiService, { GeneratedQuestion, KnowledgeNode } from "@/services/aiService";
+import aiService, { GeneratedQuestion, KnowledgeNode, KnowledgeGraphEdge } from "@/services/aiService";
 import { AINodeManager } from "@/components/lms/teacher/AINodeManager";
 import { QuizSelectorModal } from "@/components/lms/teacher/QuizSelectorModal";
 import { cn } from "@/lib/utils";
@@ -163,6 +163,7 @@ function DraftCard({
 
 export function AIQuizGenPanel({ courseId }: Props) {
   const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<KnowledgeGraphEdge[]>([]);
   const [drafts, setDrafts] = useState<GeneratedQuestion[]>([]);
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
   const [selectedBlooms, setSelectedBlooms] = useState<string[]>(["remember", "understand", "apply"]);
@@ -183,6 +184,15 @@ export function AIQuizGenPanel({ courseId }: Props) {
       setNodes(data);
     } catch {
       // nodes might not be configured yet
+    }
+  }, [courseId]);
+
+  const loadGraph = useCallback(async () => {
+    try {
+      const graph = await aiService.getKnowledgeGraph(courseId);
+      setGraphEdges(graph.edges ?? []);
+    } catch {
+      // graph endpoint may not be available
     }
   }, [courseId]);
 
@@ -209,8 +219,9 @@ export function AIQuizGenPanel({ courseId }: Props) {
 
   useEffect(() => {
     loadNodes();
+    loadGraph();
     loadDrafts();
-  }, [loadNodes, loadDrafts]);
+  }, [loadNodes, loadGraph, loadDrafts]);
 
   const handleGenerateQuiz = async () => {
     if (!selectedNode) { alert("Vui lòng chọn chủ đề (Knowledge Node)."); return; }
@@ -464,8 +475,8 @@ export function AIQuizGenPanel({ courseId }: Props) {
         <AINodeManager
           courseId={courseId}
           nodes={nodes}
-          relations={[]}
-          onNodesChange={loadNodes}
+          graphEdges={graphEdges}
+          onNodesChange={() => { loadNodes(); loadGraph(); }}
         />
       )}
 

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Plus, ChevronDown, ChevronRight, BookOpen, AlertCircle, Network } from "lucide-react";
-import aiService, { KnowledgeNode } from "@/services/aiService";
+import aiService, { KnowledgeNode, KnowledgeGraphEdge } from "@/services/aiService";
 import { cn } from "@/lib/utils";
 import lmsService from "@/services/lmsService";
 import { ContentPickerModal } from "./ContentPickerModal";
@@ -11,11 +11,11 @@ import KnowledgeGraph from "./KnowledgeGraph";
 interface Props {
   courseId: number;
   nodes: KnowledgeNode[];
-  relations: any[];
+  graphEdges: KnowledgeGraphEdge[];
   onNodesChange: () => void;
 }
 
-export function AINodeManager({ courseId, nodes, relations = [], onNodesChange }: Props) {
+export function AINodeManager({ courseId, nodes, graphEdges = [], onNodesChange }: Props) {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", name_vi: "", description: "", parent_id: "" });
   const [saving, setSaving] = useState(false);
@@ -31,28 +31,41 @@ export function AINodeManager({ courseId, nodes, relations = [], onNodesChange }
       chunk_count: n.chunk_count,
     }));
 
-    const links: any[] = [];
+    // Build a set of node IDs for validation
+    const nodeIdSet = new Set(graphNodes.map(n => n.id));
 
+    // Map edges from the knowledge graph API (already typed + directional)
+    const links = graphEdges
+      .filter(e => nodeIdSet.has(Number(e.source)) && nodeIdSet.has(Number(e.target)))
+      .map(e => ({
+        source: Number(e.source),
+        target: Number(e.target),
+        type: e.relation_type as string,
+        strength: e.strength,
+        auto_generated: e.auto_generated,
+      }));
+
+    // Add parent-child links from node.parent_id (if any)
     nodes.forEach(n => {
-      if (n.parent_id) {
-        links.push({
-          source: Number(n.parent_id),
-          target: Number(n.id),
-          type: 'parent_child'
-        });
+      if (n.parent_id && nodeIdSet.has(Number(n.parent_id))) {
+        // Avoid duplicate if edge already exists from API
+        const exists = links.some(
+          l => l.source === Number(n.parent_id) && l.target === Number(n.id) && l.type === 'parent_child'
+        );
+        if (!exists) {
+          links.push({
+            source: Number(n.parent_id),
+            target: Number(n.id),
+            type: 'parent_child',
+            strength: 1.0,
+            auto_generated: false,
+          });
+        }
       }
     });
 
-    relations.forEach(r => {
-      links.push({
-        source: Number(r.source_node_id),
-        target: Number(r.target_node_id),
-        type: r.relation_type
-      });
-    });
-
-    return { nodes: graphNodes, links: links };
-  }, [nodes, relations]);
+    return { nodes: graphNodes, links };
+  }, [nodes, graphEdges]);
 
   const handleCreate = async () => {
     if (!form.name.trim()) { setError("Tên node không được để trống"); return; }

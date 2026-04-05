@@ -58,7 +58,7 @@ class ExtractedNode:
 class ExtractedRelation:
     source_index: int
     target_index: int
-    relation_type: str   # 'prerequisite' | 'related'
+    relation_type: str   # 'prerequisite' | 'related' | 'extends'
     reason: str
     strength: float = 0.85
 
@@ -73,6 +73,7 @@ Nguyên tắc:
 - Không quá chung (ví dụ: "Lập trình") mà cũng không quá chi tiết (ví dụ: "Cú pháp dòng 5").
 - Description phải đủ để viết được 3-5 câu hỏi trắc nghiệm.
 - Quan hệ prerequisite chỉ khi thực sự CẦN THIẾT để học node kia.
+- Quan hệ extends khi node B mở rộng/đào sâu kiến thức của node A (ví dụ: Sắp xếp nâng cao extends Sắp xếp cơ bản).
 CHỈ trả về JSON hợp lệ, không thêm bất kỳ text nào khác ngoài JSON.\
 """
 
@@ -123,6 +124,13 @@ def build_node_extraction_prompt(
       "relation_type": "prerequisite",
       "reason": "Lý do ngắn gọn tại sao cần học node 0 trước node 2",
       "strength": 0.9
+    },
+    {
+      "source_index": 1,
+      "target_index": 3,
+      "relation_type": "extends",
+      "reason": "Node 3 mở rộng/đào sâu kiến thức từ node 1",
+      "strength": 0.8
     }
   ]
 }"""
@@ -132,7 +140,7 @@ Loại tài liệu: {file_hint}
 {title_context}{heading_context}
 NHIỆM VỤ:
 1. Xác định ĐÚNG {max_nodes} chủ đề kiến thức quan trọng nhất từ tài liệu.
-2. Xác định các quan hệ prerequisite giữa chúng (chỉ tạo nếu thực sự cần thiết).
+2. Xác định các quan hệ prerequisite (cần học trước) và extends (mở rộng/đào sâu) giữa chúng.
 {lang_hint}.
 
 NỘI DUNG TÀI LIỆU:

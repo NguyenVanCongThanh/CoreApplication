@@ -94,6 +94,37 @@ export interface KnowledgeNode {
   auto_generated?: boolean;
 }
 
+// ─── Knowledge Graph (Full Graph with Edges) ─────────────────────────────────
+
+export type RelationType = "prerequisite" | "related" | "extends" | "parent_child";
+
+export interface KnowledgeGraphNode {
+  id: number;
+  name: string;
+  name_vi?: string;
+  name_en?: string;
+  description?: string;
+  source_content_id?: number;
+  source_content_title?: string;
+  auto_generated: boolean;
+  chunk_count: number;
+  level: number;
+}
+
+export interface KnowledgeGraphEdge {
+  source: number;
+  target: number;
+  relation_type: RelationType;
+  strength: number;
+  auto_generated: boolean;
+}
+
+export interface KnowledgeGraphResponse {
+  course_id: number;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
 export interface ChunkItem {
   id: number;
   chunk_text: string;
@@ -215,6 +246,13 @@ class AIService {
   async getNodeChunks(courseId: number, nodeId: number): Promise<ChunkItem[]> {
       const res = await lmsApiClient.get(`/courses/${courseId}/ai/nodes/${nodeId}/chunks`)
       return res.data?.data ?? []
+  }
+
+  // ─── Knowledge Graph ───────────────────────────────────────────────────────
+
+  async getKnowledgeGraph(courseId: number): Promise<KnowledgeGraphResponse> {
+    const res = await lmsApiClient.get(`/courses/${courseId}/ai/knowledge-graph`);
+    return res.data?.data ?? { course_id: courseId, nodes: [], edges: [] };
   }
 }
 
