@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from app.core.config import get_settings
-from app.core.database import get_async_conn
+from app.core.database import get_ai_conn, get_lms_conn
 from app.core.llm import chat_complete_json, create_embeddings_batch
 from app.services.chunker import (
     PDFChunker,
@@ -855,7 +855,7 @@ class AutoIndexService:
 
         Returns idx_to_existing: maps original node list index → existing DB node ID.
         """
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             existing_rows = await conn.fetch(
                 """
                 SELECT id, name, description, description_embedding
@@ -949,7 +949,7 @@ class AutoIndexService:
         """Append new description info to an existing node."""
         if not new_description:
             return
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             row = await conn.fetchrow(
                 "SELECT description FROM knowledge_nodes WHERE id=$1", node_id
             )
@@ -1015,7 +1015,7 @@ class AutoIndexService:
             return []
 
         node_ids: list[int] = []
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             async with conn.transaction():
                 for node, embedding in zip(nodes, embeddings):
                     emb_str = "[" + ",".join(str(v) for v in embedding) + "]"
@@ -1052,7 +1052,7 @@ class AutoIndexService:
     ) -> None:
         if not relations:
             return
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             async with conn.transaction():
                 for rel in relations:
                     if rel.source_index >= len(node_ids) or rel.target_index >= len(node_ids):
@@ -1129,7 +1129,7 @@ class AutoIndexService:
     ) -> int:
         from app.services.rag_service import _sanitize
         stored = 0
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             async with conn.transaction():
                 for chunk, embedding, node_id in zip(chunks, embeddings, assigned_node_ids):
                     chunk_text = _sanitize(chunk.text)
@@ -1173,7 +1173,7 @@ class AutoIndexService:
         if not new_node_ids:
             return
 
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             existing_rows = await conn.fetch(
                 """
                 SELECT id, description_embedding
@@ -1232,7 +1232,7 @@ class AutoIndexService:
         if not edges:
             return
 
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             async with conn.transaction():
                 for src, tgt, strength in edges:
                     await conn.execute(
@@ -1272,7 +1272,7 @@ class AutoIndexService:
         ]
         if not edges:
             return
-        async with get_async_conn() as conn:
+        async with get_ai_conn() as conn:
             async with conn.transaction():
                 for src, tgt, strength in edges:
                     await conn.execute(
@@ -1294,7 +1294,7 @@ class AutoIndexService:
         status: str,
         error_msg: Optional[str] = None,
     ) -> None:
-        async with get_async_conn() as conn:
+        async with get_lms_conn() as conn:
             await conn.execute(
                 "UPDATE section_content SET ai_index_status=$1 WHERE id=$2",
                 status, content_id,

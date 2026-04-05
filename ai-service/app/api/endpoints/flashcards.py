@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
-from app.core.database import get_async_conn
+from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_flashcard_generation_prompt
 from app.services.rag_service import rag_service
 
@@ -41,7 +41,7 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     # 1. Load node info
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         node = await conn.fetchrow(
             "SELECT id, name, name_vi, name_en FROM knowledge_nodes WHERE id = $1",
             body.node_id,
@@ -53,7 +53,7 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
 
     # 2. Get student's recent mistakes for this node to focus the flashcards
     wrong_answers_context = ""
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         mistakes = await conn.fetch(
             """
             SELECT explanation AS gap

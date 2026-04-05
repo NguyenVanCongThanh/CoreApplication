@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.database import get_async_conn
+from app.core.database import get_ai_conn
 from app.services.diagnosis_service import diagnosis_service
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ nodes_router = APIRouter(prefix="/knowledge-nodes", tags=["Knowledge Nodes"])
 @nodes_router.post("")
 async def create_node(body: KnowledgeNodeCreate, request: Request):
     _verify_internal(request)
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         # Calculate level from parent
         level = 0
         if body.parent_id:
@@ -144,7 +144,7 @@ async def list_nodes(course_id: int, request: Request):
     Frontend can build a visual tree from parent_id.
     """
     _verify_internal(request)
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         rows = await conn.fetch(
             """SELECT kn.*,
                       COUNT(DISTINCT dc.id) AS chunk_count
@@ -169,7 +169,7 @@ async def update_node(node_id: int, body: dict, request: Request):
     fields = ", ".join(f"{k}=${i+2}" for i, k in enumerate(updates))
     values = list(updates.values())
 
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         await conn.execute(
             f"UPDATE knowledge_nodes SET {fields}, updated_at=NOW() WHERE id=$1",
             node_id, *values,

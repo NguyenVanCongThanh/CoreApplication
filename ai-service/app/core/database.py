@@ -75,9 +75,9 @@ async def get_ai_conn() -> AsyncIterator[asyncpg.Connection]:
         yield conn
 
 
-# Backward-compat alias — existing callers of get_async_conn() that still
-# operate on LMS tables (e.g. section_content status writes) keep working.
-get_async_conn = get_lms_conn
+# DEPRECATED: use get_lms_conn() or get_ai_conn() explicitly
+# get_async_conn is intentionally removed to force explicit DB choice
+# get_async_conn = get_lms_conn
 
 
 # ── Sync connections (Celery workers) ─────────────────────────────────────────
