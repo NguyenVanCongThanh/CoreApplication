@@ -365,6 +365,16 @@ class AutoIndexService:
             _progress("build_graph", 90)
             await self._build_graph_edges(all_node_ids, all_node_embeddings, course_id)
 
+            if settings.neo4j_enabled:
+                await self._sync_to_neo4j(
+                    node_ids=all_node_ids,
+                    nodes=nodes,
+                    node_embeddings=all_node_embeddings,
+                    course_id=course_id,
+                    content_id=content_id,
+                    llm_relations=relations,
+                )
+
             await self._update_content_status(content_id, "indexed")
             _progress("done", 100)
 
@@ -1133,6 +1143,124 @@ class AutoIndexService:
             await self._build_graph_edges_pgvector(
                 new_node_ids, new_node_embeddings, course_id
             )
+
+    async def _sync_to_neo4j(
+    self,
+    node_ids: list[int],
+    nodes: list,                       # list[ExtractedNode]
+    node_embeddings: list[list[float]],
+    course_id: int,
+    content_id: int,
+    llm_relations: list,               # list[ExtractedRelation]
+) -> None:
+    """
+    Sync newly created nodes + edges to Neo4j.
+    Then trigger cross-course smart linking.
+    """
+    from app.services.neo4j_service import neo4j_service, RELATIONSHIP_TYPES
+    from app.services.graph_linker import (
+        NodeInfo, link_intra_course, link_cross_course
+    )
+
+    # 1. Upsert nodes to Neo4j
+    neo4j_nodes = [
+        {
+            "id":               node_id,
+            "course_id":        course_id,
+            "name":             node.name,
+            "name_vi":          node.name_vi or "",
+            "name_en":          node.name_en or "",
+            "description":      node.description or "",
+            "auto_generated":   True,
+            "source_content_id": content_id,
+        }
+        for node_id, node in zip(node_ids, nodes)
+    ]
+    await neo4j_service.upsert_nodes_batch(neo4j_nodes)
+
+    # 2. Build NodeInfo list for linker
+    new_node_infos = [
+        NodeInfo(
+            id=nid, course_id=course_id,
+            name=node.name,
+            description=node.description or "",
+            embedding=emb,
+        )
+        for nid, node, emb in zip(node_ids, nodes, node_embeddings)
+    ]
+
+    # 3. Intra-course edges (LLM relations + similarity-based)
+    # Get existing nodes for this course from Qdrant to compare against
+    existing_node_infos = await self._fetch_existing_node_infos(
+        course_id=course_id,
+        exclude_ids=set(node_ids),
+    )
+    intra_count = await link_intra_course(
+        new_nodes=new_node_infos,
+        existing_nodes=existing_node_infos,
+        course_id=course_id,
+        llm_relations=[
+            {
+                "source_index": r.source_index,
+                "target_index": r.target_index,
+                "relation_type": r.relation_type,
+                "strength": r.strength,
+                "reason": r.reason,
+            }
+            for r in llm_relations
+        ],
+    )
+    logger.info("Neo4j intra-course edges created: %d", intra_count)
+
+    # 4. Cross-course smart linking (async, non-blocking)
+    asyncio.create_task(
+        self._cross_course_linking_task(new_node_infos)
+    )
+
+async def _cross_course_linking_task(
+    self, new_node_infos: list
+) -> None:
+    """Wrapped in task so it doesn't block the main indexing pipeline."""
+    try:
+        from app.services.graph_linker import link_cross_course
+        cross_count = await link_cross_course(
+            new_nodes=new_node_infos,
+            new_course_id=new_node_infos[0].course_id if new_node_infos else 0,
+        )
+        logger.info("Neo4j cross-course edges created: %d", cross_count)
+    except Exception as exc:
+        logger.warning("Cross-course linking failed (non-fatal): %s", exc)
+
+    async def _fetch_existing_node_infos(
+        self,
+        course_id: int,
+        exclude_ids: set[int],
+    ) -> list:
+        """Fetch existing nodes for this course from Qdrant for intra-course comparison."""
+        from app.services.neo4j_service import neo4j_service
+        from app.services.qdrant_service import qdrant_service
+        from app.services.graph_linker import NodeInfo
+
+        try:
+            records = await qdrant_service.scroll_nodes_for_course(course_id)
+            result = []
+            for r in records:
+                if int(r.id) in exclude_ids:
+                    continue
+                if r.vector is None:
+                    continue
+                payload = r.payload or {}
+                result.append(NodeInfo(
+                    id=int(r.id),
+                    course_id=course_id,
+                    name=payload.get("name", ""),
+                    description=payload.get("description", ""),
+                    embedding=r.vector,
+                ))
+            return result
+        except Exception as exc:
+            logger.warning("_fetch_existing_node_infos failed: %s", exc)
+            return []
 
     async def _build_graph_edges_qdrant(
         self,

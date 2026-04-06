@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     qdrant_prefer_grpc: bool = True  # gRPC is significantly faster for batches
     qdrant_api_key: str = ""         # Set for Qdrant Cloud / auth-enabled deployments
 
+    # ── Neo4j Knowledge Graph ──────────────────────────────────────────────────
+    neo4j_uri:      str = "bolt://neo4j:7687"
+    neo4j_user:     str = "neo4j"
+    neo4j_password: str = "neo4j_password"
+    neo4j_enabled:  bool = True   # set False để dùng pgvector-only (rollback safe)
+
     # Feature flag: enables Qdrant backend.
     # Set to false to keep legacy pgvector behaviour for safe rollback.
     use_qdrant: bool = True

@@ -70,6 +70,15 @@ async def startup():
     else:
         logger.info("USE_QDRANT=false — using pgvector backend.")
 
+    # 3. Neo4j Knowledge Graph
+    if settings.neo4j_enabled:
+        try:
+            from app.services.neo4j_service import neo4j_service
+            await neo4j_service.init()
+            logger.info("Neo4j knowledge graph ready.")
+        except Exception as exc:
+            logger.error("Neo4j init failed (non-fatal): %s", exc)
+
     # 3. ML model warm-up (background thread, non-blocking)
     loop = asyncio.get_event_loop()
 
@@ -92,6 +101,12 @@ async def shutdown():
         try:
             from app.services.qdrant_service import qdrant_service
             await qdrant_service.close()
+        except Exception:
+            pass
+    if settings.neo4j_enabled:
+        try:
+            from app.services.neo4j_service import neo4j_service
+            await neo4j_service.close()
         except Exception:
             pass
     await asyncio.gather(close_lms_pool(), close_ai_pool())
