@@ -7,7 +7,7 @@ import {
   Layers, Zap, Clock
 } from "lucide-react";
 import aiService, { GeneratedQuestion, KnowledgeNode, KnowledgeGraphEdge } from "@/services/aiService";
-import { AINodeManager } from "@/components/lms/teacher/AINodeManager";
+import { AINodeManager } from "@/components/lms/teacher/ai/AINodeManager";
 import { QuizSelectorModal } from "@/components/lms/teacher/QuizSelectorModal";
 import { cn } from "@/lib/utils";
 

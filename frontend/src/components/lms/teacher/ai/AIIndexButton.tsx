@@ -106,7 +106,7 @@ export function AIIndexButton({
     try {
       await lmsApiClient.post(`/content/${contentId}/ai-index`, {});
       startPolling();
-    } catch (err: any) {
+    } catch {
       setStatus("failed");
     } finally {
       setLoading(false);

@@ -5,8 +5,8 @@ import { Plus, ChevronDown, ChevronRight, BookOpen, AlertCircle, Network } from 
 import aiService, { KnowledgeNode, KnowledgeGraphEdge } from "@/services/aiService";
 import { cn } from "@/lib/utils";
 import lmsService from "@/services/lmsService";
-import { ContentPickerModal } from "./ContentPickerModal";
-import KnowledgeGraph from "./KnowledgeGraph";
+import { ContentPickerModal } from "../ContentPickerModal";
+import KnowledgeGraph from "../KnowledgeGraph";
 
 interface Props {
   courseId: number;

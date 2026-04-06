@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import FileUpload from "@/components/lms/teacher/FileUpload";
+import FileUpload from "@/components/lms/teacher/upload/FileUpload";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import QuizSettingsForm, { QuizSettings } from "./QuizSettingsForm";
 
