@@ -5,7 +5,7 @@ import { CheckCircle } from "lucide-react";
 import FileUpload from "@/components/lms/teacher/upload/FileUpload";
 import YouTubeVideoUpload from "@/components/lms/teacher/upload/YoutubeVideoUpload";
 import { FileInfo } from "@/types";
-import type { ContentFormProps } from "./types";
+import type { ContentFormProps } from "@/types";
 import { cn } from "@/lib/utils";
 
 type UploadMethod = "youtube" | "server" | "url";

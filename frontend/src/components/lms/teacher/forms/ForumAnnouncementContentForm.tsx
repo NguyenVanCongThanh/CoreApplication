@@ -1,7 +1,7 @@
 "use client";
 
 import { MessageSquare, Megaphone } from "lucide-react";
-import type { ContentFormProps } from "./types";
+import type { ContentFormProps } from "@/types";
 
 /**
  * ForumAnnouncementContentForm

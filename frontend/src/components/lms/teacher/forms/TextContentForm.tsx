@@ -1,7 +1,7 @@
 "use client";
 
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
-import type { ContentFormProps } from "./types";
+import type { ContentFormProps } from "@/types";
 
 /**
  * TextContentForm

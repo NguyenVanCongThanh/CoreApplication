@@ -3,7 +3,7 @@
 import { CheckCircle } from "lucide-react";
 import FileUpload from "@/components/lms/teacher/upload/FileUpload";
 import { FileInfo } from "@/types";
-import type { ContentFormProps } from "./types";
+import type { ContentFormProps } from "@/types";
 
 // ─── Shared upload success badge ──────────────────────────────────────────────
 
