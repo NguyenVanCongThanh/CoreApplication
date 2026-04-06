@@ -212,9 +212,11 @@ class Neo4jService:
                     MATCH (a:KnowledgeNode {{id: e.source_id}}),
                           (b:KnowledgeNode {{id: e.target_id}})
                     MERGE (a)-[r:{rel_type}]->(b)
-                    SET   r.strength       = CASE WHEN r.strength IS NULL
-                                                 THEN e.strength
-                                                 ELSE GREATEST(r.strength, e.strength) END,
+                    SET   r.strength       = CASE 
+                                                 WHEN r.strength IS NULL THEN e.strength
+                                                 WHEN r.strength > e.strength THEN r.strength
+                                                 ELSE e.strength 
+                                             END,
                           r.auto_generated = e.auto_generated,
                           r.cross_course   = e.cross_course,
                           r.reason         = e.reason,

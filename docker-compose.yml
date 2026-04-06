@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-common-healthcheck: &common-healthcheck
   interval: 10s
   timeout: 5s
@@ -12,26 +10,25 @@ x-common-logging: &common-logging
     max-size: "10m"
     max-file: "3"
 
-# Shared AI service environment (both ai-service and ai-worker need these)
 x-ai-env: &ai-env
   APP_ENV: ${APP_ENV:-production}
   LOG_LEVEL: INFO
 
-  # LMS PostgreSQL (read-only: quiz_questions, section_content, users, …)
+  # LMS PostgreSQL
   DB_HOST: postgres-lms
   DB_PORT: 5432
   DB_USER: ${LMS_POSTGRES_USER}
   DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
   DB_NAME: ${LMS_POSTGRES_DB}
 
-  # AI PostgreSQL (operational AI data: diagnoses, flashcards, SM-2, jobs, …)
+  # AI PostgreSQL
   AI_DB_HOST: postgres-ai
   AI_DB_PORT: 5432
   AI_DB_USER: ${AI_POSTGRES_USER}
   AI_DB_PASSWORD: ${AI_POSTGRES_PASSWORD}
   AI_DB_NAME: ${AI_POSTGRES_DB}
 
-  # Qdrant vector store (document_chunks + knowledge_nodes embeddings)
+  # Qdrant vector store
   QDRANT_HOST: qdrant
   QDRANT_PORT: 6333
   QDRANT_GRPC_PORT: 6334
@@ -39,7 +36,7 @@ x-ai-env: &ai-env
   QDRANT_API_KEY: ""
   USE_QDRANT: "true"
 
-  # Redis (Celery broker + task results)
+  # Redis
   REDIS_HOST: redis-lms
   REDIS_PORT: 6379
   REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -631,7 +628,7 @@ services:
   # Stores both intra-course and cross-course graph edges.
   # gRPC disabled; HTTP only for simplicity. Consider gRPC for production.
   neo4j:
-    image: neo4j:5.27-community
+    image: neo4j:5.26.24-ubi9
     container_name: neo4j
     restart: unless-stopped
     environment:
