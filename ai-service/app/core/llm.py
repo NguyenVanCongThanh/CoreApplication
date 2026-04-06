@@ -13,12 +13,14 @@ Changes vs. original
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 from typing import Any, Type, TypeVar
 
 from groq import AsyncGroq
+from groq._exceptions import RateLimitError
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -49,6 +51,18 @@ def get_groq_client() -> AsyncGroq:
     return _groq
 
 
+def reset_async_clients() -> None:
+    """
+    Reset async clients when entering a new event loop.
+    MUST be called at the start of each Celery task before any LLM calls.
+    Fixes: RuntimeError: Event loop is closed
+    """
+    global _groq, _instructor_client
+    _groq = None
+    _instructor_client = None
+    logger.debug("Async clients reset for new event loop")
+
+
 # instructor client (structured outputs) 
 _instructor_client = None
 
@@ -73,6 +87,10 @@ async def chat_complete(
     max_tokens: int = 1024,
     json_mode: bool = False,
 ) -> str:
+    """
+    Call Groq with exponential backoff on RateLimitError.
+    Fixes: 429 Too Many Requests from Celery workers flooding API
+    """
     client = get_groq_client()
     kwargs: dict[str, Any] = {
         "model": model or settings.chat_model,
@@ -83,12 +101,26 @@ async def chat_complete(
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
-    try:
-        response = await client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"Groq API error: {e}")
-        raise
+    max_retries = 3
+    base_wait = 0.5  # Start with 500ms
+    
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            return response.choices[0].message.content
+        except RateLimitError as e:
+            if attempt == max_retries:
+                logger.error(f"Groq rate limit after {max_retries} retries: {e}")
+                raise
+            wait_time = base_wait * (2 ** attempt)  # 0.5s, 1s, 2s, 4s
+            logger.warning(
+                f"Groq 429 (attempt {attempt + 1}/{max_retries + 1}). "
+                f"Waiting {wait_time:.1f}s before retry..."
+            )
+            await asyncio.sleep(wait_time)
+        except Exception as e:
+            logger.error(f"Groq API error: {e}")
+            raise
 
 
 # Structured completion via instructor 

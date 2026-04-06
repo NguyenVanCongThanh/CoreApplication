@@ -129,7 +129,7 @@ export default function CourseDetailLayout({ children }: { children: React.React
       {/* ── Tab card ─────────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         {/* Tab navigation */}
-        <div className="flex gap-0.5 px-4 pt-3 border-b border-slate-200 dark:border-slate-800 overflow-x-auto">
+        <div className="flex gap-0.5 px-4 pt-3 border-b border-slate-200 dark:border-slate-800 overflow-hidden">
           {COURSE_TABS.map(tab => {
             const href = `${basePath}${tab.path}`;
             const isActive = activeTab.id === tab.id;

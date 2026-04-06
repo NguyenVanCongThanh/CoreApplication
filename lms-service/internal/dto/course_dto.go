@@ -8,7 +8,7 @@ type CreateCourseRequest struct {
 	Description  string `json:"description" binding:"max=5000"`
 	Category     string `json:"category" binding:"max=100"`
 	Level        string `json:"level" binding:"omitempty,oneof=BEGINNER INTERMEDIATE ADVANCED ALL_LEVELS"`
-	ThumbnailURL string `json:"thumbnail_url" binding:"omitempty,url,max=500"`
+	ThumbnailURL string `json:"thumbnail_url" binding:"omitempty,max=500"`
 }
 
 // UpdateCourseRequest represents the request to update a course
@@ -17,7 +17,7 @@ type UpdateCourseRequest struct {
 	Description  *string `json:"description" binding:"omitempty,max=5000"`
 	Category     *string `json:"category" binding:"omitempty,max=100"`
 	Level        *string `json:"level" binding:"omitempty,oneof=BEGINNER INTERMEDIATE ADVANCED ALL_LEVELS"`
-	ThumbnailURL *string `json:"thumbnail_url" binding:"omitempty,url,max=500"`
+	ThumbnailURL *string `json:"thumbnail_url" binding:"omitempty,max=500"`
 }
 
 // CourseResponse represents the response for a course

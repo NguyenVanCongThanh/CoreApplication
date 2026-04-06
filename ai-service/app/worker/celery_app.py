@@ -55,10 +55,14 @@ async def _with_pools(coro_fn):
     Open both DB pools, run coro_fn(), close both pools.
     All Celery async tasks use this to avoid boilerplate.
     """
+    from app.core.llm import reset_async_clients
     from app.core.database import (
         init_lms_pool, close_lms_pool,
         init_ai_pool,  close_ai_pool,
     )
+    
+    reset_async_clients()
+    
     await asyncio.gather(init_lms_pool(), init_ai_pool())
     try:
         return await coro_fn()
@@ -246,8 +250,11 @@ def process_document_task(
 # ── Async task helpers ─────────────────────────────────────────────────────────
 
 async def _async_auto_index(content_id, course_id, file_url, content_type, force, progress_cb):
+    from app.core.llm import reset_async_clients
     from app.core.database import get_lms_conn
     from app.services.auto_index_service import auto_index_service
+
+    reset_async_clients()
 
     if not force:
         async with get_lms_conn() as conn:
@@ -267,8 +274,11 @@ async def _async_auto_index(content_id, course_id, file_url, content_type, force
 
 
 async def _async_auto_index_text(content_id, course_id, title, text_content, force, progress_cb):
+    from app.core.llm import reset_async_clients
     from app.core.database import get_lms_conn
     from app.services.auto_index_service import auto_index_service
+
+    reset_async_clients()
 
     if not force:
         async with get_lms_conn() as conn:
