@@ -60,6 +60,7 @@ async def _with_pools(coro_fn):
         init_lms_pool, close_lms_pool,
         init_ai_pool,  close_ai_pool,
     )
+    from app.services.qdrant_service import qdrant_service
     
     reset_async_clients()
     
@@ -67,7 +68,7 @@ async def _with_pools(coro_fn):
     try:
         return await coro_fn()
     finally:
-        await asyncio.gather(close_lms_pool(), close_ai_pool())
+        await asyncio.gather(close_lms_pool(), close_ai_pool(), qdrant_service.close())
 
 
 # ── Tasks ──────────────────────────────────────────────────────────────────────
