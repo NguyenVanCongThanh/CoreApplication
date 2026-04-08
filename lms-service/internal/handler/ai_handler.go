@@ -675,6 +675,39 @@ func (h *AIHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
 }
 
+// GetGlobalKnowledgeGraph godoc
+// @Summary      Get global knowledge graph
+// @Description  Returns the entire knowledge graph across all courses.
+// @Tags         AI - Knowledge Graph
+// @Produce      json
+// @Param        min_strength query float64 false "Minimum edge strength (0.0 to 1.0)"
+// @Param        limit        query int     false "Limit number of nodes"
+// @Security     BearerAuth
+// @Router       /ai/knowledge-graph/global [get]
+func (h *AIHandler) GetGlobalKnowledgeGraph(c *gin.Context) {
+	minStrength := 0.5
+	if ms := c.Query("min_strength"); ms != "" {
+		if val, err := strconv.ParseFloat(ms, 64); err == nil {
+			minStrength = val
+		}
+	}
+
+	limit := 2000
+	if l := c.Query("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil {
+			limit = val
+		}
+	}
+
+	graph, err := h.aiClient.GetGlobalKnowledgeGraph(c.Request.Context(), minStrength, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
+}
+
 func (h *AIHandler) GetNodeChunks(c *gin.Context) {
     nodeID, _ := strconv.ParseInt(c.Param("nodeId"), 10, 64)
     limit := 50

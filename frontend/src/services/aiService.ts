@@ -13,7 +13,7 @@ export interface DeepLink {
   page_number?: number;
   start_time_sec?: number;
   end_time_sec?: number;
-  url_fragment?: string; // '#page=5' or '#t=120'
+  url_fragment?: string;
   file_url?: string;
   title?: string;
   content_type?: string;
@@ -94,9 +94,9 @@ export interface KnowledgeNode {
   auto_generated?: boolean;
 }
 
-// ─── Knowledge Graph (Full Graph with Edges) ─────────────────────────────────
+// ─── Knowledge Graph ──────────────────────────────────────────────────────────
 
-export type RelationType = "prerequisite" | "related" | "extends" | "parent_child";
+export type RelationType = "prerequisite" | "related" | "extends" | "parent_child" | "equivalent" | "contrasts_with";
 
 export interface KnowledgeGraphNode {
   id: number;
@@ -109,14 +109,18 @@ export interface KnowledgeGraphNode {
   auto_generated: boolean;
   chunk_count: number;
   level: number;
+  /** course_id is present on global graph nodes */
+  course_id?: number;
 }
 
 export interface KnowledgeGraphEdge {
   source: number;
   target: number;
-  relation_type: RelationType;
+  relation_type: RelationType | string;
   strength: number;
   auto_generated: boolean;
+  cross_course?: boolean;
+  reason?: string;
 }
 
 export interface KnowledgeGraphResponse {
@@ -253,6 +257,20 @@ class AIService {
   async getKnowledgeGraph(courseId: number): Promise<KnowledgeGraphResponse> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/knowledge-graph`);
     return res.data?.data ?? { course_id: courseId, nodes: [], edges: [] };
+  }
+
+  /**
+   * Global knowledge graph — all courses, all nodes, all edges.
+   * Used by Admin Dashboard and the global knowledge map page.
+   * Requires the ai-service /ai/knowledge-graph/global endpoint
+   * to be proxied by Go lms-service at /ai/knowledge-graph/global.
+   */
+  async getGlobalKnowledgeGraph(params?: {
+    min_strength?: number;
+    limit?: number;
+  }): Promise<KnowledgeGraphResponse> {
+    const res = await lmsApiClient.get(`/ai/knowledge-graph/global`, { params });
+    return res.data?.data ?? { course_id: 0, nodes: [], edges: [] };
   }
 }
 

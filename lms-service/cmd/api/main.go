@@ -382,6 +382,8 @@ func main() {
 				// POST /api/v1/ai/attempts/:attemptId/questions/:questionId/diagnose
 				aiGroup.POST("/attempts/:attemptId/questions/:questionId/diagnose",
 					aiHandler.DiagnoseWrongAnswer)
+				aiGroup.GET("/knowledge-graph/global", 
+					aiHandler.GetGlobalKnowledgeGraph)
 			}
 
 			// Per-course AI routes (reuse courseId param)

@@ -437,6 +437,16 @@ func (c *Client) GetKnowledgeGraph(ctx context.Context, courseID int64) (*Knowle
 	}
 	return &resp, nil
 }
+
+// GetGlobalKnowledgeGraph returns the full knowledge graph across all courses.
+func (c *Client) GetGlobalKnowledgeGraph(ctx context.Context, minStrength float64, limit int) (*KnowledgeGraphResponse, error) {
+	var resp KnowledgeGraphResponse
+	path := fmt.Sprintf("/ai/knowledge-graph/global?min_strength=%f&limit=%d", minStrength, limit)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetGlobalKnowledgeGraph: %w", err)
+	}
+	return &resp, nil
+}
  
 // DeleteKnowledgeNode removes an auto-generated node.
 func (c *Client) DeleteKnowledgeNode(ctx context.Context, nodeID int64) error {

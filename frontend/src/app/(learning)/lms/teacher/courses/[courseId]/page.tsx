@@ -1,15 +1,12 @@
 import { redirect } from "next/navigation";
 
-/**
- * /lms/teacher/courses/[courseId]
- *
- * Immediately redirects to the overview sub-page so that the
- * [courseId]/layout.tsx can correctly identify the active tab.
- */
-export default function CourseDetailRoot({
+export default async function CourseDetailRoot({
   params,
 }: {
-  params: { courseId: string };
+  params: Promise<{ courseId: string }>; // Cập nhật type của params thành Promise
 }) {
-  redirect(`/lms/teacher/courses/${params.courseId}/overview`);
+  // Dùng await để lấy dữ liệu từ params
+  const { courseId } = await params; 
+
+  redirect(`/lms/teacher/courses/${courseId}/overview`);
 }

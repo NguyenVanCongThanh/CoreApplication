@@ -200,6 +200,67 @@ async def get_auto_index_status(
 
 # ── Knowledge Graph endpoints ──────────────────────────────────────────────────
 
+@graph_router.get("/global")
+async def get_global_knowledge_graph(
+    request: Request,
+    min_strength: float = 0.5,
+    limit: int = 2000,
+):
+    """
+    Entire knowledge graph across all courses.
+    For admin dashboard and AI agent context.
+    """
+    _verify(request)
+
+    if not settings.neo4j_enabled:
+        raise HTTPException(status_code=501, detail="Neo4j not enabled")
+
+    from app.services.neo4j_service import neo4j_service
+    graph = await neo4j_service.get_global_graph(
+        limit_nodes=limit, min_strength=min_strength
+    )
+
+    # Enrich source_content_title from LMS
+    content_ids = [
+        n["source_content_id"] for n in graph["nodes"]
+        if n.get("source_content_id")
+    ]
+    title_map: dict[int, str] = {}
+    if content_ids:
+        async with get_lms_conn() as conn:
+            rows = await conn.fetch(
+                "SELECT id, title FROM section_content WHERE id = ANY($1)",
+                content_ids,
+            )
+        title_map = {r["id"]: r["title"] for r in rows}
+
+    nodes = [
+        GraphNode(
+            id=n["id"], name=n.get("name", ""),
+            name_vi=n.get("name_vi"), name_en=n.get("name_en"),
+            description=n.get("description"),
+            source_content_id=n.get("source_content_id"),
+            source_content_title=title_map.get(n["source_content_id"])
+                if n.get("source_content_id") else None,
+            auto_generated=bool(n.get("auto_generated", True)),
+            chunk_count=0, level=0,
+        )
+        for n in graph["nodes"]
+    ]
+    edges = [
+        GraphEdge(
+            source=e["source"], target=e["target"],
+            relation_type=e.get("relation_type", "RELATED").lower(),
+            strength=float(e.get("strength", 0.5)),
+            auto_generated=bool(e.get("auto_generated", True)),
+        )
+        for e in graph["edges"]
+    ]
+    return KnowledgeGraphResponse(
+        course_id=0, nodes=nodes, edges=edges  # course_id=0 for global
+    )
+
+
 @graph_router.get("/{course_id}", response_model=KnowledgeGraphResponse)
 async def get_knowledge_graph(course_id: int, request: Request):
     _verify(request)
@@ -320,65 +381,6 @@ async def delete_knowledge_node(node_id: int, request: Request):
     return {"ok": True, "deleted_node_id": node_id}
 
 
-@graph_router.get("/global")
-async def get_global_knowledge_graph(
-    request: Request,
-    min_strength: float = 0.5,
-    limit: int = 2000,
-):
-    """
-    Entire knowledge graph across all courses.
-    For admin dashboard and AI agent context.
-    """
-    _verify(request)
-
-    if not settings.neo4j_enabled:
-        raise HTTPException(status_code=501, detail="Neo4j not enabled")
-
-    from app.services.neo4j_service import neo4j_service
-    graph = await neo4j_service.get_global_graph(
-        limit_nodes=limit, min_strength=min_strength
-    )
-
-    # Enrich source_content_title from LMS
-    content_ids = [
-        n["source_content_id"] for n in graph["nodes"]
-        if n.get("source_content_id")
-    ]
-    title_map: dict[int, str] = {}
-    if content_ids:
-        async with get_lms_conn() as conn:
-            rows = await conn.fetch(
-                "SELECT id, title FROM section_content WHERE id = ANY($1)",
-                content_ids,
-            )
-        title_map = {r["id"]: r["title"] for r in rows}
-
-    nodes = [
-        GraphNode(
-            id=n["id"], name=n.get("name", ""),
-            name_vi=n.get("name_vi"), name_en=n.get("name_en"),
-            description=n.get("description"),
-            source_content_id=n.get("source_content_id"),
-            source_content_title=title_map.get(n["source_content_id"])
-                if n.get("source_content_id") else None,
-            auto_generated=bool(n.get("auto_generated", True)),
-            chunk_count=0, level=0,
-        )
-        for n in graph["nodes"]
-    ]
-    edges = [
-        GraphEdge(
-            source=e["source"], target=e["target"],
-            relation_type=e.get("relation_type", "RELATED").lower(),
-            strength=float(e.get("strength", 0.5)),
-            auto_generated=bool(e.get("auto_generated", True)),
-        )
-        for e in graph["edges"]
-    ]
-    return KnowledgeGraphResponse(
-        course_id=0, nodes=nodes, edges=edges  # course_id=0 for global
-    )
 
 
 @graph_router.get("/node/{node_id}/neighbors")
