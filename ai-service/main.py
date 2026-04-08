@@ -9,7 +9,6 @@ from fastapi.responses import ORJSONResponse
 
 from app.core.config import get_settings
 from app.core.database import (
-    init_lms_pool, close_lms_pool,
     init_ai_pool,  close_ai_pool,
 )
 from app.api.endpoints.process    import router as process_router
@@ -53,9 +52,8 @@ app.add_middleware(
 async def startup():
     logger.info("Starting AI Service v2.1.0 ...")
 
-    # 1. Database connection pools
-    await asyncio.gather(init_lms_pool(), init_ai_pool())
-    logger.info("LMS pool and AI pool ready.")
+    await asyncio.gather(init_ai_pool())
+    logger.info("AI pool ready.")
 
     # 2. Qdrant collections (idempotent — safe to call on every restart)
     if settings.use_qdrant:
@@ -109,7 +107,7 @@ async def shutdown():
             await neo4j_service.close()
         except Exception:
             pass
-    await asyncio.gather(close_lms_pool(), close_ai_pool())
+    await asyncio.gather(close_ai_pool())
     logger.info("AI Service shut down.")
 
 

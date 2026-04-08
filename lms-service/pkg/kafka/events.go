@@ -1,0 +1,25 @@
+package kafka
+
+import "time"
+
+// ProcessDocumentEvent represents the payload sent from LMS to AI Service
+type ProcessDocumentEvent struct {
+	EventID        string    `json:"event_id"`
+	ContentID      int64     `json:"content_id"`
+	CourseID       int64     `json:"course_id"`
+	CourseName     string    `json:"course_name"`
+	InstructorName string    `json:"instructor_name"`
+	FileURL        string    `json:"file_url"`
+	ContentType    string    `json:"content_type"`
+	Title          string    `json:"title"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// ProcessDocumentStatusEvent represents the payload sent from AI back to LMS
+type ProcessDocumentStatusEvent struct {
+	ContentID     int64  `json:"content_id"`
+	JobID         int64  `json:"job_id"`
+	Status        string `json:"status"` // "success", "failed"
+	ChunksCreated int    `json:"chunks_created"`
+	Error         string `json:"error,omitempty"`
+}

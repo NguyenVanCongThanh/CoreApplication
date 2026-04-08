@@ -18,6 +18,7 @@ import (
 	"example/hello/pkg/ai"
 	"example/hello/pkg/cache"
 	"example/hello/pkg/database"
+	"example/hello/pkg/kafka"
 	"example/hello/pkg/logger"
 	"example/hello/pkg/storage"
 
@@ -103,6 +104,20 @@ func main() {
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 
 	flashcardRepo := repository.NewFlashcardRepository(db)
+
+	kafka.InitProducer()
+	defer kafka.CloseProducer()
+
+	go kafka.StartConsumer(context.Background(), func(ctx context.Context, event kafka.ProcessDocumentStatusEvent) error {
+		logger.Info(fmt.Sprintf("Received status update for content %d: %s", event.ContentID, event.Status))
+		if event.Status == "completed" || event.Status == "success" {
+			event.Status = "indexed"
+		}
+		if event.Status == "failed" {
+			event.Status = "error"
+		}
+		return courseRepo.UpdateContentAIIndexStatus(ctx, event.ContentID, event.Status)
+	})
 
 	// Initialize services
 	userService := service.NewUserService(userRepo)

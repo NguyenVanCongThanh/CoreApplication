@@ -24,7 +24,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from app.core.config import get_settings
-from app.core.database import get_ai_conn, get_lms_conn
+from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, create_embeddings_batch
 from app.services.chunker import (
     PDFChunker,
@@ -1145,91 +1145,91 @@ class AutoIndexService:
             )
 
     async def _sync_to_neo4j(
-    self,
-    node_ids: list[int],
-    nodes: list,                       # list[ExtractedNode]
-    node_embeddings: list[list[float]],
-    course_id: int,
-    content_id: int,
-    llm_relations: list,               # list[ExtractedRelation]
-) -> None:
-    """
-    Sync newly created nodes + edges to Neo4j.
-    Then trigger cross-course smart linking.
-    """
-    from app.services.neo4j_service import neo4j_service, RELATIONSHIP_TYPES
-    from app.services.graph_linker import (
-        NodeInfo, link_intra_course, link_cross_course
-    )
-
-    # 1. Upsert nodes to Neo4j
-    neo4j_nodes = [
-        {
-            "id":               node_id,
-            "course_id":        course_id,
-            "name":             node.name,
-            "name_vi":          node.name_vi or "",
-            "name_en":          node.name_en or "",
-            "description":      node.description or "",
-            "auto_generated":   True,
-            "source_content_id": content_id,
-        }
-        for node_id, node in zip(node_ids, nodes)
-    ]
-    await neo4j_service.upsert_nodes_batch(neo4j_nodes)
-
-    # 2. Build NodeInfo list for linker
-    new_node_infos = [
-        NodeInfo(
-            id=nid, course_id=course_id,
-            name=node.name,
-            description=node.description or "",
-            embedding=emb,
+        self,
+        node_ids: list[int],
+        nodes: list,                       # list[ExtractedNode]
+        node_embeddings: list[list[float]],
+        course_id: int,
+        content_id: int,
+        llm_relations: list,               # list[ExtractedRelation]
+    ) -> None:
+        """
+        Sync newly created nodes + edges to Neo4j.
+        Then trigger cross-course smart linking.
+        """
+        from app.services.neo4j_service import neo4j_service, RELATIONSHIP_TYPES
+        from app.services.graph_linker import (
+            NodeInfo, link_intra_course, link_cross_course
         )
-        for nid, node, emb in zip(node_ids, nodes, node_embeddings)
-    ]
 
-    # 3. Intra-course edges (LLM relations + similarity-based)
-    # Get existing nodes for this course from Qdrant to compare against
-    existing_node_infos = await self._fetch_existing_node_infos(
-        course_id=course_id,
-        exclude_ids=set(node_ids),
-    )
-    intra_count = await link_intra_course(
-        new_nodes=new_node_infos,
-        existing_nodes=existing_node_infos,
-        course_id=course_id,
-        llm_relations=[
+        # 1. Upsert nodes to Neo4j
+        neo4j_nodes = [
             {
-                "source_index": r.source_index,
-                "target_index": r.target_index,
-                "relation_type": r.relation_type,
-                "strength": r.strength,
-                "reason": r.reason,
+                "id":               node_id,
+                "course_id":        course_id,
+                "name":             node.name,
+                "name_vi":          node.name_vi or "",
+                "name_en":          node.name_en or "",
+                "description":      node.description or "",
+                "auto_generated":   True,
+                "source_content_id": content_id,
             }
-            for r in llm_relations
-        ],
-    )
-    logger.info("Neo4j intra-course edges created: %d", intra_count)
+            for node_id, node in zip(node_ids, nodes)
+        ]
+        await neo4j_service.upsert_nodes_batch(neo4j_nodes)
 
-    # 4. Cross-course smart linking (async, non-blocking)
-    asyncio.create_task(
-        self._cross_course_linking_task(new_node_infos)
-    )
+        # 2. Build NodeInfo list for linker
+        new_node_infos = [
+            NodeInfo(
+                id=nid, course_id=course_id,
+                name=node.name,
+                description=node.description or "",
+                embedding=emb,
+            )
+            for nid, node, emb in zip(node_ids, nodes, node_embeddings)
+        ]
 
-async def _cross_course_linking_task(
-    self, new_node_infos: list
-) -> None:
-    """Wrapped in task so it doesn't block the main indexing pipeline."""
-    try:
-        from app.services.graph_linker import link_cross_course
-        cross_count = await link_cross_course(
-            new_nodes=new_node_infos,
-            new_course_id=new_node_infos[0].course_id if new_node_infos else 0,
+        # 3. Intra-course edges (LLM relations + similarity-based)
+        # Get existing nodes for this course from Qdrant to compare against
+        existing_node_infos = await self._fetch_existing_node_infos(
+            course_id=course_id,
+            exclude_ids=set(node_ids),
         )
-        logger.info("Neo4j cross-course edges created: %d", cross_count)
-    except Exception as exc:
-        logger.warning("Cross-course linking failed (non-fatal): %s", exc)
+        intra_count = await link_intra_course(
+            new_nodes=new_node_infos,
+            existing_nodes=existing_node_infos,
+            course_id=course_id,
+            llm_relations=[
+                {
+                    "source_index": r.source_index,
+                    "target_index": r.target_index,
+                    "relation_type": r.relation_type,
+                    "strength": r.strength,
+                    "reason": r.reason,
+                }
+                for r in llm_relations
+            ],
+        )
+        logger.info("Neo4j intra-course edges created: %d", intra_count)
+
+        # 4. Cross-course smart linking (async, non-blocking)
+        asyncio.create_task(
+            self._cross_course_linking_task(new_node_infos)
+        )
+
+    async def _cross_course_linking_task(
+        self, new_node_infos: list
+    ) -> None:
+        """Wrapped in task so it doesn't block the main indexing pipeline."""
+        try:
+            from app.services.graph_linker import link_cross_course
+            cross_count = await link_cross_course(
+                new_nodes=new_node_infos,
+                new_course_id=new_node_infos[0].course_id if new_node_infos else 0,
+            )
+            logger.info("Neo4j cross-course edges created: %d", cross_count)
+        except Exception as exc:
+            logger.warning("Cross-course linking failed (non-fatal): %s", exc)
 
     async def _fetch_existing_node_infos(
         self,
@@ -1369,13 +1369,13 @@ async def _cross_course_linking_task(
     async def _update_content_status(
         self, content_id: int, status: str, error_msg: Optional[str] = None,
     ) -> None:
-        async with get_lms_conn() as conn:
-            await conn.execute(
-                "UPDATE section_content SET ai_index_status=$1 WHERE id=$2",
-                status, content_id,
-            )
-        if error_msg:
-            logger.warning("content_id=%d → %s: %s", content_id, status, error_msg)
+        try:
+            from app.worker.kafka_producer import publish_status_event
+            await publish_status_event(content_id, status, error=error_msg or "")
+            if error_msg:
+                logger.warning("content_id=%d → %s: %s", content_id, status, error_msg)
+        except Exception as e:
+            logger.error(f"Failed to publish to kafka: {e}")
 
 
 auto_index_service = AutoIndexService()

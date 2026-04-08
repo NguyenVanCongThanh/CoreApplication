@@ -13,6 +13,8 @@ redis==5.2.1
 groq==0.13.0
 instructor==1.7.0
 
+aiokafka==0.12.0
+
 qdrant-client[async]==1.13.3
 
 uvloop==0.21.0

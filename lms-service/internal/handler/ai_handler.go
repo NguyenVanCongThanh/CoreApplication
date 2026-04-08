@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"example/hello/internal/dto"
 	"example/hello/internal/repository"
 	"example/hello/pkg/ai"
+	"example/hello/pkg/kafka"
 	"example/hello/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -590,38 +592,37 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 	section, _ := h.courseRepo.GetSectionByID(c.Request.Context(), content.SectionID)
 	course, _ := h.courseRepo.GetByID(c.Request.Context(), section.CourseID)
 
-	// Gọi AI service
-	var resp *ai.AutoIndexResponse
-
-	if content.Type == "TEXT" {
-		// Với TEXT content, gửi nội dung text trực tiếp
-		resp, err = h.aiClient.AutoIndexText(c.Request.Context(), ai.AutoIndexTextRequest{
-			ContentID:   contentID,
-			CourseID:    course.ID,
-			Title:       content.Title,
-			TextContent: finalTextContent,
-		})
-	} else {
-		// Với FILE content, gửi file URL
-		resp, err = h.aiClient.AutoIndex(c.Request.Context(), ai.AutoIndexRequest{
-			ContentID:   contentID,
-			CourseID:    course.ID,
-			FileURL:     finalFilePath,
-			ContentType: finalFileType,
-		})
+	// Phát sự kiện lên Kafka
+	eventID := fmt.Sprintf("evt-autoindex-%d", contentID)
+	eventPayload := kafka.ProcessDocumentEvent{
+		EventID:        eventID,
+		ContentID:      contentID,
+		CourseID:       course.ID,
+		CourseName:     course.Title,
+		InstructorName: fmt.Sprintf("%d", course.CreatedBy),
+		FileURL:        finalFilePath,
+		ContentType:    finalFileType,
+		Title:          content.Title,
+		CreatedAt:      time.Now(),
 	}
 
+	if content.Type == "TEXT" {
+		eventPayload.ContentType = "text/markdown"
+	}
+
+	key := []byte(fmt.Sprintf("%d", contentID))
+	err = kafka.PublishEvent(c.Request.Context(), "lms.document.uploaded", key, eventPayload)
+
 	if err != nil {
-		logger.Error("Auto-index trigger failed", err)
-		// Vẫn trả về thông báo lỗi nhưng không fail request
-		c.JSON(http.StatusServiceUnavailable, dto.NewErrorResponse("ai_unavailable", err.Error()))
+		logger.Error("Kafka publish failed", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("kafka_unavailable", err.Error()))
 		return
 	}
 
 	c.JSON(http.StatusAccepted, dto.NewDataResponse(map[string]interface{}{
-		"job_id":     resp.JobID,
+		"job_id":     eventID,
 		"content_id": contentID,
-		"status":     resp.Status,
+		"status":     "queued",
 	}))
 }
 

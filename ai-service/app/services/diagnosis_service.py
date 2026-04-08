@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from app.core.database import get_lms_conn, get_ai_conn
+from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_diagnosis_prompt
 from app.services.rag_service import rag_service, RetrievedChunk
 from app.core.config import get_settings
