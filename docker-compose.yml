@@ -441,6 +441,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.lms.rule=Host(`bdc.hpcc.vn`) && PathPrefix(`/lmsapiv1`)"
       - "traefik.http.services.lms.loadbalancer.server.port=8081"
+      - "traefik.http.services.lms.loadbalancer.responseTimeout=300s"
 
   postgres-ai:
     image: postgres:15-alpine
@@ -579,11 +580,7 @@ services:
     restart: unless-stopped
     # concurrency=1: one model set (~900 MB) per process.
     # Scale horizontally by adding replicas, not concurrency.
-    command: >
-      celery -A app.worker.celery_app worker
-      --loglevel=info
-      --concurrency=1
-      --max-tasks-per-child=50
+    command: python -m app.worker.kafka_worker
     environment:
       <<: *ai-env
       # Worker doesn't serve user traffic → reranker disabled to save RAM

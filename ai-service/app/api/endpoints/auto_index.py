@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.database import get_ai_conn, get_lms_conn
+from app.core.database import get_ai_conn
 
 logger   = logging.getLogger(__name__)
 settings = get_settings()
@@ -60,6 +60,7 @@ class GraphNode(BaseModel):
     description: Optional[str]
     source_content_id: Optional[int]
     source_content_title: Optional[str]
+    course_id: Optional[int] = None
     auto_generated: bool
     chunk_count: int
     level: int
@@ -79,6 +80,48 @@ class KnowledgeGraphResponse(BaseModel):
     edges: list[GraphEdge]
 
 
+# ── Helper: AI-owned content index status ──────────────────────────────────────
+
+async def _upsert_content_status(content_id: int, course_id: int, status: str, title: str = ""):
+    """Create or update the content index status in AI DB."""
+    async with get_ai_conn() as conn:
+        await conn.execute(
+            """INSERT INTO content_index_status (content_id, course_id, title, status, updated_at)
+               VALUES ($1, $2, $3, $4, NOW())
+               ON CONFLICT (content_id) DO UPDATE
+                   SET status = $4, updated_at = NOW()""",
+            content_id, course_id, title, status,
+        )
+
+
+async def _get_content_status(content_id: int) -> dict | None:
+    """Read content index status from AI DB."""
+    async with get_ai_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT status, error FROM content_index_status WHERE content_id=$1",
+            content_id,
+        )
+    return dict(row) if row else None
+
+
+# ── Helper: build title map from AI DB knowledge_nodes ─────────────────────────
+
+async def _build_title_map(content_ids: list[int]) -> dict[int, str]:
+    """Get source_content_title from knowledge_nodes (denormalized, no LMS DB)."""
+    if not content_ids:
+        return {}
+    async with get_ai_conn() as conn:
+        rows = await conn.fetch(
+            """SELECT DISTINCT source_content_id, source_content_title
+               FROM knowledge_nodes
+               WHERE source_content_id = ANY($1)
+                 AND source_content_title IS NOT NULL
+                 AND source_content_title != ''""",
+            content_ids,
+        )
+    return {r["source_content_id"]: r["source_content_title"] for r in rows}
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=AutoIndexResponse)
@@ -93,12 +136,8 @@ async def trigger_auto_index(body: AutoIndexRequest, request: Request):
                 "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id
             )
 
-    # Update status in LMS DB (one permitted cross-DB write in Phase 1)
-    async with get_lms_conn() as conn:
-        await conn.execute(
-            "UPDATE section_content SET ai_index_status='processing' WHERE id=$1",
-            body.content_id,
-        )
+    # Track status in AI DB
+    await _upsert_content_status(body.content_id, body.course_id, "processing")
 
     from app.worker.celery_app import auto_index_task
     task = auto_index_task.delay(
@@ -124,11 +163,7 @@ async def trigger_auto_index_text(body: AutoIndexTextRequest, request: Request):
                 "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id
             )
 
-    async with get_lms_conn() as conn:
-        await conn.execute(
-            "UPDATE section_content SET ai_index_status='processing' WHERE id=$1",
-            body.content_id,
-        )
+    await _upsert_content_status(body.content_id, body.course_id, "processing")
 
     from app.worker.celery_app import auto_index_text_task
     try:
@@ -138,11 +173,7 @@ async def trigger_auto_index_text(body: AutoIndexTextRequest, request: Request):
         )
     except Exception as e:
         logger.error("Failed to enqueue auto_index_text_task: %s", e)
-        async with get_lms_conn() as conn:
-            await conn.execute(
-                "UPDATE section_content SET ai_index_status='failed' WHERE id=$1",
-                body.content_id,
-            )
+        await _upsert_content_status(body.content_id, body.course_id, "failed")
         raise HTTPException(status_code=500, detail=f"Failed to queue task: {str(e)}")
 
     return AutoIndexResponse(job_id=task.id, content_id=body.content_id)
@@ -154,14 +185,12 @@ async def get_auto_index_status(
 ):
     _verify(request)
 
-    # ai_index_status lives in LMS DB; node/chunk counts in AI DB
-    async with get_lms_conn() as conn:
-        status_row = await conn.fetchrow(
-            "SELECT ai_index_status FROM section_content WHERE id=$1", content_id
-        )
-
-    if not status_row:
-        raise HTTPException(status_code=404, detail="Content not found")
+    # Read status from AI DB
+    status_data = await _get_content_status(content_id)
+    if not status_data:
+        ai_status = "unindexed"
+    else:
+        ai_status = status_data["status"]
 
     async with get_ai_conn() as conn:
         nodes_row  = await conn.fetchrow(
@@ -186,12 +215,12 @@ async def get_auto_index_status(
 
     if not progress:
         progress = {"pending": 0, "processing": 50, "indexed": 100, "failed": 0}.get(
-            status_row["ai_index_status"], 0
+            ai_status, 0
         )
 
     return AutoIndexStatusResponse(
         content_id=content_id,
-        status=status_row["ai_index_status"],
+        status=ai_status,
         nodes_created=nodes_row["n"]  or 0,
         chunks_created=chunks_row["n"] or 0,
         progress=progress, stage=stage, job_id=job_id,
@@ -220,19 +249,12 @@ async def get_global_knowledge_graph(
         limit_nodes=limit, min_strength=min_strength
     )
 
-    # Enrich source_content_title from LMS
+    # Enrich source_content_title from AI DB (denormalized)
     content_ids = [
         n["source_content_id"] for n in graph["nodes"]
         if n.get("source_content_id")
     ]
-    title_map: dict[int, str] = {}
-    if content_ids:
-        async with get_lms_conn() as conn:
-            rows = await conn.fetch(
-                "SELECT id, title FROM section_content WHERE id = ANY($1)",
-                content_ids,
-            )
-        title_map = {r["id"]: r["title"] for r in rows}
+    title_map = await _build_title_map(content_ids)
 
     nodes = [
         GraphNode(
@@ -242,6 +264,7 @@ async def get_global_knowledge_graph(
             source_content_id=n.get("source_content_id"),
             source_content_title=title_map.get(n["source_content_id"])
                 if n.get("source_content_id") else None,
+            course_id=n.get("course_id"),
             auto_generated=bool(n.get("auto_generated", True)),
             chunk_count=0, level=0,
         )
@@ -270,19 +293,12 @@ async def get_knowledge_graph(course_id: int, request: Request):
         from app.services.neo4j_service import neo4j_service
         graph = await neo4j_service.get_course_graph(course_id)
 
-        # Enrich source_content_title from LMS DB
+        # Enrich source_content_title from AI DB
         content_ids = [
             n["source_content_id"] for n in graph["nodes"]
             if n.get("source_content_id")
         ]
-        title_map: dict[int, str] = {}
-        if content_ids:
-            async with get_lms_conn() as conn:
-                rows = await conn.fetch(
-                    "SELECT id, title FROM section_content WHERE id = ANY($1)",
-                    content_ids,
-                )
-            title_map = {r["id"]: r["title"] for r in rows}
+        title_map = await _build_title_map(content_ids)
 
         nodes = [
             GraphNode(
@@ -292,6 +308,7 @@ async def get_knowledge_graph(course_id: int, request: Request):
                 source_content_id=n.get("source_content_id"),
                 source_content_title=title_map.get(n["source_content_id"])
                     if n.get("source_content_id") else None,
+                course_id=n.get("course_id", course_id),
                 auto_generated=bool(n.get("auto_generated", True)),
                 chunk_count=0,
                 level=0,
@@ -315,14 +332,16 @@ async def get_knowledge_graph(course_id: int, request: Request):
     async with get_ai_conn() as conn:
         node_rows = await conn.fetch(
             """
-            SELECT kn.id, kn.name, kn.name_vi, kn.name_en, kn.description,
-                   kn.source_content_id, kn.auto_generated, kn.level,
+            SELECT kn.id, kn.course_id, kn.name, kn.name_vi, kn.name_en, kn.description,
+                   kn.source_content_id, kn.source_content_title,
+                   kn.auto_generated, kn.level,
                    COUNT(DISTINCT dc.id) AS chunk_count
             FROM knowledge_nodes kn
             LEFT JOIN document_chunks dc ON dc.node_id = kn.id
             WHERE kn.course_id = $1
-            GROUP BY kn.id, kn.name, kn.name_vi, kn.name_en, kn.description,
-                     kn.source_content_id, kn.auto_generated, kn.level
+            GROUP BY kn.id, kn.course_id, kn.name, kn.name_vi, kn.name_en, kn.description,
+                     kn.source_content_id, kn.source_content_title,
+                     kn.auto_generated, kn.level
             ORDER BY kn.level, kn.order_index
             """,
             course_id,
@@ -335,21 +354,12 @@ async def get_knowledge_graph(course_id: int, request: Request):
             course_id,
         )
 
-    # Enrich source_content_title from LMS DB (batch, single query)
-    content_ids = [r["source_content_id"] for r in node_rows if r["source_content_id"]]
-    title_map: dict[int, str] = {}
-    if content_ids:
-        async with get_lms_conn() as conn:
-            rows = await conn.fetch(
-                "SELECT id, title FROM section_content WHERE id = ANY($1)", content_ids
-            )
-        title_map = {r["id"]: r["title"] for r in rows}
-
     nodes = [
         GraphNode(
             id=r["id"], name=r["name"], name_vi=r["name_vi"], name_en=r["name_en"],
             description=r["description"], source_content_id=r["source_content_id"],
-            source_content_title=title_map.get(r["source_content_id"]) if r["source_content_id"] else None,
+            source_content_title=r["source_content_title"] if r["source_content_id"] else None,
+            course_id=r["course_id"],
             auto_generated=r["auto_generated"],
             chunk_count=r["chunk_count"] or 0, level=r["level"],
         )
@@ -404,21 +414,14 @@ async def get_node_neighbors(
         node_id=node_id, max_depth=min(depth, 4), max_nodes=min(max_nodes, 200)
     )
 
-    # Enrich content titles
+    # Enrich content titles from AI DB
     all_nodes = [result.get("center")] if result.get("center") else []
     all_nodes.extend(result.get("neighbors", []))
     content_ids = [
         n["source_content_id"] for n in all_nodes
         if n and n.get("source_content_id")
     ]
-    title_map: dict[int, str] = {}
-    if content_ids:
-        async with get_lms_conn() as conn:
-            rows = await conn.fetch(
-                "SELECT id, title FROM section_content WHERE id = ANY($1)",
-                content_ids,
-            )
-        title_map = {r["id"]: r["title"] for r in rows}
+    title_map = await _build_title_map(content_ids)
 
     nodes = [
         GraphNode(
@@ -428,6 +431,7 @@ async def get_node_neighbors(
             source_content_id=n.get("source_content_id"),
             source_content_title=title_map.get(n["source_content_id"])
                 if n.get("source_content_id") else None,
+            course_id=n.get("course_id"),
             auto_generated=bool(n.get("auto_generated", True)),
             chunk_count=0, level=0,
         )

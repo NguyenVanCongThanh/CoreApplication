@@ -17,15 +17,13 @@ import lmsService from "@/services/lmsService";
 import {
   BookOpen, Users, CheckCircle2,
   Plus, Settings, ChevronRight,
-  TrendingUp, RefreshCw, LogOut, Home,
-  BrainCircuit, ChevronDown,
+  TrendingUp, RefreshCw, LogOut, Home
 } from "lucide-react";
 import {
   StatCard, Card, SectionHeader,
   Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
   EmptyState, PageLoader, Alert,
 } from "@/components/lms/shared";
-import GlobalKnowledgeGraphPanel from "@/components/lms/teacher/ai/GlobalKnowledgeGraphPanel";
 import { Course } from "@/types";
 import { getCookie } from "@/utils/cookies";
 
@@ -80,15 +78,12 @@ export default function TeacherDashboard() {
   const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [graphOpen, setGraphOpen] = useState(false);
 
   const [stats, setStats] = useState<TeacherStats>({
     totalCourses: 0, publishedCourses: 0, draftCourses: 0,
     totalStudents: 0, pendingEnrollments: 0,
   });
   const [recentCourses, setRecentCourses] = useState<Course[]>([]);
-  // IDs of my courses (used to scope the graph)
-  const [myCourseIds, setMyCourseIds] = useState<number[]>([]);
 
   useEffect(() => {
     const role = sessionStorage.getItem("lms_selected_role");
@@ -126,7 +121,6 @@ export default function TeacherDashboard() {
           .slice(0, 6)
       );
 
-      setMyCourseIds(courses.map(c => c.id));
     } catch {
       setError("Không thể tải dữ liệu. Vui lòng thử lại.");
     } finally {
@@ -189,9 +183,6 @@ export default function TeacherDashboard() {
             <ActionCard icon={<TrendingUp className="w-6 h-6 text-green-600" />}
               title="Thống kê" description="Xem báo cáo chi tiết" variant="success"
               onClick={() => router.push("/lms/teacher/analytics")} />
-            <ActionCard icon={<BrainCircuit className="w-6 h-6 text-indigo-600" />}
-              title="Knowledge Graph" description="Xem bản đồ kiến thức"
-              onClick={() => setGraphOpen(v => !v)} />
           </div>
         </Card>
 
@@ -243,42 +234,6 @@ export default function TeacherDashboard() {
             </div>
           )}
         </Card>
-
-        {/* ── Knowledge Graph (cross-course) ── */}
-        <section>
-          <button
-            onClick={() => setGraphOpen(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors group shadow-sm"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center">
-                <BrainCircuit className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              </div>
-              <div className="text-left">
-                <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">
-                  Knowledge Graph — Khóa học của tôi
-                </p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Bản đồ kiến thức liên kết {myCourseIds.length} khóa học
-                  {myCourseIds.length > 0 && ` · click để ${graphOpen ? "thu gọn" : "mở rộng"}`}
-                </p>
-              </div>
-            </div>
-            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${graphOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {graphOpen && (
-            <div className="mt-3 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
-              style={{ height: 640 }}>
-              <GlobalKnowledgeGraphPanel
-                title="Knowledge Graph — Khóa học của tôi"
-                global={false}
-                courseId={myCourseIds[0]}   /* fallback: first course; global mode not used here */
-              />
-            </div>
-          )}
-        </section>
-
       </div>
     </div>
   );

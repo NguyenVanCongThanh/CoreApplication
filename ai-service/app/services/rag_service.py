@@ -508,21 +508,23 @@ class RAGService:
         )
 
     async def search_for_question(
-        self, question_id: int, course_id: int, top_k: int = 3
+        self,
+        question_text: str,
+        course_id: int,
+        node_id: int | None = None,
+        reference_chunk_id: int | None = None,
+        top_k: int = 3,
     ) -> list[RetrievedChunk]:
-        from app.core.database import get_lms_conn
-        async with get_lms_conn() as conn:
-            row = await conn.fetchrow(
-                "SELECT question_text, node_id, reference_chunk_id "
-                "FROM quiz_questions WHERE id = $1",
-                question_id,
-            )
-        if not row:
+        """Search for chunks relevant to a quiz question.
+
+        All question data is passed as parameters (no LMS DB access).
+        """
+        if not question_text:
             return []
 
         pinned: list[RetrievedChunk] = []
-        if row["reference_chunk_id"]:
-            pinned_chunk = await self.get_chunk(row["reference_chunk_id"])
+        if reference_chunk_id:
+            pinned_chunk = await self.get_chunk(reference_chunk_id)
             if pinned_chunk:
                 pinned = [RetrievedChunk(
                     chunk_id=pinned_chunk["id"],
@@ -538,9 +540,9 @@ class RAGService:
                 )]
 
         semantic = await self.search_multilingual(
-            query=row["question_text"],
+            query=question_text,
             course_id=course_id,
-            node_id=row["node_id"],
+            node_id=node_id,
             top_k=top_k,
         )
 

@@ -32,6 +32,13 @@ class DiagnoseRequest(BaseModel):
     question_id: int
     wrong_answer: str
     course_id: int
+    # Enrichment fields from LMS
+    question_text: str
+    question_type: str = "SINGLE_CHOICE"
+    explanation: str = ""
+    correct_answer: str = ""
+    answer_options: list[dict] = []
+    node_id: Optional[int] = None
 
 
 class DiagnoseResponse(BaseModel):
@@ -73,6 +80,12 @@ async def diagnose_error(body: DiagnoseRequest, request: Request):
             question_id=body.question_id,
             wrong_answer=body.wrong_answer,
             course_id=body.course_id,
+            question_text=body.question_text,
+            question_type=body.question_type,
+            explanation=body.explanation,
+            correct_answer=body.correct_answer,
+            answer_options=body.answer_options,
+            node_id=body.node_id,
         )
     except Exception as e:
         logger.error(f"Diagnosis failed: {e}", exc_info=True)

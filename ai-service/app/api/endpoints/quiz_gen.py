@@ -116,7 +116,7 @@ async def approve_question(gen_id: int, body: ApproveRequest, request: Request):
     """
     _verify_internal(request)
     try:
-        q_id = await quiz_gen_service.approve_question(
+        q_data = await quiz_gen_service.approve_question(
             gen_id=gen_id,
             reviewer_id=body.reviewer_id,
             quiz_id=body.quiz_id,
@@ -128,7 +128,18 @@ async def approve_question(gen_id: int, body: ApproveRequest, request: Request):
         logger.error(f"Approve failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"quiz_question_id": q_id, "status": "PUBLISHED"}
+    return q_data
+
+
+class UpdateQuestionIdRequest(BaseModel):
+    quiz_question_id: int
+
+@router.post("/{gen_id}/publish")
+async def publish_question(gen_id: int, body: UpdateQuestionIdRequest, request: Request):
+    """Callback for LMS to confirm successful insertion."""
+    _verify_internal(request)
+    await quiz_gen_service.update_quiz_question_id(gen_id, body.quiz_question_id)
+    return {"status": "PUBLISHED"}
 
 
 @router.post("/{gen_id}/reject")

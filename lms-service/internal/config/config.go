@@ -198,7 +198,7 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			ReadTimeout:  getEnvAsDuration("SERVER_READ_TIMEOUT", 10*time.Minute), // Tăng từ 15s lên 10p cho file lớn
 			WriteTimeout: getEnvAsDuration("SERVER_WRITE_TIMEOUT", 10*time.Minute), // Tăng từ 15s lên 10p
-			IdleTimeout:  getEnvAsDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			IdleTimeout:  getEnvAsDuration("SERVER_IDLE_TIMEOUT", 600*time.Second),
 		},
 
 		Email: EmailConfig{

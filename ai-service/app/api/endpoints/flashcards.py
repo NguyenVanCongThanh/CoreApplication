@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
-from app.core.database import get_ai_conn, get_lms_conn
+from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_flashcard_generation_prompt
 from app.services.rag_service import rag_service
 from app.services.flashcard_service import flashcard_srv
@@ -86,6 +86,7 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
 
     node_name = node["name_vi"] if body.language == "vi" and node["name_vi"] else node["name"]
 
+    # Get wrong answers context from AI DB only (ai_diagnoses table)
     wrong_answers_context = ""
     async with get_ai_conn() as conn:
         mistakes = await conn.fetch(
@@ -101,28 +102,9 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
         )
         if mistakes:
             wrong_answers_context = "\n".join(r["gap"] for r in mistakes if r["gap"])
-        
+
     if not wrong_answers_context:
-        # Fallback to pure wrong answers without AI diagnosis via LMS DB
-        async with get_lms_conn() as lms_conn:
-            wrong_answers = await lms_conn.fetch(
-                """
-                SELECT qq.question_text, qsa.answer_data->>'selected_option_text' as student_answer
-                FROM quiz_student_answers qsa
-                JOIN quiz_questions qq ON qq.id = qsa.question_id
-                JOIN quiz_attempts qa ON qa.id = qsa.attempt_id
-                WHERE qa.student_id = $1 AND qq.node_id = $2 AND qsa.is_correct = false
-                LIMIT 5
-                """,
-                body.student_id, body.node_id
-            )
-            if wrong_answers:
-                wrong_answers_context = "\n".join(
-                    f"- Câu hỏi: {r['question_text']}\n  Sai lầm: {r['student_answer']}"
-                    for r in wrong_answers
-                )
-            else:
-                wrong_answers_context = "Không có thông tin lỗi sai cụ thể. Hãy tập trung vào các khái niệm nền tảng."
+        wrong_answers_context = "Không có thông tin lỗi sai cụ thể. Hãy tập trung vào các khái niệm nền tảng."
 
     chunks = await rag_service.search_multilingual(
         query=node_name,

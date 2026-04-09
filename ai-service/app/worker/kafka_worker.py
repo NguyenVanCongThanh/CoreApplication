@@ -8,6 +8,7 @@ import traceback
 from app.core.config import get_settings
 from app.core.database import init_ai_pool, close_ai_pool
 from app.services.qdrant_service import qdrant_service
+from app.services.neo4j_service import neo4j_service
 from app.worker.kafka_producer import publish_status_event, close_kafka_producer
 
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,9 @@ async def process_document_event(payload: dict):
     
     # We will reuse the auto_index_service logic but pass our enriched fields.
     from app.services.auto_index_service import auto_index_service
+    
+    # Set status to processing immediately upon receiving the event
+    await auto_index_service._update_content_status(content_id, "processing")
     
     try:
         if content_type == "text/markdown" or content_type == "TEXT":
@@ -46,18 +50,29 @@ async def process_document_event(payload: dict):
             )
             
         chunks = resp.get("chunks_created", 0) if isinstance(resp, dict) else 0
-        await publish_status_event(content_id, "success", chunks)
+        await auto_index_service._update_content_status(content_id, "indexed")
         
     except Exception as e:
         logger.error(f"Error processing content {content_id}: {e}")
         logger.error(traceback.format_exc())
-        await publish_status_event(content_id, "failed", 0, str(e))
+        await auto_index_service._update_content_status(content_id, "failed", str(e))
 
 async def main():
     logger.info("Initializing AI Kafka Worker...")
 
-    # Initialize AI DB and Qdrant
+    # Initialize AI DB and Qdrant and Neo4j
     await init_ai_pool()
+    if getattr(settings, 'neo4j_enabled', True):
+        for attempt in range(1, 11):
+            try:
+                await neo4j_service.init()
+                break
+            except Exception as e:
+                logger.warning("Neo4j init attempt %d/10 failed: %s", attempt, e)
+                if attempt == 10:
+                    logger.error("Neo4j init failed after 10 attempts — continuing without Neo4j")
+                else:
+                    await asyncio.sleep(min(attempt * 3, 30))
     if settings.use_qdrant:
         await qdrant_service.init_collections()
         
@@ -99,6 +114,8 @@ async def main():
         await consumer.stop()
         await close_kafka_producer()
         await close_ai_pool()
+        if getattr(settings, 'neo4j_enabled', True):
+            await neo4j_service.close()
         if settings.use_qdrant:
             await qdrant_service.close()
 

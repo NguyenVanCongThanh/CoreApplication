@@ -48,27 +48,24 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
-# ── Helper: init both pools, run coro, close both pools ───────────────────────
+# ── Helper: init AI pool only, run coro, close pool ───────────────────────────
 
 async def _with_pools(coro_fn):
     """
-    Open both DB pools, run coro_fn(), close both pools.
-    All Celery async tasks use this to avoid boilerplate.
+    Open AI DB pool, run coro_fn(), close pool.
+    LMS pool is no longer needed — AI service is fully independent.
     """
     from app.core.llm import reset_async_clients
-    from app.core.database import (
-        init_lms_pool, close_lms_pool,
-        init_ai_pool,  close_ai_pool,
-    )
+    from app.core.database import init_ai_pool, close_ai_pool
     from app.services.qdrant_service import qdrant_service
     
     reset_async_clients()
     
-    await asyncio.gather(init_lms_pool(), init_ai_pool())
+    await init_ai_pool()
     try:
         return await coro_fn()
     finally:
-        await asyncio.gather(close_lms_pool(), close_ai_pool(), qdrant_service.close())
+        await asyncio.gather(close_ai_pool(), qdrant_service.close())
 
 
 # ── Tasks ──────────────────────────────────────────────────────────────────────
@@ -200,9 +197,6 @@ def process_document_task(
             chunks = PptxChunker(cs, co).chunk_bytes(file_bytes)
         elif any(url_lower.endswith(e) for e in (".xlsx", ".xls")) or "excel" in ct_lower:
             chunks = ExcelChunker(cs, co).chunk_bytes(file_bytes)
-        elif any(url_lower.endswith(e) for e in (".mp4", ".webm", ".mov")) or "video" in ct_lower:
-            transcript = _get_or_generate_transcript(content_id, file_bytes)
-            chunks = VideoTranscriptChunker().chunk_whisper_json(transcript) if transcript else []
         elif any(url_lower.endswith(e) for e in (".md", ".markdown", ".txt")) or ct_lower in (
             "text", "markdown", "text/markdown", "text/plain"
         ):
@@ -252,17 +246,18 @@ def process_document_task(
 
 async def _async_auto_index(content_id, course_id, file_url, content_type, force, progress_cb):
     from app.core.llm import reset_async_clients
-    from app.core.database import get_lms_conn
+    from app.core.database import get_ai_conn
     from app.services.auto_index_service import auto_index_service
 
     reset_async_clients()
 
     if not force:
-        async with get_lms_conn() as conn:
+        # Check status from AI DB instead of LMS DB
+        async with get_ai_conn() as conn:
             row = await conn.fetchrow(
-                "SELECT ai_index_status FROM section_content WHERE id=$1", content_id
+                "SELECT status FROM content_index_status WHERE content_id=$1", content_id
             )
-        if row and row["ai_index_status"] == "indexed":
+        if row and row["status"] == "indexed":
             return {"ok": True, "skipped": True, "reason": "already_indexed"}
 
     progress_cb("download", 5)
@@ -276,17 +271,17 @@ async def _async_auto_index(content_id, course_id, file_url, content_type, force
 
 async def _async_auto_index_text(content_id, course_id, title, text_content, force, progress_cb):
     from app.core.llm import reset_async_clients
-    from app.core.database import get_lms_conn
+    from app.core.database import get_ai_conn
     from app.services.auto_index_service import auto_index_service
 
     reset_async_clients()
 
     if not force:
-        async with get_lms_conn() as conn:
+        async with get_ai_conn() as conn:
             row = await conn.fetchrow(
-                "SELECT ai_index_status FROM section_content WHERE id=$1", content_id
+                "SELECT status FROM content_index_status WHERE content_id=$1", content_id
             )
-        if row and row["ai_index_status"] == "indexed":
+        if row and row["status"] == "indexed":
             return {"ok": True, "skipped": True, "reason": "already_indexed"}
 
     progress_cb("parse", 5)
@@ -316,31 +311,6 @@ def _download_file(url: str) -> bytes:
     finally:
         response.close()
         response.release_conn()
-
-
-def _get_or_generate_transcript(content_id: int, video_bytes: bytes) -> dict | None:
-    from app.core.database import get_sync_lms_conn, get_sync_cursor
-    with get_sync_lms_conn() as conn:
-        with get_sync_cursor(conn) as cur:
-            cur.execute("SELECT metadata FROM section_content WHERE id=%s", (content_id,))
-            row = cur.fetchone()
-            if row and row.get("metadata"):
-                meta = row["metadata"]
-                if isinstance(meta, str):
-                    meta = json.loads(meta)
-                if "transcript" in meta:
-                    return meta["transcript"]
-    try:
-        import whisper
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp.write(video_bytes)
-            tmp_path = tmp.name
-        model  = whisper.load_model("base")
-        result = model.transcribe(tmp_path)
-        os.unlink(tmp_path)
-        return result
-    except ImportError:
-        return None
 
 
 def _mark_ai_job(job_id: int, status: str, chunks: int = 0, error: str = "") -> None:

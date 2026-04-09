@@ -141,7 +141,7 @@ func main() {
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
-	aiHandler := handler.NewAIHandler(aiClient, courseRepo)
+	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
 
 	// Setup Gin router

@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.core.database import get_ai_conn, get_lms_conn
+from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_quiz_generation_prompt
 from app.services.rag_service import rag_service
 from app.core.config import get_settings
@@ -45,17 +45,27 @@ class QuizGenerationService:
             )
         existing_texts = [r["question_text"] for r in existing]
 
+        import asyncio
+        tasks = []
         for bloom_level in levels:
             for _ in range(questions_per_level):
-                try:
-                    gen_id = await self._generate_single(
+                tasks.append(
+                    self._generate_single(
                         node_id=node_id, course_id=course_id, created_by=created_by,
                         bloom_level=bloom_level, node_name=node_name,
                         language=language, existing_questions=existing_texts,
                     )
-                    gen_ids.append(gen_id)
-                except Exception as e:
-                    logger.error("Failed to generate %s question: %s", bloom_level, e)
+                )
+
+        # Execute all LLM calls in parallel (significantly faster)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                # Using levels[i // questions_per_level] but list might be shorter if many Qs per level
+                logger.error("Failed a parallel generation task: %s", res)
+            else:
+                gen_ids.append(res)
 
         return gen_ids
 
@@ -126,7 +136,14 @@ class QuizGenerationService:
 
     async def approve_question(
         self, gen_id: int, reviewer_id: int, quiz_id: int, review_note: str = ""
-    ) -> int:
+    ) -> dict:
+        """
+        Approve a generated question.
+
+        Instead of writing directly to LMS DB, we mark it as APPROVED in AI DB
+        and return the full question data so the LMS Go handler can create the
+        quiz_question record in its own database.
+        """
         import json as json_lib
 
         async with get_ai_conn() as conn:
@@ -140,43 +157,39 @@ class QuizGenerationService:
         if isinstance(options, str):
             options = json_lib.loads(options)
 
-        # Write approved question into LMS DB
-        async with get_lms_conn() as conn:
-            q_row = await conn.fetchrow(
-                """
-                INSERT INTO quiz_questions
-                    (quiz_id, question_type, question_text, explanation, points,
-                     order_index, settings, is_required, node_id, bloom_level, reference_chunk_id)
-                SELECT $1, $2, $3, $4, 10.0,
-                       COALESCE((SELECT MAX(order_index)+1 FROM quiz_questions WHERE quiz_id=$1), 1),
-                       '{}', true, $5, $6, $7
-                RETURNING id
-                """,
-                quiz_id, gen["question_type"], gen["question_text"],
-                gen["explanation"], gen["node_id"], gen["bloom_level"],
-                gen["source_chunk_id"],
-            )
-            q_id = q_row["id"]
-
-            for i, opt in enumerate(options):
-                await conn.execute(
-                    """INSERT INTO quiz_answer_options
-                       (question_id, option_text, is_correct, order_index)
-                       VALUES ($1,$2,$3,$4)""",
-                    q_id, opt.get("text", ""), bool(opt.get("is_correct")), i,
-                )
-
-        # Update generation record in AI DB
+        # Mark as APPROVED in AI DB (no LMS DB write)
         async with get_ai_conn() as conn:
             await conn.execute(
                 """UPDATE ai_quiz_generations
-                   SET status='PUBLISHED', reviewed_by=$1, reviewed_at=NOW(),
-                       review_note=$2, quiz_question_id=$3, updated_at=NOW()
-                   WHERE id=$4""",
-                reviewer_id, review_note, q_id, gen_id,
+                   SET status='APPROVED', reviewed_by=$1, reviewed_at=NOW(),
+                       review_note=$2, updated_at=NOW()
+                   WHERE id=$3""",
+                reviewer_id, review_note, gen_id,
             )
 
-        return q_id
+        # Return full question data for LMS to insert
+        return {
+            "gen_id": gen_id,
+            "quiz_id": quiz_id,
+            "question_text": gen["question_text"],
+            "question_type": gen["question_type"] or "SINGLE_CHOICE",
+            "explanation": gen["explanation"] or "",
+            "answer_options": options,
+            "node_id": gen["node_id"],
+            "bloom_level": gen["bloom_level"],
+            "source_chunk_id": gen["source_chunk_id"],
+            "language": gen["language"],
+        }
+
+    async def update_quiz_question_id(self, gen_id: int, quiz_question_id: int) -> None:
+        """Called by LMS after it creates the quiz_question in its own DB."""
+        async with get_ai_conn() as conn:
+            await conn.execute(
+                """UPDATE ai_quiz_generations
+                   SET status='PUBLISHED', quiz_question_id=$1, updated_at=NOW()
+                   WHERE id=$2""",
+                quiz_question_id, gen_id,
+            )
 
     async def reject_question(self, gen_id: int, reviewer_id: int, review_note: str) -> None:
         async with get_ai_conn() as conn:
@@ -262,7 +275,10 @@ class SpacedRepetitionService:
         }
 
     async def get_due_reviews(self, student_id, course_id, limit=20) -> list[dict]:
-        # question_text lives in LMS DB — we join across services at app layer
+        """
+        Return due reviews with question_id and node info only.
+        question_text enrichment is done by the LMS Go handler.
+        """
         async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
@@ -278,29 +294,7 @@ class SpacedRepetitionService:
                 student_id, course_id, limit,
             )
 
-        if not rows:
-            return []
-
-        # Enrich with question text from LMS DB
-        question_ids = [r["question_id"] for r in rows if r["question_id"]]
-        question_map: dict[int, dict] = {}
-        if question_ids:
-            async with get_lms_conn() as conn:
-                qq = await conn.fetch(
-                    "SELECT id, question_text, question_type FROM quiz_questions WHERE id = ANY($1)",
-                    question_ids,
-                )
-            question_map = {r["id"]: dict(r) for r in qq}
-
-        result = []
-        for r in rows:
-            entry = dict(r)
-            q = question_map.get(r["question_id"], {})
-            entry["question_text"] = q.get("question_text", "")
-            entry["question_type"] = q.get("question_type", "")
-            result.append(entry)
-
-        return result
+        return [dict(r) for r in rows]
 
     async def get_review_stats(self, student_id, course_id) -> dict:
         async with get_ai_conn() as conn:

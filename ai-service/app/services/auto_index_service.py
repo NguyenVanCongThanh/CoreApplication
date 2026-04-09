@@ -846,6 +846,7 @@ class AutoIndexService:
         embeddings: list[list[float]],
         course_id: int,
         content_id: int,
+        content_title: str = "",
     ) -> list[int]:
         if not nodes:
             return []
@@ -860,12 +861,12 @@ class AutoIndexService:
                             """
                             INSERT INTO knowledge_nodes
                                 (course_id, name, name_vi, name_en, description,
-                                 level, order_index, source_content_id, auto_generated)
-                            VALUES ($1,$2,$3,$4,$5,0,$6,$7,true)
+                                 level, order_index, source_content_id, source_content_title, auto_generated)
+                            VALUES ($1,$2,$3,$4,$5,0,$6,$7,$8,true)
                             RETURNING id
                             """,
                             course_id, node.name, node.name_vi, node.name_en,
-                            node.description, node.order_index, content_id,
+                            node.description, node.order_index, content_id, content_title,
                         )
                     else:
                         # Legacy: embedding in PG
@@ -875,12 +876,12 @@ class AutoIndexService:
                             INSERT INTO knowledge_nodes
                                 (course_id, name, name_vi, name_en, description,
                                  description_embedding, level, order_index,
-                                 source_content_id, auto_generated)
-                            VALUES ($1,$2,$3,$4,$5,$6::vector,0,$7,$8,true)
+                                 source_content_id, source_content_title, auto_generated)
+                            VALUES ($1,$2,$3,$4,$5,$6::vector,0,$7,$8,$9,true)
                             RETURNING id
                             """,
                             course_id, node.name, node.name_vi, node.name_en,
-                            node.description, emb_str, node.order_index, content_id,
+                            node.description, emb_str, node.order_index, content_id, content_title,
                         )
                     node_ids.append(row["id"])
 
@@ -1369,6 +1370,20 @@ class AutoIndexService:
     async def _update_content_status(
         self, content_id: int, status: str, error_msg: Optional[str] = None,
     ) -> None:
+        # Persist to AI DB
+        try:
+            async with get_ai_conn() as conn:
+                await conn.execute(
+                    """INSERT INTO content_index_status (content_id, course_id, status, error, updated_at)
+                       VALUES ($1, 0, $2, $3, NOW())
+                       ON CONFLICT (content_id) DO UPDATE
+                           SET status = $2, error = $3, updated_at = NOW()""",
+                    content_id, status, error_msg,
+                )
+        except Exception as e:
+            logger.error("Failed to update content_index_status: %s", e)
+
+        # Publish Kafka event to LMS
         try:
             from app.worker.kafka_producer import publish_status_event
             await publish_status_event(content_id, status, error=error_msg or "")

@@ -46,9 +46,6 @@ async def get_ai_conn() -> AsyncIterator[asyncpg.Connection]:
         yield conn
 
 
-# get_async_conn is intentionally removed to force explicit DB choice
-
-
 # ── Sync connections (Celery workers) ─────────────────────────────────────────
 
 def _make_sync_conn(

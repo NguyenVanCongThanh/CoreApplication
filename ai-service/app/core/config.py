@@ -7,16 +7,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
 
-    # ── LMS PostgreSQL (read-only access to LMS entities) ────────────────────
-    db_host: str = "postgres-lms"
-    db_port: int = 5432
-    db_user: str = "lms_user"
-    db_password: str = "lms_password"
-    db_name: str = "lms_db"
-    db_min_connections: int = 2
-    db_max_connections: int = 10
-
-    # ── AI PostgreSQL (operational AI data) ───────────────────────────────────
+    # ── AI PostgreSQL (sole database for AI service) ──────────────────────────
     # Stores: ai_diagnoses, flashcards, spaced_repetitions, ai_quiz_generations,
     #         student_knowledge_progress, embedding_reindex_jobs, document_chunks
     #         (metadata only — vectors live in Qdrant when USE_QDRANT=true)
@@ -97,13 +88,6 @@ class Settings(BaseSettings):
         extra = "ignore"
 
     @property
-    def lms_database_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-        )
-
-    @property
     def ai_database_url(self) -> str:
         return (
             f"postgresql+asyncpg://{self.ai_db_user}:{self.ai_db_password}"
@@ -118,10 +102,6 @@ class Settings(BaseSettings):
                 f"@{self.redis_host}:{self.redis_port}/{self.redis_db}"
             )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-
-    @property
-    def database_url(self) -> str:
-        return self.lms_database_url
 
 
 @lru_cache

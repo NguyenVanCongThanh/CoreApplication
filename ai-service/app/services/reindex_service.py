@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from app.core.config import get_settings
-from app.core.database import get_ai_conn, get_lms_conn
+from app.core.database import get_ai_conn
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -14,16 +14,15 @@ class ReindexService:
     async def enqueue_all(self, course_id: int | None = None) -> dict:
         from app.worker.celery_app import reindex_content_task
 
-        # Find content IDs from LMS DB that still need re-indexing
-        async with get_lms_conn() as conn:
+        # Find content IDs from AI DB that have chunks without embeddings
+        async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
-                SELECT DISTINCT sc.id AS content_id, cs.course_id
-                FROM section_content sc
-                JOIN course_sections cs ON cs.id = sc.section_id
-                WHERE ($1::BIGINT IS NULL OR cs.course_id = $1)
-                  AND sc.ai_index_status = 'indexed'
-                ORDER BY sc.id
+                SELECT DISTINCT dc.content_id, dc.course_id
+                FROM document_chunks dc
+                WHERE ($1::BIGINT IS NULL OR dc.course_id = $1)
+                  AND dc.embedding IS NULL
+                ORDER BY dc.content_id
                 """,
                 course_id,
             )
@@ -31,24 +30,7 @@ class ReindexService:
         if not rows:
             return {"enqueued": 0, "message": "Nothing to reindex"}
 
-        # Filter to content_ids that have chunks without embeddings in AI DB
-        content_ids_to_check = [r["content_id"] for r in rows]
-        async with get_ai_conn() as conn:
-            missing = await conn.fetch(
-                """
-                SELECT DISTINCT content_id
-                FROM document_chunks
-                WHERE content_id = ANY($1::BIGINT[])
-                  AND embedding IS NULL
-                """,
-                content_ids_to_check,
-            )
-
-        missing_set = {r["content_id"] for r in missing}
-        rows_to_enqueue = [r for r in rows if r["content_id"] in missing_set]
-
-        if not rows_to_enqueue:
-            return {"enqueued": 0, "message": "All chunks already have embeddings"}
+        rows_to_enqueue = [dict(r) for r in rows]
 
         # Insert tracking rows into AI DB
         async with get_ai_conn() as conn:

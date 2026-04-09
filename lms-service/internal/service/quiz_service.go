@@ -999,6 +999,31 @@ func (s *QuizService) GradeAnswer(ctx context.Context, req *dto.GradeAnswerReque
 		return err
 	}
 
+	// AI: Notify AI service about the manual grading result for progress tracking
+	if question.NodeID.Valid {
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			quality := 1
+			if answer.IsCorrect.Valid && answer.IsCorrect.Bool {
+				quality = 4
+			}
+
+			courseID, _ := s.quizRepo.GetQuizCourseID(bgCtx, quiz.ID)
+			nodeID := int64(question.NodeID.Int64)
+
+			req := ai.RecordReviewRequest{
+				StudentID:  attempt.StudentID,
+				QuestionID: question.ID,
+				CourseID:   courseID,
+				NodeID:     &nodeID,
+				Quality:    quality,
+			}
+			_, _ = s.aiClient.RecordReviewResponse(bgCtx, req)
+		}()
+	}
+
 	return nil
 }
 

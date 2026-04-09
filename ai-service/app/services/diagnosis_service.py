@@ -33,36 +33,72 @@ class DiagnosisService:
         question_id: int,
         wrong_answer: str,
         course_id: int,
+        # ── Enrichment fields (provided by LMS caller) ────────────────────
+        question_text: str = "",
+        question_type: str = "SINGLE_CHOICE",
+        explanation: str = "",
+        correct_answer: str = "",
+        answer_options: list[dict] | None = None,
+        node_id: int | None = None,
     ) -> DiagnosisResult:
-        # ── 1. Load question from LMS DB ──────────────────────────────────────
-        async with get_lms_conn() as conn:
-            q_row = await conn.fetchrow(
-                """SELECT qq.question_text, qq.node_id, qq.explanation, qq.question_type
-                   FROM quiz_questions qq WHERE qq.id = $1""",
-                question_id,
+        # ── 0. Cache Lookup ──────────────────────────────────────────────
+        async with get_ai_conn() as conn:
+            cached = await conn.fetchrow(
+                """
+                SELECT explanation, gap_type, knowledge_gap, study_suggestion, 
+                       confidence, source_chunk_id, suggested_docs_json, language
+                FROM ai_diagnoses
+                WHERE question_id = $1 AND md5(wrong_answer) = md5($2)
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                question_id, wrong_answer
             )
-            options_rows = await conn.fetch(
-                """SELECT option_text, is_correct
-                   FROM quiz_answer_options WHERE question_id = $1 ORDER BY order_index""",
-                question_id,
+            
+            if cached:
+                import json
+                logger.info(f"Cache hit for question {question_id}, wrong_answer hash match.")
+                
+                # Parse suggested docs from JSON
+                suggested_docs = []
+                if cached["suggested_docs_json"]:
+                    if isinstance(cached["suggested_docs_json"], str):
+                        suggested_docs = json.loads(cached["suggested_docs_json"])
+                    else:
+                        suggested_docs = cached["suggested_docs_json"]
+
+                return DiagnosisResult(
+                    explanation=cached["explanation"],
+                    gap_type=cached["gap_type"],
+                    knowledge_gap=cached["knowledge_gap"] or "",
+                    study_suggestion=cached["study_suggestion"] or "",
+                    confidence=float(cached["confidence"]),
+                    source_chunk_id=cached["source_chunk_id"],
+                    suggested_documents=suggested_docs,
+                    language=cached["language"],
+                )
+
+        # ── 1. Use enriched data from LMS (no LMS DB access) ─────────────
+        if not question_text:
+            raise ValueError(f"question_text is required (question_id={question_id})")
+
+        options = answer_options or []
+        if not correct_answer and options:
+            correct_answer = " | ".join(
+                o.get("option_text", "") for o in options if o.get("is_correct")
             )
+        distractor_opts = [
+            o.get("option_text", "") for o in options if not o.get("is_correct")
+        ]
 
-        if not q_row:
-            raise ValueError(f"Question {question_id} not found")
-
-        question_text   = q_row["question_text"]
-        correct_answer  = " | ".join(r["option_text"] for r in options_rows if r["is_correct"])
-        distractor_opts = [r["option_text"] for r in options_rows if not r["is_correct"]]
-        node_id         = q_row["node_id"]
-
-        # ── 2. Detect language ────────────────────────────────────────────────
+        # ── 2. Detect language ────────────────────────────────────────────
         from app.services.chunker import detect_language
         language = detect_language(question_text)
 
-        # ── 3. Cross-lingual RAG (reads AI DB via rag_service) ────────────────
+        # ── 3. Cross-lingual RAG (reads AI DB via rag_service) ────────────
         chunks: list[RetrievedChunk] = await rag_service.search_for_question(
-            question_id=question_id,
+            question_text=question_text,
             course_id=course_id,
+            node_id=node_id,
             top_k=settings.top_k_chunks,
         )
         if not chunks:
@@ -71,7 +107,7 @@ class DiagnosisService:
                 query=query, course_id=course_id, top_k=settings.top_k_chunks,
             )
 
-        # ── 4. Build prompt + call LLM ────────────────────────────────────────
+        # ── 4. Build prompt + call LLM ────────────────────────────────────
         context_texts = [c.chunk_text for c in chunks] if chunks else []
         if not context_texts and correct_answer:
             context_texts = [f"Đáp án đúng: {correct_answer}"]
@@ -97,7 +133,7 @@ class DiagnosisService:
                 "confidence":      0.5,
             }
 
-        # ── 5. Build suggested documents ──────────────────────────────────────
+        # ── 5. Build suggested documents ──────────────────────────────────
         indices = llm_result.get("relevant_source_indices", [])
         if not isinstance(indices, list):
             indices = []
@@ -132,13 +168,14 @@ class DiagnosisService:
             else (chunks[0] if chunks else None)
         )
 
-        # ── 6. Persist diagnosis to AI DB ─────────────────────────────────────
+        # ── 6. Persist diagnosis to AI DB ─────────────────────────────────
         await self._save_diagnosis(
             student_id=student_id, attempt_id=attempt_id,
             question_id=question_id, node_id=node_id,
             wrong_answer=wrong_answer, correct_answer=correct_answer,
             llm_result=llm_result,
             source_chunk_id=best_chunk.chunk_id if best_chunk else None,
+            suggested_docs=suggested_documents,
             language=language,
         )
 
@@ -166,28 +203,35 @@ class DiagnosisService:
 
     async def _save_diagnosis(
         self, student_id, attempt_id, question_id, node_id,
-        wrong_answer, correct_answer, llm_result, source_chunk_id, language,
+        wrong_answer, correct_answer, llm_result, source_chunk_id,
+        suggested_docs, language,
     ) -> int:
+        import json
         async with get_ai_conn() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO ai_diagnoses
                     (student_id, attempt_id, question_id, node_id,
                      wrong_answer, correct_answer, explanation,
-                     gap_type, confidence, source_chunk_id, language)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                     gap_type, knowledge_gap, study_suggestion,
+                     confidence, source_chunk_id, suggested_docs_json, language)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                 RETURNING id
                 """,
                 student_id, attempt_id, question_id, node_id,
                 wrong_answer, correct_answer,
                 llm_result.get("explanation", ""),
                 llm_result.get("gap_type", "other"),
+                llm_result.get("knowledge_gap", ""),
+                llm_result.get("study_suggestion", ""),
                 float(llm_result.get("confidence", 0.7)),
-                source_chunk_id, language,
+                source_chunk_id,
+                json.dumps(suggested_docs, ensure_ascii=False),
+                language,
             )
         return row["id"]
 
-    # ── Heatmaps ──────────────────────────────────────────────────────────────
+    # ── Heatmaps ──────────────────────────────────────────────────────────
 
     async def get_class_heatmap(self, course_id: int) -> list[dict]:
         async with get_ai_conn() as conn:

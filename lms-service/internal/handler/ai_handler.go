@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"example/hello/internal/dto"
+	"example/hello/internal/models"
 	"example/hello/internal/repository"
 	"example/hello/pkg/ai"
 	"example/hello/pkg/kafka"
@@ -23,11 +25,12 @@ import (
 type AIHandler struct {
 	aiClient   *ai.Client
 	courseRepo *repository.CourseRepository
+	quizRepo   *repository.QuizRepository
 }
 
 // NewAIHandler creates a new AIHandler.
-func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository) *AIHandler {
-	return &AIHandler{aiClient: aiClient, courseRepo: courseRepo}
+func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository, quizRepo *repository.QuizRepository) *AIHandler {
+	return &AIHandler{aiClient: aiClient, courseRepo: courseRepo, quizRepo: quizRepo}
 }
 
 // ── Phase 1: Error Diagnosis ──────────────────────────────────────────────────
@@ -60,13 +63,52 @@ func (h *AIHandler) DiagnoseWrongAnswer(c *gin.Context) {
 		return
 	}
 
-	result, err := h.aiClient.DiagnoseError(c.Request.Context(), ai.DiagnoseRequest{
-		StudentID:   studentID,
-		AttemptID:   attemptID,
-		QuestionID:  questionID,
-		WrongAnswer: body.WrongAnswer,
-		CourseID:    body.CourseID,
-	})
+	// Enrichment: load question + options from LMS DB so AI doesn't need to
+	qWithOpts, err := h.quizRepo.GetQuestionWithOptions(c.Request.Context(), questionID)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to load question %d for diagnosis enrichment", questionID), err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("question_not_found", "Could not load question data"))
+		return
+	}
+
+	// Build correct answer string and answer options list
+	correctAnswer := ""
+	answerOptions := make([]map[string]interface{}, 0, len(qWithOpts.AnswerOptions))
+	for _, opt := range qWithOpts.AnswerOptions {
+		optMap := map[string]interface{}{
+			"option_text": opt.OptionText,
+			"is_correct":  opt.IsCorrect,
+		}
+		answerOptions = append(answerOptions, optMap)
+		if opt.IsCorrect {
+			if correctAnswer != "" {
+				correctAnswer += " | "
+			}
+			correctAnswer += opt.OptionText
+		}
+	}
+
+	// Convert sql.NullInt64 to *int64 for AI request
+	var nodeIDPtr *int64
+	if qWithOpts.NodeID.Valid {
+		nodeIDPtr = &qWithOpts.NodeID.Int64
+	}
+
+	aiReq := ai.DiagnoseRequest{
+		StudentID:     studentID,
+		AttemptID:     attemptID,
+		QuestionID:    questionID,
+		WrongAnswer:   body.WrongAnswer,
+		CourseID:      body.CourseID,
+		QuestionText:  qWithOpts.QuestionText,
+		QuestionType:  qWithOpts.QuestionType,
+		Explanation:   qWithOpts.Explanation.String,
+		CorrectAnswer: correctAnswer,
+		AnswerOptions: answerOptions,
+		NodeID:        nodeIDPtr,
+	}
+
+	result, err := h.aiClient.DiagnoseError(c.Request.Context(), aiReq)
 	if err != nil {
 		logger.Error("AI diagnosis failed", err)
 		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", "Diagnosis unavailable"))
@@ -242,6 +284,12 @@ func (h *AIHandler) GenerateQuiz(c *gin.Context) {
 		body.QuestionsPerLevel = 1
 	}
 
+	if deadline, ok := c.Request.Context().Deadline(); ok {
+		logger.Info(fmt.Sprintf("GenerateQuiz: Request context has deadline: %v (remaining: %v)", deadline, time.Until(deadline)))
+	} else {
+		logger.Info("GenerateQuiz: Request context has no deadline")
+	}
+
 	result, err := h.aiClient.GenerateQuiz(c.Request.Context(), ai.GenerateQuizRequest{
 		NodeID:            body.NodeID,
 		CourseID:          courseID,
@@ -310,7 +358,8 @@ func (h *AIHandler) ApproveQuestion(c *gin.Context) {
 		return
 	}
 
-	qID, err := h.aiClient.ApproveQuestion(c.Request.Context(), genID, ai.ApproveQuestionRequest{
+	// 1) Ask AI to approve — returns question data instead of writing to LMS DB
+	approved, err := h.aiClient.ApproveQuestion(c.Request.Context(), genID, ai.ApproveQuestionRequest{
 		ReviewerID: reviewerID,
 		QuizID:     body.QuizID,
 		ReviewNote: body.ReviewNote,
@@ -320,7 +369,68 @@ func (h *AIHandler) ApproveQuestion(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.NewDataResponse(map[string]int64{"quiz_question_id": qID}))
+	ctx := c.Request.Context()
+
+	// 2) LMS inserts the question into its own quiz_questions table
+	question := &models.QuizQuestion{
+		QuizID:       body.QuizID,
+		QuestionType: approved.QuestionType,
+		QuestionText: approved.QuestionText,
+	}
+	if approved.Explanation != "" {
+		question.Explanation.String = approved.Explanation
+		question.Explanation.Valid = true
+	}
+	question.Points = 10.0
+	question.IsRequired = true
+	if approved.NodeID != nil {
+		question.NodeID.Int64 = *approved.NodeID
+		question.NodeID.Valid = true
+	}
+	if approved.BloomLevel != "" {
+		question.BloomLevel.String = approved.BloomLevel
+		question.BloomLevel.Valid = true
+	}
+	if approved.SourceChunkID != nil {
+		question.ReferenceChunkID.Int64 = *approved.SourceChunkID
+		question.ReferenceChunkID.Valid = true
+	}
+
+	// Get next order_index
+	existingQs, _ := h.quizRepo.ListQuestions(ctx, body.QuizID)
+	question.OrderIndex = len(existingQs) + 1
+
+	if err := h.quizRepo.CreateQuestion(ctx, question); err != nil {
+		logger.Error("Failed to create quiz question from AI approval", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("db_error", "Failed to insert quiz question"))
+		return
+	}
+
+	// 3) Insert answer options
+	for i, optMap := range approved.AnswerOptions {
+		optText, _ := optMap["text"].(string)
+		if optText == "" {
+			optText, _ = optMap["option_text"].(string)
+		}
+		isCorrect, _ := optMap["is_correct"].(bool)
+
+		opt := &models.QuizAnswerOption{
+			QuestionID: question.ID,
+			OptionText: optText,
+			IsCorrect:  isCorrect,
+			OrderIndex: i,
+		}
+		if err := h.quizRepo.CreateAnswerOption(ctx, opt); err != nil {
+			logger.Error(fmt.Sprintf("Failed to create answer option for question %d", question.ID), err)
+		}
+	}
+
+	// 4) Notify AI that we successfully created the question (fire-and-forget)
+	go func() {
+		_ = h.aiClient.PublishQuestion(context.Background(), genID, question.ID)
+	}()
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(map[string]int64{"quiz_question_id": question.ID}))
 }
 
 // RejectQuestion godoc
@@ -376,6 +486,33 @@ func (h *AIHandler) GetDueReviews(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
 		return
+	}
+
+	// Enrich question_text from LMS DB (AI no longer queries LMS)
+	if len(reviews) > 0 {
+		questionIDs := make([]int64, 0, len(reviews))
+		for _, r := range reviews {
+			if qID, ok := r["question_id"].(float64); ok {
+				questionIDs = append(questionIDs, int64(qID))
+			}
+		}
+		if len(questionIDs) > 0 {
+			questions, err := h.quizRepo.GetQuestionsByIDs(c.Request.Context(), questionIDs)
+			if err == nil {
+				qMap := make(map[int64]models.QuizQuestion, len(questions))
+				for _, q := range questions {
+					qMap[q.ID] = q
+				}
+				for i, r := range reviews {
+					if qID, ok := r["question_id"].(float64); ok {
+						if q, found := qMap[int64(qID)]; found {
+							reviews[i]["question_text"] = q.QuestionText
+							reviews[i]["question_type"] = q.QuestionType
+						}
+					}
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, dto.NewDataResponse(reviews))

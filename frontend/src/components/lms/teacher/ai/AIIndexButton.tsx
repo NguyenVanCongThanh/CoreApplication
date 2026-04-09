@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { lmsApiClient } from "@/services/lmsApiClient";
 
-type IndexStatus = "not_indexed" | "processing" | "indexed" | "failed";
+type IndexStatus = "not_indexed" | "unindexed" | "pending" | "processing" | "indexed" | "failed";
 
 interface StatusInfo {
   status: IndexStatus;
@@ -48,7 +48,9 @@ export function AIIndexButton({
         setInfo(s);
         setStatus(s.status);
 
-        if (s.status !== "processing") {
+        // Do not clear interval on 'not_indexed' or 'unindexed' because Kafka worker
+        // might take a few seconds to pick up the message and persist 'processing' to DB.
+        if (s.status === "indexed" || s.status === "failed") {
           clearInterval(pollRef.current!);
           pollRef.current = null;
           if (s.status === "indexed") {
@@ -125,6 +127,20 @@ export function AIIndexButton({
       bg: "hover:bg-slate-100 dark:hover:bg-slate-800",
       border: "border-slate-300 dark:border-slate-600",
     },
+    unindexed: {
+      icon: <BrainIcon />,
+      label: "Chưa index",
+      color: "text-slate-500 dark:text-slate-400",
+      bg: "hover:bg-slate-100 dark:hover:bg-slate-800",
+      border: "border-slate-300 dark:border-slate-600",
+    },
+    pending: {
+      icon: <BrainIcon />,
+      label: "Chờ index",
+      color: "text-yellow-500 dark:text-yellow-400",
+      bg: "hover:bg-yellow-100 dark:hover:bg-yellow-800",
+      border: "border-yellow-300 dark:border-yellow-600",
+    },
     processing: {
       icon: <SpinnerIcon />,
       label: "Đang phân tích...",
@@ -148,7 +164,8 @@ export function AIIndexButton({
     },
   };
 
-  const cfg = statusConfig[status];
+  const normalizedStatus = (status === "unindexed" || status === "pending") ? "not_indexed" : status;
+  const cfg = statusConfig[normalizedStatus as keyof typeof statusConfig] || statusConfig["not_indexed"];
   const isClickable = status !== "processing";
 
   return (
@@ -171,7 +188,7 @@ export function AIIndexButton({
       {showTooltip && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none">
           <div className="bg-slate-900 dark:bg-slate-700 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
-            {status === "not_indexed" && "Tự động tạo knowledge nodes từ tài liệu này"}
+            {(status === "not_indexed" || status === "unindexed" || status === "pending") && "Tự động tạo knowledge nodes từ tài liệu này"}
             {status === "processing" && "AI đang phân tích và tạo knowledge nodes..."}
             {status === "indexed" && `Đã index: ${info.nodes_created} nodes, ${info.chunks_created} chunks. Click để re-index.`}
             {status === "failed" && "Xảy ra lỗi trong quá trình index. Click để thử lại."}
