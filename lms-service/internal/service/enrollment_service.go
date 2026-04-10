@@ -15,17 +15,20 @@ type EnrollmentService struct {
 	enrollmentRepo *repository.EnrollmentRepository
 	courseRepo     *repository.CourseRepository
 	userRepo       *repository.UserRepository
+	progressRepo   *repository.ProgressRepository
 }
 
 func NewEnrollmentService(
 	enrollmentRepo *repository.EnrollmentRepository,
 	courseRepo *repository.CourseRepository,
 	userRepo *repository.UserRepository,
+	progressRepo *repository.ProgressRepository,
 ) *EnrollmentService {
 	return &EnrollmentService{
 		enrollmentRepo: enrollmentRepo,
 		courseRepo:     courseRepo,
 		userRepo:       userRepo,
+		progressRepo:   progressRepo,
 	}
 }
 
@@ -67,6 +70,14 @@ func (s *EnrollmentService) GetMyEnrollments(ctx context.Context, studentID int6
 
 	var responses []*dto.StudentEnrollmentResponse
 	for _, e := range enrollments {
+		var progress float64 = 0
+		if s.progressRepo != nil {
+			progressResult, err := s.progressRepo.GetCourseProgress(ctx, e.CourseID, studentID)
+			if err == nil && progressResult != nil {
+				progress = progressResult.ProgressPercent
+			}
+		}
+		
 		responses = append(responses, &dto.StudentEnrollmentResponse{
 			ID:          e.ID,
 			CourseID:    e.CourseID,
@@ -75,6 +86,7 @@ func (s *EnrollmentService) GetMyEnrollments(ctx context.Context, studentID int6
 			TeacherName: e.TeacherName,
 			EnrolledAt:  e.EnrolledAt,
 			AcceptedAt:  extractTime(e.AcceptedAt),
+			ProgressPercent: progress,
 		})
 	}
 

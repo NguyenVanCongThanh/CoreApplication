@@ -85,6 +85,7 @@ export interface Enrollment {
   course_title?: string;
   teacher_name?: string;
   teacher_email?: string;
+  progress_percent?: number;
 }
 
 export interface FileInfo {

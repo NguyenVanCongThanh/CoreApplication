@@ -34,14 +34,14 @@ function LearningStats({ enrollments }: { enrollments: Enrollment[] }) {
       />
       <StatCard
         label="Đang học"
-        value={accepted.length}
+        value={accepted.filter(e => (e.progress_percent || 0) < 100).length}
         sub="khóa đang tiến hành"
         icon={<Clock className="w-5 h-5" />}
         accent="orange"
       />
       <StatCard
         label="Hoàn thành"
-        value={0}
+        value={accepted.filter(e => (e.progress_percent || 0) === 100).length}
         sub="khóa học"
         icon={<CheckCircle2 className="w-5 h-5" />}
         accent="green"
@@ -76,7 +76,7 @@ function EnrolledCourseItem({
             {enrollment.teacher_name}
           </p>
         )}
-        <ProgressBar value={0} max={100} color="blue" showPercent={true} className="mt-2" />
+        <ProgressBar value={enrollment.progress_percent || 0} max={100} color="blue" showPercent={true} className="mt-2" />
       </div>
 
       {/* Arrow */}

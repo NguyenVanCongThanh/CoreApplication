@@ -161,11 +161,13 @@ class AIService {
 
   async getClassHeatmap(courseId: number): Promise<HeatmapNode[]> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/heatmap`);
+    console.log(res)
     return res.data?.data ?? res.data ?? [];
   }
 
   async getStudentHeatmap(courseId: number): Promise<HeatmapNode[]> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/my-heatmap`);
+    console.log(res)
     return res.data?.data ?? res.data ?? [];
   }
 

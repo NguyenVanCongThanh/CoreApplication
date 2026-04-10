@@ -122,7 +122,7 @@ func main() {
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
-	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo)
+	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo, progressRepo)
 	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo, aiClient)
 	userSyncService := service.NewUserSyncService(userRepo)
 	forumService := service.NewForumService(forumRepo, courseRepo)

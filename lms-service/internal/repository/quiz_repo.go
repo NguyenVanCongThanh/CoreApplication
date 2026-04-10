@@ -304,8 +304,9 @@ func (r *QuizRepository) CreateQuestion(ctx context.Context, question *models.Qu
 	query := `
 		INSERT INTO quiz_questions (
 			quiz_id, question_type, question_text, question_html,
-			explanation, points, order_index, settings, is_required
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			explanation, points, order_index, settings, is_required,
+			node_id, bloom_level, reference_chunk_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -314,6 +315,7 @@ func (r *QuizRepository) CreateQuestion(ctx context.Context, question *models.Qu
 		question.QuizID, question.QuestionType, question.QuestionText,
 		question.QuestionHTML, question.Explanation, question.Points,
 		question.OrderIndex, question.Settings, question.IsRequired,
+		question.NodeID, question.BloomLevel, question.ReferenceChunkID,
 	).Scan(&question.ID, &question.CreatedAt, &question.UpdatedAt)
 
 	return err
@@ -385,8 +387,9 @@ func (r *QuizRepository) UpdateQuestion(ctx context.Context, question *models.Qu
 		UPDATE quiz_questions SET
 			question_text = $1, question_html = $2, explanation = $3,
 			points = $4, order_index = $5, settings = $6, is_required = $7,
+			node_id = $8, bloom_level = $9, reference_chunk_id = $10,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $8
+		WHERE id = $11
 		RETURNING updated_at
 	`
 
@@ -394,6 +397,7 @@ func (r *QuizRepository) UpdateQuestion(ctx context.Context, question *models.Qu
 		ctx, query,
 		question.QuestionText, question.QuestionHTML, question.Explanation,
 		question.Points, question.OrderIndex, question.Settings, question.IsRequired,
+		question.NodeID, question.BloomLevel, question.ReferenceChunkID,
 		question.ID,
 	).Scan(&question.UpdatedAt)
 
