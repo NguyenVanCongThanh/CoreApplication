@@ -197,13 +197,20 @@ func main() {
 			files.GET("/serve/*filepath", fileHandler.ServeFile)
 			files.GET("/download/*filepath", fileHandler.DownloadFile)
 
-			// Protected endpoints
+			// Protected endpoints - require authentication
+			// 1. Flexible endpoints (Internal Service Secret OR JWT)
+			flexible := files.Group("")
+			flexible.Use(middleware.ServiceOrAuthMiddleware(cfg.JWT.Secret, cfg.AIConf.Secret))
+			{
+				flexible.GET("/presigned/*filepath", fileHandler.GetPresignedURL)
+			}
+
+			// 2. Strict protected endpoints (JWT ONLY)
 			protected := files.Group("")
 			protected.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
 			{
 				protected.POST("/upload", fileHandler.UploadFile)
 				protected.DELETE("/delete/*filepath", fileHandler.DeleteFile)
-				protected.GET("/presigned/*filepath", fileHandler.GetPresignedURL)
 			}
 		}
 

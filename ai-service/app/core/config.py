@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     reindex_batch_size: int = 5
 
     # Internal
-    lms_service_url: str = "http://lms-backend:8081"
+    lms_service_url: str = "http://lms-service:8081"
     ai_service_secret: str = "ai-service-secret-change-me"
 
     class Config:

@@ -460,12 +460,7 @@ class AutoIndexService:
             chunker = MarkdownChunker()
 
             async def image_describer(image_url: str, alt_text: str) -> str:
-                url_to_use = image_url
-                if image_url.startswith("/"):
-                    path_key = image_url.lstrip("/")
-                    presigned = _get_minio_presigned_url(path_key)
-                    if presigned:
-                        url_to_use = presigned
+                url_to_use = await self._get_vlm_ready_url(image_url)
                 return await describe_image_url(url_to_use, language=language, alt_text=alt_text)
 
             structured_chunks = await chunker.chunk_async(
@@ -549,12 +544,8 @@ class AutoIndexService:
             )
 
             async def image_describer_with_minio(url: str, alt_text: str) -> str:
-                if url.startswith("/"):
-                    path_key = url.lstrip("/")
-                    presigned = _get_minio_presigned_url(path_key)
-                    if presigned:
-                        return await describe_image_url(presigned, language=language, alt_text=alt_text)
-                return await describe_image_url(url, language=language, alt_text=alt_text)
+                url_to_use = await self._get_vlm_ready_url(url)
+                return await describe_image_url(url_to_use, language=language, alt_text=alt_text)
 
             chunks   = await chunker.chunk_async(text, image_describer=image_describer_with_minio)
             raw_text = "\n\n".join(c.text for c in chunks)
@@ -1392,5 +1383,34 @@ class AutoIndexService:
         except Exception as e:
             logger.error(f"Failed to publish to kafka: {e}")
 
+    async def _get_vlm_ready_url(self, url: str) -> str:
+        """
+        Helper to convert a relative path (e.g. /files/image/...) into a full URL
+        suitable for VLM fetch. It tries to get a presigned URL first, and falls back
+        to the public serve endpoint if that fails.
+        """
+        # If it's already a full URL, return it
+        if url.startswith("http"):
+            return url
+
+        # Normalize relative path
+        path_key = url.lstrip("/")
+        
+        # CRITICAL: Strip 'files/' prefix if present. 
+        # In this system, '/files/' is a routing prefix, but MinIO keys are like 'image/...'
+        if path_key.startswith("files/"):
+            path_key = path_key[len("files/"):]
+
+        presigned = _get_minio_presigned_url(path_key)
+        if presigned:
+            return presigned
+
+        # Fallback to full public URL if presigned fails
+        from app.core.config import get_settings
+        settings = get_settings()
+        lms_base = settings.lms_service_url.rstrip("/")
+        
+        # Use the internal path_key (e.g. image/...) with the public serve route
+        return f"{lms_base}/api/v1/files/serve/{path_key}"
 
 auto_index_service = AutoIndexService()

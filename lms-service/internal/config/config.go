@@ -108,8 +108,8 @@ type EmailConfig struct {
 }
 
 type AIConfig struct {
-	baseURL		string
-	secret		string
+	BaseURL		string
+	Secret		string
 }
 
 func LoadStorageConfig() StorageConfig {
@@ -211,8 +211,8 @@ func Load() (*Config, error) {
 		},
 
 		AIConf: AIConfig{
-			baseURL: 	getEnv("AI_SERVICE_URL", "http://ai-service:8000"),
-			secret: 	getEnv("AI_SERVICE_SECRET", "None"),
+			BaseURL: 	getEnv("AI_SERVICE_URL", "http://ai-service:8000"),
+			Secret: 	getEnv("AI_SERVICE_SECRET", "None"),
 		},
 
 		Storage: LoadStorageConfig(),

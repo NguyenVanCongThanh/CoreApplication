@@ -321,7 +321,7 @@ export default function GlobalKnowledgeGraphPanel({
               {selectedNode.description && (
                 <div className="p-5 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 shadow-inner">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Mô tả định nghĩa</p>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">"{selectedNode.description}"</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">{selectedNode.description}</p>
                 </div>
               )}
 
