@@ -745,6 +745,7 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 
 	if content.Type == "TEXT" {
 		eventPayload.ContentType = "text/markdown"
+		eventPayload.TextContent = finalTextContent
 	}
 
 	key := []byte(fmt.Sprintf("%d", contentID))

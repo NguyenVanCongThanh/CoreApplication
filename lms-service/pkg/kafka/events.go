@@ -12,6 +12,7 @@ type ProcessDocumentEvent struct {
 	FileURL        string    `json:"file_url"`
 	ContentType    string    `json:"content_type"`
 	Title          string    `json:"title"`
+	TextContent    string    `json:"text_content,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
