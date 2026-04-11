@@ -479,6 +479,16 @@ class AutoIndexService:
             _progress("build_graph", 90)
             await self._build_graph_edges(all_node_ids, all_node_embeddings, course_id)
 
+            if settings.neo4j_enabled:
+                await self._sync_to_neo4j(
+                    node_ids=all_node_ids,
+                    nodes=nodes,
+                    node_embeddings=all_node_embeddings,
+                    course_id=course_id,
+                    content_id=content_id,
+                    llm_relations=relations,
+                )
+
             await self._update_content_status(content_id, "indexed")
             _progress("done", 100)
 

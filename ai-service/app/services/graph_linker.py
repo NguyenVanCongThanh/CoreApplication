@@ -282,7 +282,7 @@ async def _fetch_other_course_nodes(course_id: int) -> list[NodeInfo]:
         client = qdrant_service._get_client()
 
         while True:
-            from qdrant_client.http.models import Filter, FieldCondition, MustNot, MatchValue
+            from qdrant_client.http.models import Filter, FieldCondition, MatchValue
             records, next_offset = await client.scroll(
                 collection_name="knowledge_nodes",
                 scroll_filter=Filter(

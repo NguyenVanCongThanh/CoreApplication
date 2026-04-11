@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Embedding
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
-    vlm_model: str = "llama-3.2-11b-vision-preview"
+    vlm_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     vlm_enabled: bool = True
     embedding_prefix_mode: str = "bge"
 

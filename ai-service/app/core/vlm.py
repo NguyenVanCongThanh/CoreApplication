@@ -18,7 +18,7 @@ settings = get_settings()
 _vlm_cache: dict[str, str] = {}
 _MAX_CACHE = 2000
 
-VLM_MODEL = "llama-3.2-11b-vision-preview"
+VLM_MODEL = settings.vlm_model
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB safety limit
 
 # ── System prompts ────────────────────────────────────────────────────────────
