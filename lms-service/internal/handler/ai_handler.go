@@ -847,6 +847,30 @@ func (h *AIHandler) GetGlobalKnowledgeGraph(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.NewDataResponse(graph))
 }
 
+// TriggerGlobalLinking godoc
+// @Summary      Trigger Global Knowledge Linking
+// @Description  Triggers a background task to find and create cross-course knowledge relationships.
+// @Tags         AI - Knowledge Graph
+// @Produce      json
+// @Security     BearerAuth
+// @Router       /ai/knowledge-graph/link-global [post]
+func (h *AIHandler) TriggerGlobalLinking(c *gin.Context) {
+	// Only ADMIN can trigger global logic
+	userRole := c.GetString("user_role")
+	if userRole != "ADMIN" {
+		c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Only admins can trigger global linking"))
+		return
+	}
+
+	result, err := h.aiClient.LinkGlobalGraph(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusAccepted, dto.NewDataResponse(result))
+}
+
 func (h *AIHandler) GetNodeChunks(c *gin.Context) {
     nodeID, _ := strconv.ParseInt(c.Param("nodeId"), 10, 64)
     limit := 50

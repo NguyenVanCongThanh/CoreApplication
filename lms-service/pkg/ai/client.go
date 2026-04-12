@@ -476,6 +476,15 @@ func (c *Client) GetGlobalKnowledgeGraph(ctx context.Context, minStrength float6
 	}
 	return &resp, nil
 }
+
+// LinkGlobalGraph triggers a system-wide knowledge graph maintenance task via Kafka command.
+func (c *Client) LinkGlobalGraph(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.post(ctx, "/ai/knowledge-graph/link-global", nil, &resp); err != nil {
+		return nil, fmt.Errorf("ai.LinkGlobalGraph: %w", err)
+	}
+	return resp, nil
+}
  
 // DeleteKnowledgeNode removes an auto-generated node.
 func (c *Client) DeleteKnowledgeNode(ctx context.Context, nodeID int64) error {

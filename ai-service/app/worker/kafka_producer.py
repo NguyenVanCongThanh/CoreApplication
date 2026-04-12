@@ -43,3 +43,17 @@ async def publish_status_event(content_id: int, status: str, chunks_created: int
     await producer.send_and_wait(topic, value=payload, key=key)
     logger.info(f"Published status to {topic} for content {content_id}: {status}")
 
+
+async def publish_graph_event(command: str, status: str, result_count: int = 0, error: str = ""):
+    """Send feedback about graph maintenance tasks (like GLOBAL_LINK)."""
+    producer = await get_kafka_producer()
+    payload = {
+        "command": command,
+        "status":  status,
+        "result_count": result_count,
+        "error":   error,
+    }
+    topic = "ai.graph.status"
+    await producer.send_and_wait(topic, value=payload)
+    logger.info(f"Published graph event to {topic}: {command} -> {status}")
+

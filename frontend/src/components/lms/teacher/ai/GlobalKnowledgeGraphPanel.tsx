@@ -175,26 +175,66 @@ export default function GlobalKnowledgeGraphPanel({
     fullscreen ? "fixed inset-4 z-[9999] h-[calc(100vh-32px)]" : "w-full"
   );
 
-  return (
-    <div className={wrapperCls}>
-      {/* ── Area: Graph Canvas ── */}
-      <div
-        ref={containerRef}
-        className={cn("relative h-full transition-all duration-500", selectedNode ? "w-2/3 border-r border-slate-200 dark:border-slate-800" : "w-full")}
-      >
-        {/* Floating Controls */}
-        <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <Badge variant="outline" className="bg-white/90 dark:bg-slate-900/90 border-blue-200 py-1.5 px-3">
-              <BrainCircuit size={16} className="mr-2 text-blue-600" />
-              <span className="font-bold text-slate-800 dark:text-slate-100">{title}</span>
-            </Badge>
-            <div className="hidden sm:flex items-center gap-2">
-              <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
-                {graphData.nodes.length} nodes
-              </Badge>
-            </div>
+    const [linkingGlobal, setLinkingGlobal] = useState(false);
+    const [linkMessage, setLinkMessage] = useState("");
+
+    const handleLinkGlobal = async () => {
+      if (!confirm("Hệ thống sẽ quét toàn bộ các khóa học để tìm các mối liên kết tiềm năng. Quá trình này chạy ngầm và có thể mất vài phút. Bạn có muốn tiếp tục?")) return;
+      
+      setLinkingGlobal(true);
+      setLinkMessage("");
+      try {
+        const res = await aiService.linkGlobalKnowledgeGraph();
+        setLinkMessage(res.message || "Đã gửi yêu cầu liên kết toàn cục thành công!");
+        setTimeout(() => setLinkMessage(""), 5000);
+      } catch (e: any) {
+        setLinkMessage("Lỗi: " + (e?.message || "Không thể gửi yêu cầu"));
+      } finally {
+        setLinkingGlobal(false);
+      }
+    };
+
+    return (
+      <div className={wrapperCls}>
+  
+        {/* Feedback Alert for Link Global */}
+        {linkMessage && (
+          <div className={cn(
+            "absolute top-20 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-lg shadow-2xl border text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-300",
+            linkMessage.startsWith("Lỗi") ? "bg-red-50 border-red-200 text-red-700" : "bg-green-50 border-green-200 text-green-700"
+          )}>
+            {linkMessage}
           </div>
+        )}
+
+        {/* ── Area: Graph Canvas ── */}
+        <div
+          ref={containerRef}
+          className={cn("relative h-full transition-all duration-500", selectedNode ? "w-2/3 border-r border-slate-200 dark:border-slate-800" : "w-full")}
+        >
+          {/* Floating Controls */}
+          <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
+            <div className="flex items-center gap-2 pointer-events-auto">
+              <Badge variant="outline" className="bg-white/90 dark:bg-slate-900/90 border-blue-200 py-1.5 px-3">
+                <BrainCircuit size={16} className="mr-2 text-blue-600" />
+                <span className="font-bold text-slate-800 dark:text-slate-100">{title}</span>
+              </Badge>
+              <div className="hidden sm:flex items-center gap-2">
+                <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                  {graphData.nodes.length} nodes
+                </Badge>
+                {/* Admin-only Button */}
+                <button 
+                  onClick={handleLinkGlobal}
+                  disabled={linkingGlobal}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md"
+                  title="Tìm liên kết kiến thức xuyên khóa học"
+                >
+                  {linkingGlobal ? <RefreshCw size={12} className="animate-spin" /> : <Link2 size={12} />}
+                  Link All Nodes
+                </button>
+              </div>
+            </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">
             <div className="relative">

@@ -406,6 +406,8 @@ func main() {
 					aiHandler.DiagnoseWrongAnswer)
 				aiGroup.GET("/knowledge-graph/global", 
 					aiHandler.GetGlobalKnowledgeGraph)
+				aiGroup.POST("/knowledge-graph/link-global",
+					aiHandler.TriggerGlobalLinking)
 			}
 
 			// Per-course AI routes (reuse courseId param)

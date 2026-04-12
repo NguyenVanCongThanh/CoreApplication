@@ -30,3 +30,5 @@ httpx==0.28.1
 minio==7.2.12
 
 neo4j==5.27.0
+
+youtube-transcript-api==0.6.2

@@ -303,6 +303,42 @@ class QdrantService:
             with_vectors=False,
         )
 
+    async def search_nodes_batch(
+        self,
+        query_vectors: list[list[float]],
+        exclude_course_id: int | None = None,
+        top_k: int = 5,
+        score_threshold: float = 0.70,
+    ) -> list[list[ScoredPoint]]:
+        """
+        Perform high-performance batch search across all nodes.
+        Used for global linking optimization.
+        """
+        client = self._get_client()
+        from qdrant_client.http.models import SearchRequest
+
+        query_filter = None
+        if exclude_course_id is not None:
+            query_filter = Filter(
+                must_not=[FieldCondition(key="course_id", match=MatchValue(value=exclude_course_id))]
+            )
+
+        requests = [
+            SearchRequest(
+                vector=v,
+                filter=query_filter,
+                limit=top_k,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+            for v in query_vectors
+        ]
+        
+        return await client.search_batch(
+            collection_name=NODE_COLLECTION,
+            requests=requests,
+        )
+
     async def scroll_nodes_for_course(self, course_id: int) -> list[Any]:
         """
         Fetch all node vectors for a course.

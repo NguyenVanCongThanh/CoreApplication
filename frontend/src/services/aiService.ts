@@ -274,6 +274,15 @@ class AIService {
     const res = await lmsApiClient.get(`/ai/knowledge-graph/global`, { params });
     return res.data?.data ?? { course_id: 0, nodes: [], edges: [] };
   }
+
+  /**
+   * Triggers a system-wide background task to discover and link
+   * knowledge nodes across all courses.
+   */
+  async linkGlobalKnowledgeGraph(): Promise<{ status: string; message: string }> {
+    const res = await lmsApiClient.post(`/ai/knowledge-graph/link-global`);
+    return res.data?.data ?? res.data;
+  }
 }
 
 export const aiService = new AIService();

@@ -153,6 +153,9 @@ Trả về JSON (không thêm text khác):
 # ── File type detection ────────────────────────────────────────────────────────
 
 def _detect_file_type(file_url: str, content_type: str) -> str:
+    from app.services.youtube_service import is_youtube_url
+    if is_youtube_url(file_url):
+        return "youtube"
     url_lower = file_url.lower()
     ct_lower  = content_type.lower()
     if "/image/" in url_lower or "/images/" in url_lower:
@@ -298,7 +301,10 @@ class AutoIndexService:
     ) -> dict:
         logger.info("AutoIndex start: content_id=%d type=%s", content_id, content_type)
 
-        if not file_bytes:
+        from app.services.youtube_service import is_youtube_url
+        is_yt = is_youtube_url(file_url)
+
+        if not file_bytes and not is_yt:
             logger.error("AutoIndex: empty file_bytes for content_id=%d", content_id)
             await self._update_content_status(content_id, "failed", "Empty file bytes")
             return {"ok": False, "error": "Empty file bytes"}
@@ -537,6 +543,32 @@ class AutoIndexService:
         return await loop.run_in_executor(None, _sync_download)
 
     # ─ Step 2: Extract text + chunks ─────────────────────────────────────────
+    async def _extract_youtube(self, file_url: str) -> tuple[str, list[DocumentChunk]]:
+        """Fetch YouTube transcript → VideoTranscriptChunker → DocumentChunks."""
+        from app.services.youtube_service import youtube_fetcher
+        from app.services.chunker import VideoTranscriptChunker, detect_language
+
+        preferred_lang = "vi"
+
+        result = await youtube_fetcher.fetch(file_url, preferred_language=preferred_lang)
+        segments = result["segments"]
+        language = result["language"]
+
+        if not segments:
+            raise ValueError(f"Empty transcript for YouTube URL: {file_url}")
+
+        chunker = VideoTranscriptChunker(
+            segment_duration_sec=120,
+            overlap_sec=15,
+        )
+        chunks = chunker.chunk_whisper_json({"segments": segments})
+
+        # Gắn language đúng từ transcript
+        for chunk in chunks:
+            chunk.language = language
+
+        raw_text = " ".join(seg["text"] for seg in segments[:500])
+        return raw_text, chunks
 
     async def _extract_text_and_chunks(
         self,
@@ -545,6 +577,8 @@ class AutoIndexService:
         content_id: int,
         file_url: str = "",
     ) -> tuple[str, list[DocumentChunk]]:
+        if file_type == "youtube":
+            return await self._extract_youtube(file_url)
         if file_type == "text":
             from app.core.vlm import describe_image_url
             text     = file_bytes.decode("utf-8", errors="replace")

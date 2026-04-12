@@ -139,16 +139,19 @@ async def trigger_auto_index(body: AutoIndexRequest, request: Request):
     # Track status in AI DB
     await _upsert_content_status(body.content_id, body.course_id, "processing")
 
-    from app.worker.celery_app import auto_index_task
-    task = auto_index_task.delay(
-        content_id=body.content_id,
-        course_id=body.course_id,
-        file_url=body.file_url,
-        content_type=body.content_type,
-        force=body.force,
-    )
+    # Use Kafka instead of Celery
+    from app.worker.kafka_producer import get_kafka_producer
+    producer = await get_kafka_producer()
+    payload = {
+        "content_id": body.content_id,
+        "course_id":  body.course_id,
+        "file_url":   body.file_url,
+        "content_type": body.content_type,
+        "force":      body.force,
+    }
+    await producer.send_and_wait("lms.document.uploaded", value=payload)
 
-    return AutoIndexResponse(job_id=task.id, content_id=body.content_id)
+    return AutoIndexResponse(job_id="kafka-event", content_id=body.content_id)
 
 
 @router.post("/text", response_model=AutoIndexResponse)
@@ -165,18 +168,20 @@ async def trigger_auto_index_text(body: AutoIndexTextRequest, request: Request):
 
     await _upsert_content_status(body.content_id, body.course_id, "processing")
 
-    from app.worker.celery_app import auto_index_text_task
-    try:
-        task = auto_index_text_task.delay(
-            content_id=body.content_id, course_id=body.course_id,
-            title=body.title, text_content=body.text_content, force=body.force,
-        )
-    except Exception as e:
-        logger.error("Failed to enqueue auto_index_text_task: %s", e)
-        await _upsert_content_status(body.content_id, body.course_id, "failed")
-        raise HTTPException(status_code=500, detail=f"Failed to queue task: {str(e)}")
+    # Use Kafka instead of Celery
+    from app.worker.kafka_producer import get_kafka_producer
+    producer = await get_kafka_producer()
+    payload = {
+        "content_id":   body.content_id,
+        "course_id":    body.course_id,
+        "title":        body.title,
+        "text_content": body.text_content,
+        "content_type": "TEXT",
+        "force":        body.force,
+    }
+    await producer.send_and_wait("lms.document.uploaded", value=payload)
 
-    return AutoIndexResponse(job_id=task.id, content_id=body.content_id)
+    return AutoIndexResponse(job_id="kafka-event", content_id=body.content_id)
 
 
 @router.get("/{content_id}/status", response_model=AutoIndexStatusResponse)
@@ -282,6 +287,22 @@ async def get_global_knowledge_graph(
     return KnowledgeGraphResponse(
         course_id=0, nodes=nodes, edges=edges  # course_id=0 for global
     )
+
+
+@graph_router.post("/link-global")
+async def trigger_global_link(request: Request):
+    """
+    Trigger a system-wide knowledge graph maintenance task via Kafka.
+    This will find missing cross-course relationships.
+    """
+    _verify(request)
+
+    from app.worker.kafka_producer import get_kafka_producer
+    producer = await get_kafka_producer()
+    payload  = {"command": "GLOBAL_LINK"}
+    
+    await producer.send_and_wait("lms.graph.command", value=payload)
+    return {"ok": True, "message": "Global linking command queued via Kafka"}
 
 
 @graph_router.get("/{course_id}", response_model=KnowledgeGraphResponse)

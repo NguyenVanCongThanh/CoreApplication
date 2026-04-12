@@ -46,7 +46,7 @@ RELATIONSHIP_TYPES = {
 
 # Similarity thresholds
 INTRA_COURSE_THRESHOLD  = 0.62   # Same course — more lenient
-CROSS_COURSE_THRESHOLD  = 0.88   # Different courses — tighter to avoid noise
+CROSS_COURSE_THRESHOLD  = 0.82   # Different courses — tighter to avoid noise, but lowered for better recall
 EQUIVALENT_THRESHOLD    = 0.95   # Very high → likely same concept
 
 

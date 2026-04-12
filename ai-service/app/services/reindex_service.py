@@ -43,17 +43,22 @@ class ReindexService:
                 [(r["course_id"], r["content_id"]) for r in rows_to_enqueue],
             )
 
+        from app.worker.kafka_producer import get_kafka_producer
+        producer = await get_kafka_producer()
+
         batch = settings.reindex_batch_size
         enqueued = 0
         for i in range(0, len(rows_to_enqueue), batch):
             for row in rows_to_enqueue[i: i + batch]:
-                reindex_content_task.delay(
-                    content_id=row["content_id"],
-                    course_id=row["course_id"],
-                )
+                payload = {
+                    "command":    "REINDEX_CONTENT",
+                    "content_id": row["content_id"],
+                    "course_id":  row["course_id"],
+                }
+                await producer.send("lms.maintenance.command", value=payload)
                 enqueued += 1
 
-        logger.info("Enqueued %d reindex jobs", enqueued)
+        logger.info("Enqueued %d Kafka reindex commands", enqueued)
         return {"enqueued": enqueued}
 
     async def get_progress(self) -> dict:
