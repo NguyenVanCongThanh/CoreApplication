@@ -37,7 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         # libgomp1: required by onnxruntime for OpenMP parallelism
         libgomp1 \
+        # ffmpeg: required by yt-dlp to extract audio
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
 
 RUN groupadd --gid 1001 appuser \
  && useradd  --uid 1001 --gid appuser --shell /bin/bash --create-home appuser

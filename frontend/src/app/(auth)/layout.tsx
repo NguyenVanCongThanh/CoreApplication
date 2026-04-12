@@ -1,7 +1,7 @@
 import Footer from "@/components/layout/Footer";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;

@@ -76,6 +76,7 @@ x-ai-env: &ai-env
   NEO4J_USER: neo4j
   NEO4J_PASSWORD: neo4j_password
   NEO4J_ENABLED: "true"
+  YOUTUBE_WHISPER_FALLBACK: "true"
 
 services:
   # ── Kafka Broker (KRaft Mode) ──────────────────────────────────────────────
