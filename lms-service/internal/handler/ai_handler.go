@@ -710,9 +710,15 @@ func (h *AIHandler) TriggerContentAutoIndex(c *gin.Context) {
 				if path, ok := meta["file_path"].(string); ok && path != "" {
 					finalFilePath = path
 					logger.Info(fmt.Sprintf("Auto-index fallback: Using file_path from metadata for content %d: %s", contentID, path))
+				} else if vUrl, ok := meta["video_url"].(string); ok && vUrl != "" {
+					finalFilePath = vUrl
+					logger.Info(fmt.Sprintf("Auto-index fallback: Using video_url from metadata for content %d: %s", contentID, vUrl))
 				}
+				
 				if ftype, ok := meta["file_type"].(string); ok && ftype != "" {
 					finalFileType = ftype
+				} else if vType, ok := meta["video_type"].(string); ok && vType == "youtube" {
+					finalFileType = "video/youtube"
 				}
 			}
 		}

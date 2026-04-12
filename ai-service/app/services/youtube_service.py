@@ -165,12 +165,18 @@ class YouTubeTranscriptFetcher:
         with tempfile.TemporaryDirectory() as tmpdir:
             audio_path = os.path.join(tmpdir, "audio")
             ydl_opts = {
-                "format": "bestaudio[ext=m4a]/bestaudio/best",
-                "outtmpl": audio_path,
+                "format": "ba/b",
+                "outtmpl": f"{audio_path}.%(ext)s",
+                "noplaylist": True,
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                # Disabling iOS/Android clients that cause 'Precondition check failed'
+                "extractor_args": {"youtube": {"player_client": ["mweb", "web"]}},
+                "source_address": "0.0.0.0", # Force IPv4
+                "nocheckcertificate": True,
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
-                    "preferredquality": "64",  # thấp hơn để tiết kiệm disk/CPU
+                    "preferredquality": "128",
                 }],
                 "quiet": True,
                 "no_warnings": True,

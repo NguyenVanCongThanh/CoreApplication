@@ -113,9 +113,6 @@ func main() {
 		if event.Status == "completed" || event.Status == "success" {
 			event.Status = "indexed"
 		}
-		if event.Status == "failed" {
-			event.Status = "error"
-		}
 		return courseRepo.UpdateContentAIIndexStatus(ctx, event.ContentID, event.Status)
 	})
 
