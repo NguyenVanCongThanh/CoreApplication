@@ -29,4 +29,6 @@ public interface UserService {
     String uploadProfilePicture(Long userId, MultipartFile file);
 
     void deleteUser(Long id);
+
+    UserResponse toggleActive(Long id);
 }

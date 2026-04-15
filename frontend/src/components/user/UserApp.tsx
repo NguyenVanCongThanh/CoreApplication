@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { User } from "@/types";
-import { fetchUsers, postBulkRegister } from "@/lib/users/api";
+import { fetchUsers, postBulkRegister, updateUserStatus } from "@/lib/users/api";
 import { parseFile } from "@/lib/users/fileParser";
 import UserRow from "./UserRow";
 import DetailModal from "./DetailModal";
@@ -81,9 +81,19 @@ export default function UserApp() {
     }
   }
 
-  function toggleStatusLocal(id: string | number) {
-    setUsers((s) => s.map(u => (u.id === id ? { ...u, status: !u.status } : u)));
-    // optionally persist to backend (PATCH /api/users/{id}) if API exists
+  async function toggleStatusLocal(id: string | number) {
+    if (!isAdmin) {
+      alert("Chỉ có Quản trị viên mới có thể thực hiện hành động này.");
+      return;
+    }
+
+    try {
+      await updateUserStatus(id);
+      await load();
+    } catch (err: any) {
+      console.error(err);
+      alert("Cập nhật trạng thái thất bại: " + (err.message || err));
+    }
   }
 
   const filteredAndSorted = useMemo(() => {
@@ -257,7 +267,7 @@ export default function UserApp() {
             </div>
           )}
           {!loading && filteredAndSorted.length > 0 && filteredAndSorted.map((u) => (
-            <UserRow key={u.id} user={u} onClick={(user) => setDetail(user)} onToggleStatus={toggleStatusLocal} />
+            <UserRow key={u.id} user={u} onClick={(user) => setDetail(user)} onToggleStatus={toggleStatusLocal} isAdmin={isAdmin} />
           ))}
           {!loading && filteredAndSorted.length === 0 && (
             <div className="py-12 px-4 text-center">

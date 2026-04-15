@@ -184,6 +184,16 @@ public class UserServiceImpl implements UserService {
         userRepository.deleteById(id);
     }
 
+    @Override
+    @Transactional
+    public UserResponse toggleActive(Long id) {
+        var user = findUserEntity(id);
+        user.setActive(!user.getActive());
+        var saved = userRepository.save(user);
+        log.info("User {} active status toggled to: {}", user.getEmail(), user.getActive());
+        return UserResponse.fromEntity(saved);
+    }
+
     // Helpers
 
     /** Entity-level lookup */

@@ -78,6 +78,21 @@ export async function updateUser(
   return mapServerUserToClient(raw);
 }
 
+export async function updateUserStatus(id: number | string): Promise<User> {
+  const res = await fetch(`/apiv1/api/users/${id}/status`, {
+    method: "PATCH",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(
+      `Update status failed: ${res.status} ${res.statusText}${txt ? " - " + txt : ""}`
+    );
+  }
+  const raw = await res.json();
+  return mapServerUserToClient(raw);
+}
+
 export async function updateUserRole(id: number | string, role: string): Promise<User> {
   const res = await fetch(`/apiv1/api/users/${id}/role`, {
     method: "PATCH",

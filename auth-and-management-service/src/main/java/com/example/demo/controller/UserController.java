@@ -73,6 +73,12 @@ public class UserController {
         return ResponseEntity.ok(Map.of("profilePicture", url));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<UserResponse> toggleStatus(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.toggleActive(id));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         userService.deleteUser(id);
