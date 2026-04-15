@@ -9,7 +9,10 @@ import { QuizSettingsModal } from "@/components/lms/teacher/QuizSettingsModal";
 import QuestionImageUploader from "@/components/lms/teacher/QuestionImageUploader";
 import FillBlankTextEditor from "@/components/lms/teacher/FillBlankTextEditor";
 import FillBlankDropdownEditor from "@/components/lms/teacher/FillBlankDropdownEditor";
+import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
 import { useQuizCourse } from "@/hooks/useQuizCourse";
+import { useMarkdownImage } from "@/hooks/useMarkdownImage";
 import type {
   FillBlankTextSettings,
   FillBlankTextCorrectAnswer,
@@ -127,6 +130,7 @@ export default function TeacherQuizManagePage() {
     ],
     correct_answers: [],
   });
+  const { uploadImage, uploading: imageUploading } = useMarkdownImage();
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -320,6 +324,26 @@ export default function TeacherQuizManagePage() {
       correct_answers: f.correct_answers.map((a, j) => j === i ? { ...a, [field]: val } : a),
     }));
 
+  const handleOptionImageUpload = async (index: number) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        try {
+          const url = await uploadImage(file);
+          const currentVal = questionForm.answer_options[index].option_text;
+          const newVal = currentVal + (currentVal ? "\n" : "") + `![image](${url})`;
+          updateAnswerOption(index, "option_text", newVal);
+        } catch (err: any) {
+          alert(err.message);
+        }
+      }
+    };
+    input.click();
+  };
+
   // ── Quiz settings save ────────────────────────────────────────────────────
 
   const handleSaveQuizSettings = async (e: React.FormEvent) => {
@@ -471,7 +495,9 @@ export default function TeacherQuizManagePage() {
                         )}
                       </div>
 
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{q.question_text}</p>
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-50 line-clamp-2 prose-p:inline prose-p:m-0">
+                        <MarkdownRenderer content={q.question_text} />
+                      </div>
 
                       {/* Image preview */}
                       {images.length > 0 && (
@@ -492,10 +518,13 @@ export default function TeacherQuizManagePage() {
                       {q.answer_options?.length > 0 && (
                         <div className="mt-2 space-y-1">
                           {q.answer_options.map((opt: any, idx: number) => (
-                            <p key={idx} className={`text-xs px-2 py-1 rounded ${opt.is_correct ? "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 font-medium" : "text-slate-500 dark:text-slate-400"}`}>
-                              {opt.is_correct ? "✓" : "○"} {opt.option_text}
-                              {opt.blank_id && <span className="ml-1 text-blue-500">[BLANK_{opt.blank_id}]</span>}
-                            </p>
+                            <div key={idx} className={`text-xs px-2 py-1 rounded flex items-start gap-2 ${opt.is_correct ? "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 font-medium" : "text-slate-500 dark:text-slate-400"}`}>
+                              <span>{opt.is_correct ? "✓" : "○"}</span>
+                              <div className="flex-1 min-w-0 prose-p:inline prose-p:m-0 truncate">
+                                <MarkdownRenderer content={opt.option_text} />
+                                {opt.blank_id && <span className="ml-1 text-blue-500 inline-block">[BLANK_{opt.blank_id}]</span>}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -519,33 +548,42 @@ export default function TeacherQuizManagePage() {
         )}
       </div>
 
-      {/* ── Question form modal ── */}
-      {showQuestionForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full my-8 border border-slate-200 dark:border-slate-800 shadow-lg">
-            {/* Modal header */}
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10 rounded-t-2xl">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">
-                {editingQuestion ? "Chỉnh sửa câu hỏi" : "Thêm câu hỏi mới"}
-              </h2>
-              {editingQuestion && (
-                <p className="text-xs text-slate-500 mt-0.5">
-                  ID: {editingQuestion.id} · {questionImages.length} hình ảnh
-                </p>
-              )}
+      {/* ── Question Editor Panel (Slide-over) ── */}
+      <div className={`fixed inset-0 z-50 transition-opacity duration-300 ${showQuestionForm ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={resetQuestionForm} />
+        <div className={`absolute top-0 right-0 h-full w-full max-w-2xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 transition-transform duration-500 transform ${showQuestionForm ? "translate-x-0" : "translate-x-full"}`}>
+          <div className="flex flex-col h-full">
+            {/* Panel header */}
+            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 z-10">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">
+                  {editingQuestion ? "Chỉnh sửa câu hỏi" : "Thêm câu hỏi mới"}
+                </h2>
+                {editingQuestion && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    ID: {editingQuestion.id} · {questionImages.length} hình ảnh đính kèm
+                  </p>
+                )}
+              </div>
+              <button 
+                onClick={resetQuestionForm}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
-            <form onSubmit={handleCreateQuestion} className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
+            <form onSubmit={handleCreateQuestion} className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Type selector */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Loại câu hỏi *</label>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Loại câu hỏi *</label>
                 <select
                   value={questionForm.question_type}
                   onChange={e => {
                     setQuestionForm(f => ({ ...f, question_type: e.target.value }));
                     setFillBlankSettings(null);
                   }}
-                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
                   disabled={!!editingQuestion}
                   required
                 >
@@ -580,82 +618,66 @@ export default function TeacherQuizManagePage() {
                 />
               )}
 
-              {/* Regular question text */}
+              {/* Regular question text with Markdown */}
               {!["FILL_BLANK_TEXT","FILL_BLANK_DROPDOWN"].includes(questionForm.question_type) && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Câu hỏi *</label>
-                  <textarea
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Nội dung câu hỏi (Markdown) *</label>
+                  <MarkdownEditor
                     value={questionForm.question_text}
-                    onChange={e => setQuestionForm(f => ({ ...f, question_text: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none transition-all"
-                    rows={3}
-                    placeholder="Nhập nội dung câu hỏi…"
-                    required
+                    onChange={val => setQuestionForm(f => ({ ...f, question_text: val }))}
+                    placeholder="Nhập nội dung câu hỏi… Hỗ trợ Markdown, dán ảnh trực tiếp."
                   />
                 </div>
               )}
 
-              {/* Images (only when editing a saved question) */}
-              {editingQuestion && (
-                <div className="border-t border-slate-200 dark:border-slate-800 pt-5">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-50 mb-4">🖼️ Hình ảnh minh họa</h3>
-                  <QuestionImageUploader
-                    questionId={editingQuestion.id}
-                    images={questionImages}
-                    onImagesUpdate={() => { loadQuestionImages(editingQuestion.id); loadQuizData(); }}
-                  />
-                </div>
-              )}
-
-              {/* Points + required */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Điểm *</label>
-                  <input
-                    type="number"
-                    value={questionForm.points}
-                    onChange={e => setQuestionForm(f => ({ ...f, points: parseFloat(e.target.value) || 0 }))}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                    min="0" step="0.5" required
-                  />
-                </div>
-                <div className="flex items-center pt-7">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={questionForm.is_required}
-                      onChange={e => setQuestionForm(f => ({ ...f, is_required: e.target.checked }))}
-                      className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-600" />
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Câu hỏi bắt buộc</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Choice options */}
+              {/* Choice options with Markdown support */}
               {["SINGLE_CHOICE","MULTIPLE_CHOICE"].includes(questionForm.question_type) && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Đáp án *</label>
-                  <div className="space-y-2">
+                <div className="space-y-4">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">Đáp án *</label>
+                  <div className="space-y-3">
                     {questionForm.answer_options.map((opt, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                        <input
-                          type={questionForm.question_type === "SINGLE_CHOICE" ? "radio" : "checkbox"}
-                          checked={opt.is_correct}
-                          onChange={e => updateAnswerOption(i, "is_correct", e.target.checked)}
-                        />
-                        <input
-                          type="text" value={opt.option_text}
-                          onChange={e => updateAnswerOption(i, "option_text", e.target.value)}
-                          className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                          placeholder={`Đáp án ${i + 1}`} required
-                        />
+                      <div key={i} className="flex gap-3 group items-start">
+                        <div className="pt-3.5">
+                          <input
+                            type={questionForm.question_type === "SINGLE_CHOICE" ? "radio" : "checkbox"}
+                            checked={opt.is_correct}
+                            onChange={e => updateAnswerOption(i, "is_correct", e.target.checked)}
+                            className="w-5 h-5 cursor-pointer text-blue-600 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <div className="relative">
+                            <textarea
+                              value={opt.option_text}
+                              onChange={e => updateAnswerOption(i, "option_text", e.target.value)}
+                              className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[80px] resize-none"
+                              placeholder={`Đáp án ${i + 1}`}
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleOptionImageUpload(i)}
+                              disabled={imageUploading}
+                              className="absolute bottom-3 right-3 p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 hover:text-blue-600 shadow-sm transition-all"
+                              title="Chèn ảnh"
+                            >
+                              🖼️
+                            </button>
+                          </div>
+                        </div>
                         {questionForm.answer_options.length > 2 && (
-                          <button type="button" onClick={() => removeAnswerOption(i)}
-                            className="px-2 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors">✕</button>
+                          <div className="pt-3.5">
+                            <button type="button" onClick={() => removeAnswerOption(i)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors">
+                              ✕
+                            </button>
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
                   <button type="button" onClick={addAnswerOption}
-                    className="mt-2 w-full py-2 border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 text-sm rounded-xl hover:border-blue-400 hover:text-blue-600 transition-all">
+                    className="w-full py-2.5 border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-sm font-semibold rounded-xl hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all">
                     + Thêm đáp án
                   </button>
                 </div>
@@ -663,28 +685,28 @@ export default function TeacherQuizManagePage() {
 
               {/* Short answer correct answers */}
               {questionForm.question_type === "SHORT_ANSWER" && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Đáp án đúng (tùy chọn)</label>
-                  <div className="space-y-2">
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">Đáp án đúng mong muốn</label>
+                  <div className="space-y-3">
                     {questionForm.correct_answers.map((ans, i) => (
-                      <div key={i} className="space-y-1.5 p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                      <div key={i} className="p-4 border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-900/50 space-y-3">
                         <div className="flex gap-2">
                           <input type="text" value={ans.answer_text}
                             onChange={e => updateCorrectAnswer(i, "answer_text", e.target.value)}
-                            className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            placeholder="Đáp án đúng…" />
+                            className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                            placeholder="Nhập đáp án..." />
                           {questionForm.correct_answers.length > 1 && (
                             <button type="button" onClick={() => removeCorrectAnswer(i)}
                               className="px-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors">✕</button>
                           )}
                         </div>
-                        <div className="flex gap-4 text-xs">
+                        <div className="flex gap-4">
                           {[["case_sensitive","Phân biệt hoa/thường"],["exact_match","Khớp chính xác"]].map(([field,label]) => (
-                            <label key={field} className="flex items-center gap-1.5 cursor-pointer">
+                            <label key={field} className="flex items-center gap-2 cursor-pointer group">
                               <input type="checkbox" checked={!!(ans as any)[field]}
                                 onChange={e => updateCorrectAnswer(i, field, e.target.checked)}
-                                className="w-3.5 h-3.5" />
-                              <span className="text-slate-600 dark:text-slate-400">{label}</span>
+                                className="w-4 h-4 rounded text-blue-600" />
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-200">{label}</span>
                             </label>
                           ))}
                         </div>
@@ -692,33 +714,66 @@ export default function TeacherQuizManagePage() {
                     ))}
                   </div>
                   <button type="button" onClick={addCorrectAnswer}
-                    className="mt-2 w-full py-2 border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 text-sm rounded-xl hover:border-blue-400 hover:text-blue-600 transition-all">
-                    + Thêm đáp án đúng
+                    className="w-full py-2.5 border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-sm font-semibold rounded-xl hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all">
+                    + Thêm đáp án chấp nhận
                   </button>
                 </div>
               )}
 
-              {/* Modal actions */}
-              <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <button type="submit"
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl active:scale-95 transition-all">
-                  {editingQuestion ? "💾 Cập nhật" : "✅ Lưu & Thêm ảnh"}
-                </button>
-                <button type="button" onClick={resetQuestionForm}
-                  className="px-6 py-3 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl font-medium transition-all">
-                  {editingQuestion ? "Đóng" : "Hủy"}
-                </button>
+              {/* Points + required */}
+              <div className="grid grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Số điểm *</label>
+                  <input
+                    type="number"
+                    value={questionForm.points}
+                    onChange={e => setQuestionForm(f => ({ ...f, points: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-bold"
+                    min="0" step="0.5" required
+                  />
+                </div>
+                <div className="flex items-center pt-7">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" checked={questionForm.is_required}
+                      onChange={e => setQuestionForm(f => ({ ...f, is_required: e.target.checked }))}
+                      className="w-5 h-5 rounded text-blue-600 border-slate-300 dark:border-slate-600" />
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 transition-colors">Bắt buộc trả lời</span>
+                  </label>
+                </div>
               </div>
 
-              {!editingQuestion && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 text-center bg-amber-50 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  💡 Sau khi lưu, form sẽ chuyển sang chế độ chỉnh sửa để bạn thêm hình ảnh
-                </p>
+              {/* Legacy images (collapsible) */}
+              {editingQuestion && (questionImages.length > 0) && (
+                <details className="group border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                  <summary className="px-5 py-4 cursor-pointer bg-slate-50 dark:bg-slate-800 list-none flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">🖼️ Ảnh đính kèm (Legacy)</span>
+                    <span className="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                  </summary>
+                  <div className="p-5">
+                    <QuestionImageUploader
+                      questionId={editingQuestion.id}
+                      images={questionImages}
+                      onImagesUpdate={() => { loadQuestionImages(editingQuestion.id); loadQuizData(); }}
+                    />
+                  </div>
+                </details>
               )}
             </form>
+
+            {/* Panel actions */}
+            <div className="px-6 py-5 border-t border-slate-200 dark:border-slate-800 flex gap-3 bg-slate-50 dark:bg-slate-900 z-10">
+              <button type="button" onClick={handleCreateQuestion}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all shadow-md">
+                {editingQuestion ? "💾 Cập nhật câu hỏi" : "✅ Lưu câu hỏi"}
+              </button>
+              <button type="button" onClick={resetQuestionForm}
+                className="px-6 py-3 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl font-bold transition-all">
+                Hủy
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* ── Quiz settings modal ── */}
       {showQuizSettings && quiz && (

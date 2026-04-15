@@ -10,6 +10,7 @@ import {
   PrimaryBtn, GhostBtn,
   EmptyState, PageLoader, Alert
 } from "@/components/lms/shared";
+import { BreadcrumbNav, type BreadcrumbItem } from "@/components/lms/BreadcrumbNav";
 import { Course, Enrollment } from "@/types";
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -69,8 +70,14 @@ export default function DiscoverPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: "Học tập", href: "/lms/student" },
+    { label: "Khám phá" },
+  ];
+
   return (
     <div className="space-y-6">
+      <BreadcrumbNav items={breadcrumbItems} />
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

@@ -213,11 +213,17 @@ SYSTEM_PROMPT_TUTOR = {
 SYSTEM_PROMPT_QUIZ_GEN = {
     "vi": (
         "Bạn là chuyên gia thiết kế câu hỏi kiểm tra theo thang Bloom's Taxonomy. "
+        "Hệ thống hỗ trợ Markdown đầy đủ (đậm, nghiêng, bảng, danh sách), khối mã (code block) "
+        "và công thức toán học KaTeX ($...$ cho inline và $$...$$ cho block). "
+        "Hãy sử dụng Markdown một cách thông minh để làm câu hỏi rõ ràng hơn, tuyệt đối không lạm dụng. "
         "Tài liệu có thể bằng tiếng Anh — đọc hiểu và tạo câu hỏi bằng tiếng Việt. "
         "Chỉ trả về JSON hợp lệ theo đúng schema, không thêm text khác."
     ),
     "en": (
         "You are an expert at designing assessments following Bloom's Taxonomy. "
+        "The system supports full Markdown (bold, italic, tables, lists), Code Blocks, "
+        "and KaTeX math formulas ($...$ for inline and $$...$$ for block). "
+        "Use Markdown intelligently to enhance clarity, but do not overuse it. "
         "Source materials may be in Vietnamese — read them and create questions in English. "
         "Return ONLY valid JSON matching the requested schema exactly."
     ),
@@ -359,26 +365,26 @@ _QUIZ_FEW_SHOT_VI = [
     {
         "role": "user",
         "content": (
-            "TÀI LIỆU:\n[Nguồn 1] Stack là cấu trúc dữ liệu LIFO (Last In First Out). "
-            "Thao tác push thêm phần tử, pop lấy phần tử ra.\n\n"
-            "CHỦ ĐỀ: Stack\nCẤP ĐỘ BLOOM: Nhớ (remember)\n"
+            "TÀI LIỆU:\n[Nguồn 1] Định luật bảo toàn năng lượng: $E = K + U = \\text{const}$. "
+            "Trong đó $K$ là động năng, $U$ là thế năng.\n\n"
+            "CHỦ ĐỀ: Năng lượng\nCẤP ĐỘ BLOOM: Nhớ (remember)\n"
             "Tạo 1 câu hỏi trắc nghiệm. Trả về JSON."
         ),
     },
     {
         "role": "assistant",
         "content": json.dumps({
-            "question_text": "Stack hoạt động theo nguyên tắc nào?",
+            "question_text": "Công thức nào sau đây biểu diễn **Định luật bảo toàn cơ năng**?",
             "bloom_level": "remember",
             "question_type": "SINGLE_CHOICE",
             "answer_options": [
-                {"text": "LIFO – Last In First Out", "is_correct": True,  "explanation": "Stack lấy phần tử cuối cùng được thêm ra trước."},
-                {"text": "FIFO – First In First Out","is_correct": False, "explanation": "FIFO là nguyên tắc của Queue, không phải Stack."},
-                {"text": "Random access",             "is_correct": False, "explanation": "Stack không hỗ trợ truy cập ngẫu nhiên."},
-                {"text": "Priority-based",            "is_correct": False, "explanation": "Priority queue mới dùng nguyên tắc ưu tiên."},
+                {"text": "$E = K + U = \\text{const}$", "is_correct": True,  "explanation": "Tổng động năng và thế năng là một hằng số trong hệ kín."},
+                {"text": "$F = ma$",                  "is_correct": False, "explanation": "Đây là Định luật II Newton."},
+                {"text": "$E = mc^2$",                 "is_correct": False, "explanation": "Đây là công thức tương quan năng lượng - khối lượng của Einstein."},
+                {"text": "$P = IV$",                   "is_correct": False, "explanation": "Đây là công thức tính công suất điện."},
             ],
-            "explanation": "Stack là cấu trúc LIFO. push() thêm vào đỉnh, pop() lấy từ đỉnh.",
-            "source_quote": "Stack là cấu trúc dữ liệu LIFO (Last In First Out)",
+            "explanation": "Cơ năng toàn phần $E$ là tổng của động năng $K$ và thế năng $U$.",
+            "source_quote": "Định luật bảo toàn năng lượng: $E = K + U = \\text{const}$",
         }, ensure_ascii=False),
     },
 ]
@@ -387,26 +393,25 @@ _QUIZ_FEW_SHOT_EN = [
     {
         "role": "user",
         "content": (
-            "MATERIAL:\n[Source 1] A Stack is a LIFO (Last In First Out) data structure. "
-            "push adds an element; pop removes the top element.\n\n"
-            "TOPIC: Stack\nBLOOM LEVEL: Remember\n"
+            "MATERIAL:\n[Source 1] The `map()` function in Python creates an iterator that computes the function using local arguments.\n\n"
+            "TOPIC: Python Functions\nBLOOM LEVEL: Apply\n"
             "Create 1 multiple choice question. Return JSON."
         ),
     },
     {
         "role": "assistant",
         "content": json.dumps({
-            "question_text": "Which principle does a Stack follow?",
-            "bloom_level": "remember",
+            "question_text": "Given the list `nums = [1, 2, 3]`, which code snippet correctly uses `map()` to square each number?",
+            "bloom_level": "apply",
             "question_type": "SINGLE_CHOICE",
             "answer_options": [
-                {"text": "LIFO – Last In First Out", "is_correct": True,  "explanation": "The last element pushed is the first one popped."},
-                {"text": "FIFO – First In First Out","is_correct": False, "explanation": "FIFO is the principle of a Queue, not a Stack."},
-                {"text": "Random access",             "is_correct": False, "explanation": "Stacks do not support random access."},
-                {"text": "Priority-based",            "is_correct": False, "explanation": "Priority queues use priority ordering, not LIFO."},
+                {"text": "`map(lambda x: x**2, nums)`", "is_correct": True,  "explanation": "This correctly applies a squaring function to the list via map."},
+                {"text": "`nums.map(x => x**2)`",       "is_correct": False, "explanation": "This is JavaScript syntax, not Python."},
+                {"text": "`map(nums, x**2)`",          "is_correct": False, "explanation": "The function must be the first argument in `map()`."},
+                {"text": "`[x**2 for x in nums]`",      "is_correct": False, "explanation": "While this squares numbers, it uses list comprehension, not the `map()` function."},
             ],
-            "explanation": "A Stack is a LIFO structure. push() adds to the top; pop() removes from the top.",
-            "source_quote": "A Stack is a LIFO (Last In First Out) data structure",
+            "explanation": "The `map(function, iterable)` syntax is standard for applying a transformation across an iterator in Python.",
+            "source_quote": "The `map()` function in Python creates an iterator",
         }),
     },
 ]
@@ -447,19 +452,31 @@ def build_quiz_generation_prompt(
     )
 
     if language == "vi":
-        lang_note = "LƯU Ý: tài liệu có thể bằng tiếng Anh. Đọc hiểu và viết câu hỏi + đáp án bằng tiếng Việt."
+        lang_note = (
+            "LƯU Ý THIẾT KẾ:\n"
+            "1. Tài liệu có thể bằng tiếng Anh. Đọc hiểu và viết câu hỏi + đáp án bằng tiếng Việt.\n"
+            "2. Sử dụng Markdown (**đậm**, `mã`, $toán$, $$khối toán$$) một cách thông minh để câu hỏi chuyên nghiệp.\n"
+            "3. TRÁNH BIAS: Các phương án nhiễu phải có vẻ đúng và liên quan đến chủ đề. Câu hỏi phải khách quan.\n"
+            "4. TRÍ TUỆ: Câu hỏi phải đòi hỏi suy luận dựa trên tài liệu nguồn được cung cấp từ Knowledge Base."
+        )
         user_msg = (
-            f"TÀI LIỆU:\n{context}{existing}\n\n{lang_note}\n\n"
+            f"TÀI LIỆU (Từ Vector DB/Graph):\n{context}{existing}\n\n{lang_note}\n\n"
             f"CHỦ ĐỀ: {node_name}\nCẤP ĐỘ BLOOM: {bloom_vi} ({bloom_level})\n\n"
-            f"Tạo 1 câu hỏi trắc nghiệm. Trả về JSON:\n{schema}"
+            f"Tạo 1 câu hỏi trắc nghiệm chất lượng cao. Trả về JSON:\n{schema}"
         )
         few_shot = _QUIZ_FEW_SHOT_VI
     else:
-        lang_note = "NOTE: source materials may be in Vietnamese. Write questions and answers in English."
+        lang_note = (
+            "DESIGN NOTES:\n"
+            "1. Source materials may be in Vietnamese. Write questions and answers in English.\n"
+            "2. Use Markdown (**bold**, `code`, $math$, $$math block$$) smartly for a professional feel.\n"
+            "3. ANTI-BIAS: Ensure distractors are plausible and relevant. Question must be objective.\n"
+            "4. INTELLIGENCE: The question must require reasoning based on the provided source material from the Knowledge Base."
+        )
         user_msg = (
-            f"MATERIAL:\n{context}{existing}\n\n{lang_note}\n\n"
+            f"MATERIAL (From Vector DB/Graph):\n{context}{existing}\n\n{lang_note}\n\n"
             f"TOPIC: {node_name}\nBLOOM LEVEL: {bloom_en}\n\n"
-            f"Create 1 multiple choice question. Return JSON:\n{schema}"
+            f"Create 1 high-quality multiple choice question. Return JSON:\n{schema}"
         )
         few_shot = _QUIZ_FEW_SHOT_EN
 

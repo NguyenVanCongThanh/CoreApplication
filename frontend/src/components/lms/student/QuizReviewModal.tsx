@@ -22,6 +22,7 @@ import {
   ChevronRight,
   TrendingUp,
 } from "lucide-react";
+import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
 import type {
   FillBlankTextSettings,
   FillBlankTextCorrectAnswer,
@@ -437,9 +438,9 @@ export default function QuizReviewPage({
               >
                 <div className="mt-0.5 flex-shrink-0">{iconEl}</div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-slate-800 dark:text-slate-200 text-sm leading-relaxed">
-                    {option.option_text}
-                  </p>
+                  <div className="text-slate-800 dark:text-slate-200 text-sm leading-relaxed prose-sm prose-slate dark:prose-invert max-w-none">
+                    <MarkdownRenderer content={option.option_text} />
+                  </div>
                   {isStudentChoice && !isCorrect && showCorrect && (
                     <p className="text-xs text-red-500 dark:text-red-400 mt-1 font-medium">
                       Đáp án bạn đã chọn — Sai
@@ -1121,9 +1122,9 @@ export default function QuizReviewPage({
                           {/* Question text */}
                           {question.question_type !== "FILL_BLANK_TEXT" &&
                             question.question_type !== "FILL_BLANK_DROPDOWN" && (
-                              <p className="text-slate-900 dark:text-slate-50 text-sm font-semibold leading-relaxed">
-                                {question.question_text}
-                              </p>
+                              <div className="text-slate-900 dark:text-slate-50 text-sm font-semibold leading-relaxed prose-sm prose-slate dark:prose-invert max-w-none">
+                                <MarkdownRenderer content={question.question_text} />
+                              </div>
                             )}
 
                           {/* Points */}

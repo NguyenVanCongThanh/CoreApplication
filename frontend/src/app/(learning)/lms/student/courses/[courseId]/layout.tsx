@@ -25,6 +25,7 @@ import lmsService      from "@/services/lmsService";
 import progressService, { CourseProgress, ProgressDetailItem } from "@/services/progressService";
 
 import { GhostBtn, ProgressBar, PageLoader } from "@/components/lms/shared";
+import { BreadcrumbNav, type BreadcrumbItem } from "@/components/lms/BreadcrumbNav";
 import { StudentCourseContext } from "@/components/lms/student/StudentCourseContext";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
@@ -218,9 +219,13 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
         setSections(secs);
 
         if (secs.length > 0) {
-          const first = secs[0];
-          setExpanded(new Set([first.id]));
-          loadSectionContentsInner(first.id, true);
+          const allIds = secs.map(s => s.id);
+          setExpanded(new Set(allIds));
+          // Prefetch all contents (parallel, will be cached by loadSectionContentsInner)
+          allIds.forEach(sid => loadSectionContentsInner(sid));
+          
+          // Auto-select the first content of the first section
+          loadSectionContentsInner(secs[0].id, true);
         }
       } catch {
         router.back();
@@ -306,8 +311,18 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
   const progressPct    = totalMandatory > 0 ? Math.round((completedCount / totalMandatory) * 100) : 0;
 
   // ─── Active tab ───────────────────────────────────────────────────────────
+  const activeTab   = TABS.find(tab => pathname.includes(tab.path)) || TABS[0];
+  const activeTabId = activeTab.id;
 
-  const activeTabId = TABS.find(tab => pathname.includes(tab.path))?.id ?? "learn";
+  // ─── Breadcrumb items ─────────────────────────────────────────────────────
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: "Học tập", href: "/lms/student" },
+    {
+      label: loadingPage ? "..." : (course?.title ?? "Khóa học"),
+      href: `${basePath}/learn`,
+    },
+    ...(activeTabId !== "learn" ? [{ label: activeTab.label }] : []),
+  ];
 
   // ─── Context value ────────────────────────────────────────────────────────
 
@@ -402,21 +417,7 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
         {/* ── Header ── */}
         <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center gap-3">
-            <GhostBtn
-              size="sm"
-              icon={<ArrowLeft className="w-4 h-4" />}
-              onClick={() => router.push("/lms/student")}
-            >
-              <span className="hidden sm:inline">Quay lại</span>
-            </GhostBtn>
-
-            <span className="text-slate-300 dark:text-slate-700 select-none">/</span>
-
-            <div className="flex-1 min-w-0">
-              <h1 className="text-base font-bold text-slate-900 dark:text-slate-50 truncate">
-                {course?.title ?? "Khóa học"}
-              </h1>
-            </div>
+            <BreadcrumbNav items={breadcrumbItems} className="flex-1 min-w-0" />
 
             {/* Tab switcher pill */}
             <div className="hidden sm:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 flex-shrink-0">

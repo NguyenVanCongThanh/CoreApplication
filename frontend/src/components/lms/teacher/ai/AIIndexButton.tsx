@@ -20,7 +20,7 @@ interface AIIndexButtonProps {
 }
 
 const INDEXABLE_TYPES = new Set(["TEXT", "DOCUMENT", "VIDEO", "IMAGE"]);
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 6000; // Increased from 4s to 6s
 
 export function AIIndexButton({
   contentId,
@@ -69,8 +69,10 @@ export function AIIndexButton({
     if (status === "processing") {
       startPolling();
     } else if (status === "indexed" && info.nodes_created === 0 && info.chunks_created === 0) {
-      // Fetch counts for already indexed content
-      const fetchStatus = async () => {
+      // Fetch counts for already indexed content with a small staggered delay
+      // to avoid flooding the server when many buttons mount (e.g. expand all)
+      const delay = Math.floor(Math.random() * 2000); // 0-2s delay
+      const timer = setTimeout(async () => {
         try {
           const res = await lmsApiClient.get<{ data: StatusInfo }>(
             `/content/${contentId}/ai-index-status`
@@ -79,13 +81,13 @@ export function AIIndexButton({
         } catch (err) {
           console.error("Failed to fetch initial AI index status:", err);
         }
-      };
-      fetchStatus();
+      }, delay);
+      return () => clearTimeout(timer);
     }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [status, startPolling, contentId]);
+  }, [status, startPolling, contentId, info.nodes_created, info.chunks_created]);
 
   if (!isIndexable) return null;
 

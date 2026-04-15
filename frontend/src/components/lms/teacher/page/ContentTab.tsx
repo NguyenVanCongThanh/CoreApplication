@@ -55,9 +55,7 @@ interface ContentTabProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabProps) {
-  const [expanded, setExpanded]   = useState<Set<number>>(
-    new Set(sections.slice(0, 1).map(s => s.id))
-  );
+  const [expanded, setExpanded]   = useState<Set<number>>(new Set());
   const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
   const [loadingContent, setLoadingContent]   = useState<Record<number, boolean>>({});
 
@@ -89,9 +87,14 @@ export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabP
     }
   }, [sectionContents]);
 
+  // Initial expansion: expand all when sections are loaded
   useEffect(() => {
-    expanded.forEach(id => loadContents(id));
-  }, [expanded]);
+    if (sections.length > 0 && expanded.size === 0) {
+      const allIds = sections.map(s => s.id);
+      setExpanded(new Set(allIds));
+      allIds.forEach(id => loadContents(id));
+    }
+  }, [sections, loadContents]); // eslint-disable-line
 
   const reloadSectionContent = useCallback(async (sectionId: number) => {
     setLoadingContent(prev => ({ ...prev, [sectionId]: true }));

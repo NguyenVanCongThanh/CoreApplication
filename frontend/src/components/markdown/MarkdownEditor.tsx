@@ -3,6 +3,9 @@
 import React, { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import { useMarkdownImage } from '@/hooks/useMarkdownImage';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 interface MarkdownEditorProps {
   value: string;
@@ -75,6 +78,10 @@ export default function MarkdownEditor({
             disabled: disabled || uploading,
             placeholder: placeholder || 'Nhập nội dung bài học... (Hỗ trợ Markdown)',
           }}
+          previewOptions={{
+            remarkPlugins: [remarkMath],
+            rehypePlugins: [rehypeKatex],
+          }}
           className="font-sans"
         />
       </div>
@@ -106,7 +113,7 @@ export default function MarkdownEditor({
           💡 <strong>Mẹo:</strong> Dán ảnh trực tiếp từ clipboard để tự động tải lên.
         </p>
         <p className="text-[11px] text-gray-400">
-          Hỗ trợ: **đậm**, *nghiêng*, `code`, [liên kết](url), # Tiêu đề, v.v.
+          Hỗ trợ: **đậm**, *nghiêng*, `code`, [liên kết](url), # Tiêu đề, $math$, v.v.
         </p>
       </div>
     </div>
