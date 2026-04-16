@@ -763,14 +763,12 @@ def patch_llm(monkeypatch):
         yield mock_llm, mock_embed
 
 @pytest.fixture(autouse=True)
-def celery_eager(settings):
+def kafka_mock(settings):
     """
-    Forces Celery tasks to execute synchronously in tests.
-    Eliminates the need for a running broker.
+    Mocks aiokafka to prevent external broker connections during tests.
     """
-    with patch.dict("os.environ", {"CELERY_TASK_ALWAYS_EAGER": "True"}):
+    with patch("app.worker.kafka_producer.producer", new_callable=AsyncMock):
         yield
-```
 
 ### Unit Test — Endpoint (Auth + Response)
 ```python
@@ -979,47 +977,50 @@ def test_parse_llm_json_with_empty_string_raises_value_error():
         parse_llm_json("")
 ```
 
-### Unit Test — Celery Tasks
+### Unit Test — Kafka Event Handling
 ```python
-# tests/test_celery_tasks.py
+# tests/test_kafka_worker.py
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
-# CELERY_TASK_ALWAYS_EAGER=True is set in conftest.py — tasks run synchronously
+pytestmark = pytest.mark.asyncio
 
-
-def test_run_document_processing_success_updates_status():
+async def test_process_ai_command_success_publishes_completed_status():
     # Arrange
-    with patch("app.worker.celery_app.process_document", new_callable=AsyncMock) as mock_proc:
-        mock_proc.return_value = {"chunks_written": 10, "status": "completed"}
+    payload = {"command_type": "GENERATE_QUIZ", "job_id": "test-job-1"}
+    
+    with patch("app.worker.kafka_worker.quiz_gen_service.generate_for_node", new_callable=AsyncMock) as mock_gen, \
+         patch("app.worker.kafka_worker.publish_ai_job_status", new_callable=AsyncMock) as mock_pub:
+         
+        mock_gen.return_value = [1, 2, 3] # fake gen_ids
 
-        from app.worker.celery_app import run_document_processing
+        from app.worker.kafka_worker import process_ai_command
 
         # Act
-        result = run_document_processing.delay(
-            content_id=1, course_id=1, file_url="docs/lecture1.pdf"
-        ).get(timeout=5)
+        await process_ai_command(payload)
 
     # Assert
-    assert result["status"] == "completed"
-    assert result["chunks_written"] == 10
-    mock_proc.assert_called_once_with(1, 1, "docs/lecture1.pdf")
+    mock_gen.assert_called_once()
+    # It publishes processing -> completed
+    assert mock_pub.call_count == 2
+    mock_pub.assert_called_with("test-job-1", "completed", result=[1, 2, 3])
 
+async def test_process_ai_command_failure_publishes_failed_status():
+    payload = {"command_type": "GENERATE_QUIZ", "job_id": "test-job-fail"}
+    
+    with patch("app.worker.kafka_worker.quiz_gen_service.generate_for_node", new_callable=AsyncMock) as mock_gen, \
+         patch("app.worker.kafka_worker.publish_ai_job_status", new_callable=AsyncMock) as mock_pub:
+         
+        mock_gen.side_effect = ValueError("AI Overload")
 
-def test_run_document_processing_on_failure_raises_and_does_not_swallow():
-    # Arrange
-    with patch("app.worker.celery_app.process_document", new_callable=AsyncMock) as mock_proc:
-        mock_proc.side_effect = ConnectionError("MinIO unreachable")
+        from app.worker.kafka_worker import process_ai_command
 
-        from app.worker.celery_app import run_document_processing
-        from celery.exceptions import MaxRetriesExceededError
+        # Act
+        await process_ai_command(payload)
 
-        # Act & Assert
-        # After max_retries, the task should fail (not silently succeed)
-        with pytest.raises((ConnectionError, MaxRetriesExceededError)):
-            run_document_processing.delay(
-                content_id=1, course_id=1, file_url="docs/x.pdf"
-            ).get(timeout=5)
+    # Assert
+    # Publishes processing -> failed
+    mock_pub.assert_called_with("test-job-fail", "failed", error="AI Overload")
 ```
 
 ### Run Commands
@@ -1080,9 +1081,8 @@ markers =
 |                            | 401/403 without or with wrong auth       |
 |                            | 404/500 when service throws              |
 +----------------------------+------------------------------------------+
-| Celery Task                | Successful execution path                |
-|                            | Failure does not silently swallow error  |
-|                            | Retry triggered on transient error       |
+| Event Handler (Kafka)        | Successful execution path                |
+|                            | Failure publishes error status           |
 +----------------------------+------------------------------------------+
 | Utility / Pure function    | All branches (use table-driven tests)    |
 |                            | Edge cases: empty input, max bounds      |

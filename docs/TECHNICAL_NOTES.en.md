@@ -22,6 +22,7 @@
 6. [DataInitializer — Default Admin Account](#6-datainitializer--default-admin-account)
 7. [Password Reset — Token and Scheduler](#7-password-reset--token-and-scheduler)
 8. [Security Issues to Fix Before Production](#8-security-issues-to-fix-before-production)
+9. [Event-Driven AI (Kafka) — Handling API Timeouts](#9-event-driven-ai-kafka--handling-api-timeouts)
 
 ---
 
@@ -537,6 +538,32 @@ lms-backend:
     minio:
       condition: service_healthy
 ```
+
+---
+
+## 9. Event-Driven AI (Kafka) — Handling API Timeouts
+
+### The Problem
+The traditional AI Request model (LMS performing an HTTP call to the FastAPI AI Service) often times out because generating Flashcards or Quizzes with LLMs and GPUs takes well over 10 - 30 seconds. The browser connection drops, leading to UI crashes and stuck backend request handlers.
+
+### The Solution
+We implemented an asynchronous Kafka Producer/Consumer architecture (Asynchronous Payload Processing):
+
+```
+LMS Producer (Push Command) ──► Kafka.lms.ai.command ──► AI Consumer Worker
+                                                             │
+LMS REST Endpoint ◄── Polling (Redis) ◄── LMS Consumer ◄── Kafka.ai.job.status
+```
+
+1. **ID Generation**: `lms-service` generates a random `job_id`.
+2. **Acceptance**: `lms-service` returns a `202 Accepted` status alongside the `job_id` to the browser WITHOUT waiting for the AI response.
+3. **Kafka Loop**: `ai-service` runs `kafka_worker.py` continuously listening to `lms.ai.command`, processes the LLM prompt, updates the DB, and publishes the result with the `job_id` to the `ai.job.status` topic.
+4. **Redis Tracking**: `lms-service` continuously listens for all updates from `ai.job.status` and caches the state in `Redis` (using key: `ai_job:<id>`).
+5. **Frontend Polling**: The UI purely calls `GET /api/v1/ai/jobs/<id>/status` at an interval until Redis reports `"status": "completed"`.
+
+### Important Notes
+- Do not hardcode AI commands via generic HTTP GET/POST if the logic exceeds 2s! Always employ this Event-Driven model.
+- During Kafka Rebalances, ensure consumer `GroupID`s inside `lms-backend` **ARE DISTINCT**. For example: use `lms-service-ai-job-status-group` and `lms-service-document-group` to avoid stalling consumer messages.
 
 ---
 

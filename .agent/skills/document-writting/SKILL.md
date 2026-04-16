@@ -188,7 +188,7 @@ Stack components vertically when showing layers:
                      |                            v
             +--------+--------+       +---------------------+
             | PostgreSQL      |       | ai-service/         |
-            | (Auth DB)       |       | FastAPI + Celery     |
+            | (Auth DB)       |       | FastAPI + Kafka      |
             | :5433           |       | Python 3.12          |
             +-----------------+       |                     |
                                       | RAG, Diagnosis,     |
@@ -502,7 +502,7 @@ docs/
   DESIGN_RYTHM.md             -- High-level product and design decisions
   adr/
     ADR-001-use-pgvector.md   -- Architecture Decision Records
-    ADR-002-celery-for-ai.md
+    ADR-002-event-driven-ai.md
   api/
     auth-service-api.md       -- API reference per service
     lms-service-api.md

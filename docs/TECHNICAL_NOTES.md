@@ -22,6 +22,7 @@
 6. [DataInitializer — Tài khoản Admin mặc định](#6-datainitializer--tài-khoản-admin-mặc-định)
 7. [Password Reset — Token và Scheduler](#7-password-reset--token-và-scheduler)
 8. [Vấn Đề Bảo Mật Cần Sửa Trước Production](#8-vấn-đề-bảo-mật-cần-sửa-trước-production)
+9. [Event-Driven AI (Kafka) — Xử lý API Timeout](#9-event-driven-ai-kafka--xử-lý-api-timeout)
 
 ---
 
@@ -537,6 +538,32 @@ lms-backend:
     minio:
       condition: service_healthy
 ```
+
+---
+
+## 9. Event-Driven AI (Kafka) — Xử lý API Timeout
+
+### Vấn đề
+Mô hình AI Request truyền thống (LMS gọi HTTP sang AI Service chạy FastAPI) thường bị timeout vì LLM và GPU quá trình mất nhiều hơn 10 - 30 giây để generate Flashcards hoặc Quizzes. Connection từ trình duyệt bị rớt nhịp dẫn tới crash UI và kẹt backend request handlers.
+
+### Giải pháp
+Chúng ta triển khai kiến trúc Kafka Producer/Consumer bất đồng bộ (Asynchronous Payload Processing):
+
+```
+LMS Producer (Push Command) ──► Kafka.lms.ai.command ──► AI Consumer Worker
+                                                             │
+LMS REST Endpoint ◄── Polling (Redis) ◄── LMS Consumer ◄── Kafka.ai.job.status
+```
+
+1. **Sinh ID**: `lms-service` sinh ngẫu nhiên 1 `job_id`.
+2. **Acceptance**: `lms-service` trả về status `202 Accepted` và `job_id` ra ngoài trình duyệt mà KHÔNG ĐỢI AI.
+3. **Kafka Loop**: `ai-service` chạy `kafka_worker.py` liên tục nghe `lms.ai.command`, xử lý prompt LLM vào db xong, đẩy kết quả kèm `job_id` lên topic `ai.job.status`.
+4. **Redis Polling**: `lms-service` liên tục nhận mọi signal cập nhật từ `ai.job.status` rồi Set vào `Redis` (`key: ai_job:<id>`).
+5. **Frontend**: UI chỉ cần gọi API `GET /api/v1/ai/jobs/<id>/status` liên tục tới khi Redis báo `"status": "completed"`.
+
+### Lưu ý quan trọng
+- Không hardcode các lệnh liên quan AI bằng HTTP Get/Post thông thường nếu logic vượt quá 2s! Luôn dùng model Event Driven này.
+- Khi Rebalance Kafka, hãy đảm bảo các consumer GroupID trong `lms-backend` CẦN PHẢI KHÁC NHAU. Ví dụ: `lms-service-ai-job-status-group` và `lms-service-document-group` để không bị kẹt consumer messages.
 
 ---
 
