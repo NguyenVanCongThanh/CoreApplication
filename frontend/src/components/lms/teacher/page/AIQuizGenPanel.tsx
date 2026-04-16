@@ -228,16 +228,40 @@ export function AIQuizGenPanel({ courseId }: Props) {
     if (selectedBlooms.length === 0) { alert("Vui lòng chọn ít nhất 1 cấp độ Bloom."); return; }
     setGenerating(true);
     setError("");
+    
     try {
-      await aiService.generateQuiz(courseId, selectedNode, {
+      const response = await aiService.generateQuiz(courseId, selectedNode, {
         bloom_levels: selectedBlooms,
         language,
         questions_per_level: 1,
       });
-      setActiveSection("drafts");
-      await loadDrafts();
+
+      if (!response || !response.job_id) {
+        throw new Error("Không nhận được Job ID từ server.");
+      }
+
+      // Polling Logic
+      let isDone = false;
+      while (!isDone) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        
+        const statusCheck = await aiService.getJobStatus(response.job_id);
+        if (statusCheck.status === "completed") {
+          isDone = true;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setActiveSection("drafts");
+          await loadDrafts();
+          const { default: toast } = await import("react-hot-toast");
+          toast.success("Tạo câu hỏi hoàn tất!");
+        } else if (statusCheck.status === "failed") {
+          isDone = true;
+          throw new Error(statusCheck.error || "Quá trình tạo lỗi.");
+        }
+        // If pending or processing, loop continues
+      }
+      
     } catch (e: any) {
-      setError(e?.response?.data?.error ?? "Không thể tạo quiz. Kiểm tra AI service.");
+      setError(e?.response?.data?.error ?? e.message ?? "Không thể tạo quiz. Kiểm tra AI service.");
     } finally {
       setGenerating(false);
     }

@@ -50,3 +50,43 @@ func StartConsumer(ctx context.Context, onStatusUpdate StatusUpdateFunc) {
 		}
 	}
 }
+
+type AIJobStatusUpdateFunc func(ctx context.Context, event AIJobStatusEvent) error
+
+func StartAIJobStatusConsumer(ctx context.Context, onStatusUpdate AIJobStatusUpdateFunc) {
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		brokers = "localhost:9092"
+	}
+
+	r := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{brokers},
+		Topic:   "ai.job.status",
+		GroupID: "lms-service-ai-job-status-group",
+	})
+
+	defer r.Close()
+	logger.Info("Kafka Consumer started for ai.job.status")
+
+	for {
+		m, err := r.ReadMessage(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			logger.Error("Failed to read kafka message on ai.job.status", err)
+			continue
+		}
+
+		var event AIJobStatusEvent
+		if err := json.Unmarshal(m.Value, &event); err != nil {
+			logger.Error("Failed to unmarshal kafka AI job status event", err)
+			continue
+		}
+
+		err = onStatusUpdate(ctx, event)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to process status update for job %s", event.JobID), err)
+		}
+	}
+}

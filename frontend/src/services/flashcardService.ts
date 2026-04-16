@@ -49,12 +49,12 @@ class FlashcardService {
     courseId: number,
     nodeId: number,
     req: GenerateFlashcardsRequest
-  ): Promise<{ data: Flashcard[] }> {
+  ): Promise<{ job_id: string; status: string }> {
     const response = await lmsApiClient.post(
       `/courses/${courseId}/nodes/${nodeId}/flashcards/generate`,
       req
     );
-    return response.data;
+    return response.data?.data ?? response.data;
   }
 
   /**

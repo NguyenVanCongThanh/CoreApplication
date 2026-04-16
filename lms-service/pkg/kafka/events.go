@@ -24,3 +24,20 @@ type ProcessDocumentStatusEvent struct {
 	ChunksCreated int    `json:"chunks_created"`
 	Error         string `json:"error,omitempty"`
 }
+
+// AICommandEvent is the generic AI job command format (Quiz, Flashcard, Diagnosis)
+type AICommandEvent struct {
+	JobID       string      `json:"job_id"`
+	CommandType string      `json:"command_type"` // "GENERATE_QUIZ", "GENERATE_FLASHCARD", "DIAGNOSE_ERROR"
+	CourseID    int64       `json:"course_id,omitempty"`
+	Payload     interface{} `json:"payload"`
+	CreatedAt   time.Time   `json:"created_at"`
+}
+
+// AIJobStatusEvent represents an update on an AI operation
+type AIJobStatusEvent struct {
+	JobID   string      `json:"job_id"`
+	Status  string      `json:"status"` // "completed", "failed"
+	Result  interface{} `json:"result,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}

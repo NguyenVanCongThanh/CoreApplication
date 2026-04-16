@@ -60,23 +60,43 @@ export function WeaknessTracker({ courseId }: Props) {
     setGeneratingFor(node.node_id);
     try {
       // request AI to generate 3 flashcards specifically targeting the weakness
-      await flashcardService.generateFlashcards(courseId, node.node_id, { count: 3 });
-      toast.success(`Đã tạo flashcard ôn tập cho "${node.node_name}"!`);
+      const response = await flashcardService.generateFlashcards(courseId, node.node_id, { count: 3 });
       
-      // Update local state directly instead of reloading
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          weak_nodes: prev.weak_nodes.map((n) =>
-            n.node_id === node.node_id
-              ? { ...n, flashcard_count: (n.flashcard_count || 0) + 3 }
-              : n
-          ),
-        };
-      });
+      if (!response || !response.job_id) {
+        throw new Error("Không nhận được Job ID từ server.");
+      }
+
+      // Polling Logic
+      let isDone = false;
+      const { aiService } = await import("@/services/aiService");
+      
+      while (!isDone) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        
+        const statusCheck = await aiService.getJobStatus(response.job_id);
+        if (statusCheck.status === "completed") {
+          isDone = true;
+          toast.success(`Đã tạo flashcard ôn tập cho "${node.node_name}"!`);
+          
+          // Update local state directly instead of reloading
+          setData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              weak_nodes: prev.weak_nodes.map((n) =>
+                n.node_id === node.node_id
+                  ? { ...n, flashcard_count: (n.flashcard_count || 0) + 3 }
+                  : n
+              ),
+            };
+          });
+        } else if (statusCheck.status === "failed") {
+          isDone = true;
+          throw new Error(statusCheck.error || "Quá trình tạo flashcard lỗi.");
+        }
+      }
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Tạo flashcard thất bại.");
+      toast.error(e?.message || e?.response?.data?.message || "Tạo flashcard thất bại.");
     } finally {
       setGeneratingFor(null);
     }

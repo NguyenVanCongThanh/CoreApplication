@@ -140,7 +140,26 @@ export interface ChunkItem {
   language: string;
 }
 
+export interface AIJobResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface AIJobStatus<T = any> {
+  job_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  result?: T;
+  error?: string;
+}
+
 class AIService {
+  // ─── Polling Jobs ────────────────────────────────────────────────────────
+  
+  async getJobStatus<T = any>(jobId: string): Promise<AIJobStatus<T>> {
+    const res = await lmsApiClient.get(`/ai/jobs/${jobId}/status`);
+    return res.data?.data ?? res.data;
+  }
+
   // ─── Diagnosis ─────────────────────────────────────────────────────────────
 
   async diagnoseWrongAnswer(
@@ -148,7 +167,7 @@ class AIService {
     questionId: number,
     wrongAnswer: string,
     courseId: number
-  ): Promise<DiagnosisResult> {
+  ): Promise<AIJobResponse> {
     const res = await lmsApiClient.post(
       `/ai/attempts/${attemptId}/questions/${questionId}/diagnose`,
       {
@@ -196,16 +215,18 @@ class AIService {
       language?: string;
       questions_per_level?: number;
     }
-  ): Promise<GeneratedQuestion[]> {
+  ): Promise<AIJobResponse> {
     const res = await lmsApiClient.post(`/courses/${courseId}/ai/generate-quiz`, {
       node_id: nodeId,
       ...options,
     });
-    return res.data?.data ?? res.data ?? [];
+    return res.data?.data ?? res.data;
   }
 
   async listDraftQuestions(courseId: number): Promise<GeneratedQuestion[]> {
-    const res = await lmsApiClient.get(`/courses/${courseId}/ai/drafts`);
+    const res = await lmsApiClient.get(`/courses/${courseId}/ai/drafts`, {
+      params: { _t: Date.now() }
+    });
     return res.data?.data ?? res.data ?? [];
   }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -116,6 +117,14 @@ func main() {
 		return courseRepo.UpdateContentAIIndexStatus(ctx, event.ContentID, event.Status)
 	})
 
+	go kafka.StartAIJobStatusConsumer(context.Background(), func(ctx context.Context, event kafka.AIJobStatusEvent) error {
+		logger.Info(fmt.Sprintf("Received AI job status for %s: %s", event.JobID, event.Status))
+		// Serialize and store into Redis
+		data, _ := json.Marshal(event)
+		redisKey := "ai_job:" + event.JobID
+		return redisClient.Set(ctx, redisKey, data, 24*time.Hour) // Keep for 24 hours
+	})
+
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
@@ -126,7 +135,7 @@ func main() {
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
 	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo, aiClient)
-	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient)
+	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient, redisClient)
 
 	// Initialize handlers
 	userHandler := handler.NewUserHandler(userService)
@@ -138,7 +147,7 @@ func main() {
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
-	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo)
+	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo, redisClient)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
 
 	// Setup Gin router
@@ -405,6 +414,10 @@ func main() {
 					aiHandler.GetGlobalKnowledgeGraph)
 				aiGroup.POST("/knowledge-graph/link-global",
 					aiHandler.TriggerGlobalLinking)
+				
+				// System-wide Polling Endpoint for AI Jobs
+				aiGroup.GET("/jobs/:jobId/status",
+					aiHandler.GetJobStatus())
 			}
 
 			// Per-course AI routes (reuse courseId param)

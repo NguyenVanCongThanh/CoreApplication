@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.database import init_ai_pool, close_ai_pool
 from app.services.qdrant_service import qdrant_service
 from app.services.neo4j_service import neo4j_service
-from app.worker.kafka_producer import publish_status_event, close_kafka_producer
+from app.worker.kafka_producer import close_kafka_producer, publish_ai_job_status
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("kafka_worker")
@@ -95,6 +95,94 @@ def _is_youtube(url: str) -> bool:
     return bool(url and re.search(r"(youtube\.com|youtu\.be)", url))
 
 
+async def process_ai_command(payload: dict):
+    job_id = payload.get("job_id")
+    command_type = payload.get("command_type")
+    course_id = payload.get("course_id")
+    job_payload = payload.get("payload", {})
+    
+    if not job_id or not command_type:
+        logger.error("Missing job_id or command_type in ai.command payload")
+        return
+        
+    logger.info(f"Processing AI command {command_type} for job {job_id}")
+    
+    try:
+        from app.worker.kafka_producer import publish_ai_job_status
+        # Notify LMS we actually started processing
+        await publish_ai_job_status(job_id=job_id, status="processing")
+        
+        result = None
+        if command_type == "GENERATE_QUIZ":
+            from app.services.quiz_service import quiz_gen_service
+            # the payload format is from ai.GenerateQuizRequest in Go
+            node_id = job_payload.get("node_id")
+            course_id = job_payload.get("course_id")
+            created_by = job_payload.get("created_by")
+            bloom_levels = job_payload.get("bloom_levels")
+            lang = job_payload.get("language", "vi")
+            qs_per_level = job_payload.get("questions_per_level", 1)
+            
+            result = await quiz_gen_service.generate_for_node(
+                node_id=node_id, 
+                course_id=course_id, 
+                created_by=created_by,
+                bloom_levels=bloom_levels,
+                language=lang,
+                questions_per_level=qs_per_level
+            )
+            
+        elif command_type == "GENERATE_FLASHCARD":
+            from app.services.flashcard_service import flashcard_service
+            node_id = job_payload.get("node_id")
+            student_id = job_payload.get("student_id")
+            course_id = job_payload.get("course_id")
+            count = job_payload.get("count", 5)
+            
+            # The service in Go expects {"flashcards": [...]} wrap, wait, 
+            # flashcard_service in Go looks for "Flashcards" but we pass JSON back via status
+            # Actually, `flashcard_service.generate_flashcards` does the Neo4j/Qdrant + LLM
+            await flashcard_service.generate_flashcards(
+                student_id=student_id,
+                node_id=node_id,
+                course_id=course_id,
+                count=count
+            )
+            result = {"message": f"Generated {count} flashcards successfully"}
+            
+        elif command_type == "DIAGNOSE_ERROR":
+            from app.services.diagnosis_service import diagnosis_service
+            # Extract diagnose fields
+            req = job_payload
+            res = await diagnosis_service.diagnose_error(
+                student_id=req.get("student_id"),
+                attempt_id=req.get("attempt_id"),
+                question_id=req.get("question_id"),
+                wrong_answer=req.get("wrong_answer"),
+                course_id=req.get("course_id"),
+                question_text=req.get("question_text"),
+                question_type=req.get("question_type"),
+                explanation=req.get("explanation"),
+                correct_answer=req.get("correct_answer"),
+                answer_options=req.get("answer_options", []),
+                node_id=req.get("node_id")
+            )
+            result = res.model_dump() if hasattr(res, "model_dump") else res
+
+        else:
+            logger.warning(f"Unknown AI command type: {command_type}")
+            await publish_ai_job_status(job_id=job_id, status="failed", error=f"Unknown command: {command_type}")
+            return
+            
+        # Publish success result
+        logger.info(f"AI command {command_type} job {job_id} completed.")
+        await publish_ai_job_status(job_id=job_id, status="completed", result=result)
+
+    except Exception as e:
+        logger.error(f"Failed processing AI command {command_type} for job {job_id}: {e}")
+        from app.worker.kafka_producer import publish_ai_job_status
+        await publish_ai_job_status(job_id=job_id, status="failed", error=str(e))
+
 async def main():
     logger.info("Initializing AI Kafka Worker...")
 
@@ -126,9 +214,10 @@ async def main():
     topic_doc      = "lms.document.uploaded"
     topic_graph    = "lms.graph.command"
     topic_maint    = "lms.maintenance.command"
+    topic_ai_cmd   = "lms.ai.command"
     
     consumer = AIOKafkaConsumer(
-        topic_doc, topic_graph, topic_maint,
+        topic_doc, topic_graph, topic_maint, topic_ai_cmd,
         bootstrap_servers=brokers,
         group_id="ai-service-group",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
@@ -136,7 +225,7 @@ async def main():
     )
 
     await consumer.start()
-    logger.info(f"Kafka Consumer listening to document, graph, and maintenance topics.")
+    logger.info(f"Kafka Consumer listening to document, graph, maintenance and ai_cmd topics.")
 
     try:
         async for msg in consumer:
@@ -149,6 +238,8 @@ async def main():
                     await process_document_event(payload)
             elif msg.topic == topic_graph:
                 await process_graph_command(payload)
+            elif msg.topic == topic_ai_cmd:
+                await process_ai_command(payload)
             elif msg.topic == topic_maint:
                 await process_maintenance_command(payload)
             

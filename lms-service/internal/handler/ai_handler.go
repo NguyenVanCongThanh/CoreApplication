@@ -15,10 +15,12 @@ import (
 	"example/hello/internal/models"
 	"example/hello/internal/repository"
 	"example/hello/pkg/ai"
+	"example/hello/pkg/cache"
 	"example/hello/pkg/kafka"
 	"example/hello/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // AIHandler handles all AI-related HTTP endpoints.
@@ -26,11 +28,43 @@ type AIHandler struct {
 	aiClient   *ai.Client
 	courseRepo *repository.CourseRepository
 	quizRepo   *repository.QuizRepository
+	redisCache *cache.RedisCache
 }
 
 // NewAIHandler creates a new AIHandler.
-func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository, quizRepo *repository.QuizRepository) *AIHandler {
-	return &AIHandler{aiClient: aiClient, courseRepo: courseRepo, quizRepo: quizRepo}
+func NewAIHandler(aiClient *ai.Client, courseRepo *repository.CourseRepository, quizRepo *repository.QuizRepository, redisCache *cache.RedisCache) *AIHandler {
+	return &AIHandler{aiClient: aiClient, courseRepo: courseRepo, quizRepo: quizRepo, redisCache: redisCache}
+}
+
+// GetJobStatus godoc
+// @Summary Get AI Job Status
+// @Tags AI - Core
+// @Produce json
+// @Param jobId path string true "Job ID"
+// @Security BearerAuth
+// @Router /ai/jobs/{jobId}/status [get]
+func (h *AIHandler) GetJobStatus() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		jobID := c.Param("jobId")
+		redisKey := "ai_job:" + jobID
+
+		data, err := h.redisCache.Get(c.Request.Context(), redisKey)
+		if err != nil || data == "" {
+			c.JSON(http.StatusNotFound, dto.NewErrorResponse("not_found", "Job not found or expired"))
+			return
+		}
+
+		var statusEvent kafka.AIJobStatusEvent
+		if err := json.Unmarshal([]byte(data), &statusEvent); err != nil {
+			// If it's the pending state format
+			var pendingState map[string]interface{}
+			_ = json.Unmarshal([]byte(data), &pendingState)
+			c.JSON(http.StatusOK, dto.NewDataResponse(pendingState))
+			return
+		}
+
+		c.JSON(http.StatusOK, dto.NewDataResponse(statusEvent))
+	}
 }
 
 // ── Phase 1: Error Diagnosis ──────────────────────────────────────────────────
@@ -108,33 +142,38 @@ func (h *AIHandler) DiagnoseWrongAnswer(c *gin.Context) {
 		NodeID:        nodeIDPtr,
 	}
 
-	result, err := h.aiClient.DiagnoseError(c.Request.Context(), aiReq)
+	jobID := uuid.New().String()
+	
+	payload, _ := json.Marshal(aiReq)
+	event := kafka.AICommandEvent{
+		JobID:       jobID,
+		CommandType: "DIAGNOSE_ERROR",
+		CourseID:    body.CourseID,
+		Payload:     json.RawMessage(payload),
+		CreatedAt:   time.Now(),
+	}
+
+	redisPayload := map[string]interface{}{
+		"job_id": jobID,
+		"status": "processing",
+	}
+	redisData, _ := json.Marshal(redisPayload)
+	err = h.redisCache.Set(c.Request.Context(), "ai_job:"+jobID, redisData, 24*time.Hour)
 	if err != nil {
-		logger.Error("AI diagnosis failed", err)
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", "Diagnosis unavailable"))
+		logger.Error("Failed to tracking AI diagnosis job in Redis", err)
+	}
+
+	err = kafka.PublishEvent(c.Request.Context(), "lms.ai.command", []byte(jobID), event)
+	if err != nil {
+		logger.Error("AI diagnosis command publish failed", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("kafka_error", "Failed to queue diagnosis"))
 		return
 	}
 
-	// Enrich suggested documents with File URL and Title
-	if result.SuggestedDocuments != nil {
-		for i, doc := range result.SuggestedDocuments {
-			if contentIDVal, ok := doc["content_id"].(float64); ok {
-				contentID := int64(contentIDVal)
-				content, err := h.courseRepo.GetContentByID(c.Request.Context(), contentID)
-				if err == nil && content != nil {
-					// Add file info
-					if content.FilePath.Valid {
-						doc["file_url"] = "/api/v1/files/serve/" + content.FilePath.String
-					}
-					doc["title"] = content.Title
-					doc["content_type"] = content.Type
-					result.SuggestedDocuments[i] = doc
-				}
-			}
-		}
-	}
+	c.JSON(http.StatusAccepted, dto.NewDataResponse(redisPayload))
 
-	c.JSON(http.StatusOK, dto.NewDataResponse(result))
+	// The enrichment will now happen in AI service or on frontend polling.
+	// For this async transition, we don't return the immediate results.
 }
 
 // GetClassHeatmap godoc
@@ -284,27 +323,42 @@ func (h *AIHandler) GenerateQuiz(c *gin.Context) {
 		body.QuestionsPerLevel = 1
 	}
 
-	if deadline, ok := c.Request.Context().Deadline(); ok {
-		logger.Info(fmt.Sprintf("GenerateQuiz: Request context has deadline: %v (remaining: %v)", deadline, time.Until(deadline)))
-	} else {
-		logger.Info("GenerateQuiz: Request context has no deadline")
-	}
-
-	result, err := h.aiClient.GenerateQuiz(c.Request.Context(), ai.GenerateQuizRequest{
+	jobID := uuid.New().String()
+	
+	reqPayload := ai.GenerateQuizRequest{
 		NodeID:            body.NodeID,
 		CourseID:          courseID,
 		CreatedBy:         createdBy,
 		BloomLevels:       body.BloomLevels,
 		Language:          body.Language,
 		QuestionsPerLevel: body.QuestionsPerLevel,
-	})
+	}
+	
+	payloadBytes, _ := json.Marshal(reqPayload)
+	
+	event := kafka.AICommandEvent{
+		JobID:       jobID,
+		CommandType: "GENERATE_QUIZ",
+		CourseID:    courseID,
+		Payload:     json.RawMessage(payloadBytes),
+		CreatedAt:   time.Now(),
+	}
+
+	redisPayload := map[string]interface{}{
+		"job_id": jobID,
+		"status": "processing",
+	}
+	redisData, _ := json.Marshal(redisPayload)
+	_ = h.redisCache.Set(c.Request.Context(), "ai_job:"+jobID, redisData, 24*time.Hour)
+
+	err := kafka.PublishEvent(c.Request.Context(), "lms.ai.command", []byte(jobID), event)
 	if err != nil {
-		logger.Error("Quiz generation failed", err)
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		logger.Error("Quiz generation publish failed", err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("kafka_error", "Failed to queue quiz generation"))
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.NewDataResponse(result))
+	c.JSON(http.StatusAccepted, dto.NewDataResponse(redisPayload))
 }
 
 // ListDraftQuestions godoc

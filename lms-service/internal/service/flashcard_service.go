@@ -2,29 +2,38 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"example/hello/internal/dto"
 	"example/hello/internal/repository"
 	"example/hello/pkg/ai"
+	"example/hello/pkg/cache"
+	"example/hello/pkg/kafka"
+	"example/hello/pkg/logger"
+
+	"github.com/google/uuid"
 )
 
 type FlashcardService struct {
 	flashcardRepo *repository.FlashcardRepository // Kept for compilation compatibility, but unused
 	aiClient      *ai.Client
+	redisCache    *cache.RedisCache
 }
 
-func NewFlashcardService(flashcardRepo *repository.FlashcardRepository, aiClient *ai.Client) *FlashcardService {
+func NewFlashcardService(flashcardRepo *repository.FlashcardRepository, aiClient *ai.Client, redisCache *cache.RedisCache) *FlashcardService {
 	return &FlashcardService{
 		flashcardRepo: flashcardRepo,
 		aiClient:      aiClient,
+		redisCache:    redisCache,
 	}
 }
 
-// GenerateFlashcards calls the AI service to create new flashcards (AI service now persists them)
-func (s *FlashcardService) GenerateFlashcards(ctx context.Context, studentID, courseID, nodeID int64, req dto.GenerateFlashcardsRequest) ([]dto.FlashcardResponse, error) {
-	// Call AI Service
+// GenerateFlashcards calls the AI service to create new flashcards asynchronously via Kafka
+func (s *FlashcardService) GenerateFlashcards(ctx context.Context, studentID, courseID, nodeID int64, req dto.GenerateFlashcardsRequest) (map[string]interface{}, error) {
+	jobID := uuid.New().String()
+
 	aiReq := ai.GenerateFlashcardsRequest{
 		StudentID: studentID,
 		NodeID:    nodeID,
@@ -32,35 +41,33 @@ func (s *FlashcardService) GenerateFlashcards(ctx context.Context, studentID, co
 		Count:     req.Count,
 	}
 
-	aiResp, err := s.aiClient.GenerateFlashcards(ctx, aiReq)
+	payloadBytes, _ := json.Marshal(aiReq)
+
+	event := kafka.AICommandEvent{
+		JobID:       jobID,
+		CommandType: "GENERATE_FLASHCARD",
+		CourseID:    courseID,
+		Payload:     json.RawMessage(payloadBytes),
+		CreatedAt:   time.Now(),
+	}
+
+	redisPayload := map[string]interface{}{
+		"job_id": jobID,
+		"status": "processing",
+	}
+	redisData, _ := json.Marshal(redisPayload)
+	err := s.redisCache.Set(ctx, "ai_job:"+jobID, redisData, 24*time.Hour)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate flashcards via AI: %w", err)
+		logger.Error("Failed to track Flashcard generation job in Redis", err)
 	}
 
-	var results []dto.FlashcardResponse
-
-	for _, aiFc := range aiResp.Flashcards {
-		parsedTime := time.Now()
-		if t, err := time.Parse("2006-01-02T15:04:05.999999", aiFc.CreatedAt); err == nil {
-			parsedTime = t
-		} else if t, err := time.Parse(time.RFC3339, aiFc.CreatedAt); err == nil {
-			parsedTime = t
-		} else if t, err := time.Parse("2006-01-02T15:04:05", aiFc.CreatedAt); err == nil {
-			parsedTime = t
-		}
-
-		results = append(results, dto.FlashcardResponse{
-			ID:        aiFc.ID,
-			CourseID:  aiFc.CourseID,
-			NodeID:    aiFc.NodeID,
-			FrontText: aiFc.FrontText,
-			BackText:  aiFc.BackText,
-			Status:    "ACTIVE",
-			CreatedAt: parsedTime,
-		})
+	err = kafka.PublishEvent(ctx, "lms.ai.command", []byte(jobID), event)
+	if err != nil {
+		logger.Error("Flashcard generation command publish failed", err)
+		return nil, fmt.Errorf("failed to queue flashcard generation: %w", err)
 	}
 
-	return results, nil
+	return redisPayload, nil
 }
 
 // ListDueFlashcards calls AI service to get flashcards due today

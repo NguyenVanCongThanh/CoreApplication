@@ -57,3 +57,22 @@ async def publish_graph_event(command: str, status: str, result_count: int = 0, 
     await producer.send_and_wait(topic, value=payload)
     logger.info(f"Published graph event to {topic}: {command} -> {status}")
 
+
+async def publish_ai_job_status(job_id: str, status: str, result: dict | list | None = None, error: str = ""):
+    """Send feedback about an async AI job (Quiz, Flashcard, Diagnosis)."""
+    producer = await get_kafka_producer()
+    payload = {
+        "job_id": job_id,
+        "status": status,
+    }
+    if result is not None:
+        payload["result"] = result
+    if error:
+        payload["error"] = error
+        
+    topic = "ai.job.status"
+    key = str(job_id).encode("utf-8")
+    
+    await producer.send_and_wait(topic, value=payload, key=key)
+    logger.info(f"Published AI job status to {topic} for job {job_id}: {status}")
+
