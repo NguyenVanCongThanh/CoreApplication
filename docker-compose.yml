@@ -127,6 +127,7 @@ services:
       HOSTNAME: 0.0.0.0
       BACKEND_URL: http://backend:8080
       LMS_API_URL: http://lms-backend:8081
+      AI_SERVICE_URL: http://localhost:8000
       GOOGLE_SCRIPT_URL: ${GOOGLE_SCRIPT_URL}
       YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
       YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
@@ -297,7 +298,7 @@ services:
       - app-network
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isrfeady -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
     logging: *common-logging
     deploy:
       resources:
