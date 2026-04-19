@@ -1,11 +1,12 @@
 # Technical Notes
 
-| Field    | Value           |
-|----------|-----------------|
-| Version  | 2.0.0           |
-| Status   | Living document |
-| Date     | 2025-01-01      |
-| Authors  | BDC Team        |
+| Field     | Value                     |
+|-----------|---------------------------|
+| Version   | 2.1.0                     |
+| Status    | Approved                  |
+| Date      | 2026-04-19                |
+| Authors   | BDC Team                  |
+| Reviewers | —                         |
 
 ## Revision History
 
@@ -13,6 +14,7 @@
 |---------|------------|----------|------------------------------------------|
 | 1.0.0   | 2025-01-01 | BDC Team | Initial draft                            |
 | 2.0.0   | 2025-01-01 | BDC Team | Adds Qdrant, Neo4j, Kafka, Phase 2 notes |
+| 2.1.0   | 2026-04-19 | BDC Team | Documentation standardization            |
 
 Read this before making changes to authentication, AI pipeline, or Docker setup.
 

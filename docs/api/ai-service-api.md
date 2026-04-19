@@ -1,11 +1,19 @@
 # AI Service API Reference
 
-| Field    | Value                          |
-|----------|--------------------------------|
-| Version  | 2.2.0                          |
-| Status   | Approved                       |
-| Date     | 2025-01-01                     |
-| Authors  | BDC Team                       |
+| Field     | Value                          |
+|-----------|--------------------------------|
+| Version   | 2.2.1                          |
+| Status    | Approved                       |
+| Date      | 2026-04-19                     |
+| Authors   | BDC Team                       |
+| Reviewers | —                              |
+
+## Revision History
+
+| Version | Date       | Author   | Description                           |
+|---------|------------|----------|---------------------------------------|
+| 2.2.0   | 2025-01-01 | BDC Team | Initial draft                         |
+| 2.2.1   | 2026-04-19 | BDC Team | Documentation standardization         |
 
 **Base URL:** `http://ai-service:8000` (Docker internal)
 **Authentication:** All endpoints require `X-AI-Secret: {AI_SERVICE_SECRET}` header.

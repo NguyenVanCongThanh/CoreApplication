@@ -1,17 +1,19 @@
 # Kafka Event Contracts
 
-| Field    | Value                          |
-|----------|--------------------------------|
-| Version  | 1.0.0                          |
-| Status   | Approved                       |
-| Date     | 2025-01-01                     |
-| Authors  | BDC Team                       |
+| Field     | Value                     |
+|-----------|---------------------------|
+| Version   | 1.1.0                     |
+| Status    | Approved                  |
+| Date      | 2026-04-19                |
+| Authors   | BDC Team                  |
+| Reviewers | —                         |
 
 ## Revision History
 
 | Version | Date       | Author   | Description                           |
 |---------|------------|----------|---------------------------------------|
 | 1.0.0   | 2025-01-01 | BDC Team | Initial contract definition           |
+| 1.1.0   | 2026-04-19 | BDC Team | Documentation standardization         |
 
 ---
 
