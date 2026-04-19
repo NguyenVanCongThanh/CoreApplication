@@ -93,6 +93,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || 'http://backend:8080';
     const lmsUrl = process.env.LMS_API_URL || 'http://lms-backend:8081';
+    const aiUrl = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 
     return [
       {
@@ -110,6 +111,14 @@ const nextConfig: NextConfig = {
       {
         source: '/lmsapidocs/:path*',
         destination: `${lmsUrl}/:path*`, 
+      },
+      {
+        source: '/ai/docs*',
+        destination: `${aiUrl}/docs`, 
+      },
+      {
+        source: '/ai/redoc*',
+        destination: `${aiUrl}/redoc`, 
       },
       {
         source: '/files/:path*',
