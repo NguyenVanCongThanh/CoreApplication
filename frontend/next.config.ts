@@ -113,11 +113,11 @@ const nextConfig: NextConfig = {
         destination: `${lmsUrl}/:path*`, 
       },
       {
-        source: '/ai/docs*',
+        source: '/ai/docs',
         destination: `${aiUrl}/docs`, 
       },
       {
-        source: '/ai/redoc*',
+        source: '/ai/redoc',
         destination: `${aiUrl}/redoc`, 
       },
       {
