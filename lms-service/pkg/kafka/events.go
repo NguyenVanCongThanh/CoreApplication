@@ -1,0 +1,43 @@
+package kafka
+
+import "time"
+
+// ProcessDocumentEvent represents the payload sent from LMS to AI Service
+type ProcessDocumentEvent struct {
+	EventID        string    `json:"event_id"`
+	ContentID      int64     `json:"content_id"`
+	CourseID       int64     `json:"course_id"`
+	CourseName     string    `json:"course_name"`
+	InstructorName string    `json:"instructor_name"`
+	FileURL        string    `json:"file_url"`
+	ContentType    string    `json:"content_type"`
+	Title          string    `json:"title"`
+	TextContent    string    `json:"text_content,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// ProcessDocumentStatusEvent represents the payload sent from AI back to LMS
+type ProcessDocumentStatusEvent struct {
+	ContentID     int64  `json:"content_id"`
+	JobID         int64  `json:"job_id"`
+	Status        string `json:"status"` // "success", "failed"
+	ChunksCreated int    `json:"chunks_created"`
+	Error         string `json:"error,omitempty"`
+}
+
+// AICommandEvent is the generic AI job command format (Quiz, Flashcard, Diagnosis)
+type AICommandEvent struct {
+	JobID       string      `json:"job_id"`
+	CommandType string      `json:"command_type"` // "GENERATE_QUIZ", "GENERATE_FLASHCARD", "DIAGNOSE_ERROR"
+	CourseID    int64       `json:"course_id,omitempty"`
+	Payload     interface{} `json:"payload"`
+	CreatedAt   time.Time   `json:"created_at"`
+}
+
+// AIJobStatusEvent represents an update on an AI operation
+type AIJobStatusEvent struct {
+	JobID   string      `json:"job_id"`
+	Status  string      `json:"status"` // "completed", "failed"
+	Result  interface{} `json:"result,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}

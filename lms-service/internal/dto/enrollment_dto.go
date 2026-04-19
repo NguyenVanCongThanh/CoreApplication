@@ -29,6 +29,7 @@ type StudentEnrollmentResponse struct {
 	TeacherName string     `json:"teacher_name"`
 	EnrolledAt  time.Time  `json:"enrolled_at"`
 	AcceptedAt  *time.Time `json:"accepted_at,omitempty"`
+	ProgressPercent  float64 `json:"progress_percent"`
 }
 
 // LearnerResponse for teacher's view of learners

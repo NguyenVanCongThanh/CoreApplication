@@ -7,23 +7,27 @@ import (
 
 	"example/hello/internal/dto"
 	"example/hello/internal/repository"
+	"example/hello/pkg/ai"
 )
 
 type AnalyticsService struct {
 	analyticsRepo  *repository.AnalyticsRepository
 	courseRepo     *repository.CourseRepository
 	enrollmentRepo *repository.EnrollmentRepository
+	aiClient       *ai.Client
 }
 
 func NewAnalyticsService(
 	analyticsRepo *repository.AnalyticsRepository,
 	courseRepo *repository.CourseRepository,
 	enrollmentRepo *repository.EnrollmentRepository,
+	aiClient *ai.Client,
 ) *AnalyticsService {
 	return &AnalyticsService{
 		analyticsRepo:  analyticsRepo,
 		courseRepo:     courseRepo,
 		enrollmentRepo: enrollmentRepo,
+		aiClient:       aiClient,
 	}
 }
 
@@ -216,13 +220,24 @@ func (s *AnalyticsService) VerifyQuizCourseOwnership(ctx context.Context, quizID
 }
 
 func (s *AnalyticsService) GetCourseStudentWeaknesses(ctx context.Context, courseID, studentID int64) (*dto.StudentWeaknessOverview, error) {
-	nodes, err := s.analyticsRepo.GetStudentWeaknesses(ctx, studentID, courseID)
+	// Call AI service which owns student_knowledge_progress
+	aiNodes, err := s.aiClient.GetStudentWeaknesses(ctx, studentID, courseID)
 	if err != nil {
-		return nil, fmt.Errorf("GetStudentWeaknesses: %w", err)
+		return nil, fmt.Errorf("GetStudentWeaknesses from AI: %w", err)
 	}
 
+	var dnodes []dto.WeakNode
 	var totalWrong, totalAttempt int
-	for _, n := range nodes {
+	for _, n := range aiNodes {
+		dnodes = append(dnodes, dto.WeakNode{
+			NodeID:       n.NodeID,
+			NodeTitle:    n.NameVI, // use localized name
+			WrongCount:   n.WrongCount,
+			TotalAttempt: n.TotalAttempt,
+			MasteryLevel:   n.MasteryLevel,
+			StatusLevel:    n.StatusLevel,
+			FlashcardCount: n.FlashcardCount,
+		})
 		totalWrong += n.WrongCount
 		totalAttempt += n.TotalAttempt
 	}
@@ -234,16 +249,24 @@ func (s *AnalyticsService) GetCourseStudentWeaknesses(ctx context.Context, cours
 
 	return &dto.StudentWeaknessOverview{
 		TotalWrongPercent: totalWrongPercent,
-		WeakNodes:         nodes,
+		WeakNodes:         dnodes,
 	}, nil
 }
 
 func (s *AnalyticsService) GetFlashcardStats(ctx context.Context, courseID, studentID int64) (*dto.FlashcardStatsResponse, error) {
-	stats, err := s.analyticsRepo.GetFlashcardStats(ctx, studentID, courseID)
+	// Let's use getReviewStats for spaced_repetitions proxy
+	aiStats, err := s.aiClient.GetReviewStats(ctx, studentID, courseID)
 	if err != nil {
-		return nil, fmt.Errorf("GetFlashcardStats: %w", err)
+		return nil, fmt.Errorf("GetFlashcardStats from AI: %w", err)
 	}
-	return stats, nil
+	
+	resp := &dto.FlashcardStatsResponse{
+		TodayDueCount: ai.GetIntField(aiStats, "due_today"),
+		UpcomingCount: ai.GetIntField(aiStats, "upcoming"),
+		LearningCount: ai.GetIntField(aiStats, "total_tracked"),
+	}
+	
+	return resp, nil
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

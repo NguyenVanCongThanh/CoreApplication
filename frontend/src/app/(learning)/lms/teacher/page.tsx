@@ -5,10 +5,10 @@
  *
  * Sections:
  *   1. Header with greeting
- *   2. Stats row: courses total / published / students / pending enrollments
+ *   2. Stats row
  *   3. Quick actions
- *   4. Recent courses (mini cards)
- *   5. Pending enrollments quick list
+ *   4. Recent courses
+ *   5. Cross-course Knowledge Graph (all my courses)
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -17,27 +17,17 @@ import lmsService from "@/services/lmsService";
 import {
   BookOpen, Users, CheckCircle2,
   Plus, Settings, ChevronRight,
-  TrendingUp, RefreshCw,
-  LogOut, Home
+  TrendingUp, RefreshCw, LogOut, Home
 } from "lucide-react";
 import {
   StatCard, Card, SectionHeader,
   Badge, PrimaryBtn, SecondaryBtn, GhostBtn,
-  EmptyState, PageLoader, Alert
+  EmptyState, PageLoader, Alert,
 } from "@/components/lms/shared";
 import { Course } from "@/types";
 import { getCookie } from "@/utils/cookies";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface PendingEnrollment {
-  id: number;
-  course_id: number;
-  course_title: string;
-  student_name: string;
-  student_email: string;
-  enrolled_at: string;
-}
 
 interface TeacherStats {
   totalCourses: number;
@@ -50,11 +40,11 @@ interface TeacherStats {
 // ─── Quick action card ────────────────────────────────────────────────────────
 
 function ActionCard({
-  icon, title, description, badge, onClick, variant = "default"
+  icon, title, description, badge, onClick, variant = "default",
 }: {
   icon: React.ReactNode; title: string; description: string;
   badge?: number; onClick: () => void;
-  variant?: "default"|"primary"|"success"|"warning";
+  variant?: "default" | "primary" | "success" | "warning";
 }) {
   const VARIANT = {
     default: "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700",
@@ -62,7 +52,6 @@ function ActionCard({
     success: "border-green-200 dark:border-green-800 hover:border-green-400 dark:hover:border-green-600 bg-green-50/50 dark:bg-green-900/10",
     warning: "border-yellow-200 dark:border-yellow-800 hover:border-yellow-400 dark:hover:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-900/10",
   };
-
   return (
     <button
       onClick={onClick}
@@ -95,9 +84,6 @@ export default function TeacherDashboard() {
     totalStudents: 0, pendingEnrollments: 0,
   });
   const [recentCourses, setRecentCourses] = useState<Course[]>([]);
-  const [pendingEnrollments, setPendingEnrollments] = useState<PendingEnrollment[]>([]);
-
-  // ── Init ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const role = sessionStorage.getItem("lms_selected_role");
@@ -116,30 +102,25 @@ export default function TeacherDashboard() {
       const published = courses.filter(c => c.status === "PUBLISHED");
       const draft = courses.filter(c => c.status === "DRAFT");
 
-      // Load pending enrollments across all published courses (first 5 courses for quick preview)
-      const pendingItems: PendingEnrollment[] = [];
       let totalStudents = 0;
       for (const course of published.slice(0, 10)) {
         try {
           const accepted = await lmsService.getCourseLearners(course.id, "ACCEPTED");
           totalStudents += (accepted ?? []).length;
-        } catch {}
+        } catch { /* ignore */ }
       }
 
       setStats({
-        totalCourses: courses.length,
-        publishedCourses: published.length,
-        draftCourses: draft.length,
-        totalStudents,
-        pendingEnrollments: pendingItems.length,
+        totalCourses: courses.length, publishedCourses: published.length,
+        draftCourses: draft.length, totalStudents, pendingEnrollments: 0,
       });
 
-      // Sort by created_at desc, show 6 most recent
-      setRecentCourses([...courses].sort((a,b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ).slice(0, 6));
+      setRecentCourses(
+        [...courses]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 6)
+      );
 
-      setPendingEnrollments(pendingItems.slice(0, 10));
     } catch {
       setError("Không thể tải dữ liệu. Vui lòng thử lại.");
     } finally {
@@ -159,32 +140,16 @@ export default function TeacherDashboard() {
         {/* ── Header ── */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-sm text-slate-500 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1">
-              Giảng viên
-            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1">Giảng viên</p>
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight">
               {greeting}, {userName} 👨‍🏫
             </h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              Bạn có {stats.pendingEnrollments} yêu cầu đăng ký đang chờ xử lý.
-            </p>
           </div>
           <div className="flex items-center gap-2">
-            <SecondaryBtn
-              size="sm"
-              icon={<RefreshCw className="w-4 h-4" />}
-              onClick={loadDashboard}
-            >
-              Làm mới
-            </SecondaryBtn>
-            <GhostBtn size="sm" icon={<Home className="w-4 h-4" />} onClick={() => router.push("/")}>
-              Trang chủ
-            </GhostBtn>
-            <GhostBtn
-              size="sm"
-              icon={<LogOut className="w-4 h-4" />}
-              onClick={() => { sessionStorage.removeItem("lms_selected_role"); router.push("/lms"); }}
-            >
+            <SecondaryBtn size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadDashboard}>Làm mới</SecondaryBtn>
+            <GhostBtn size="sm" icon={<Home className="w-4 h-4" />} onClick={() => router.push("/")}>Trang chủ</GhostBtn>
+            <GhostBtn size="sm" icon={<LogOut className="w-4 h-4" />}
+              onClick={() => { sessionStorage.removeItem("lms_selected_role"); router.push("/lms"); }}>
               Đổi vai trò
             </GhostBtn>
           </div>
@@ -193,133 +158,82 @@ export default function TeacherDashboard() {
         {error && <Alert type="error">{error}</Alert>}
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-3 lg:grid-cols-3 gap-4">
-          <StatCard
-            label="Tổng khóa học"
-            value={stats.totalCourses}
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard label="Tổng khóa học" value={stats.totalCourses}
             sub={`${stats.draftCourses} nháp`}
-            icon={<BookOpen className="w-5 h-5" />}
-            accent="blue"
-          />
-          <StatCard
-            label="Đã xuất bản"
-            value={stats.publishedCourses}
-            icon={<CheckCircle2 className="w-5 h-5" />}
-            accent="green"
-            trend={stats.publishedCourses > 0 ? { value: "Đang hoạt động", up: true } : undefined}
-          />
-          <StatCard
-            label="Tổng học viên"
-            value={stats.totalStudents}
+            icon={<BookOpen className="w-5 h-5" />} accent="blue" />
+          <StatCard label="Đã xuất bản" value={stats.publishedCourses}
+            icon={<CheckCircle2 className="w-5 h-5" />} accent="green"
+            trend={stats.publishedCourses > 0 ? { value: "Đang hoạt động", up: true } : undefined} />
+          <StatCard label="Tổng học viên" value={stats.totalStudents}
             sub="đã được chấp nhận"
-            icon={<Users className="w-5 h-5" />}
-            accent="purple"
-          />
+            icon={<Users className="w-5 h-5" />} accent="purple" />
         </div>
 
         {/* ── Quick actions ── */}
         <Card className="p-6">
           <SectionHeader title="Thao tác nhanh" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <ActionCard
-              icon={<Plus className="w-6 h-6 text-blue-600" />}
-              title="Tạo khóa học"
-              description="Thêm khóa học mới"
-              variant="primary"
-              onClick={() => router.push("/lms/teacher/courses/create")}
-            />
-            <ActionCard
-              icon={<BookOpen className="w-6 h-6 text-slate-600" />}
-              title="Quản lý khóa học"
-              description="Xem và chỉnh sửa"
-              onClick={() => router.push("/lms/teacher/courses")}
-            />
-            <ActionCard
-              icon={<TrendingUp className="w-6 h-6 text-green-600" />}
-              title="Thống kê"
-              description="Xem báo cáo chi tiết"
-              variant="success"
-              onClick={() => router.push("/lms/teacher/analytics")}
-            />
+            <ActionCard icon={<Plus className="w-6 h-6 text-blue-600" />}
+              title="Tạo khóa học" description="Thêm khóa học mới" variant="primary"
+              onClick={() => router.push("/lms/teacher/courses/create")} />
+            <ActionCard icon={<BookOpen className="w-6 h-6 text-slate-600" />}
+              title="Quản lý khóa học" description="Xem và chỉnh sửa"
+              onClick={() => router.push("/lms/teacher/courses")} />
+            <ActionCard icon={<TrendingUp className="w-6 h-6 text-green-600" />}
+              title="Thống kê" description="Xem báo cáo chi tiết" variant="success"
+              onClick={() => router.push("/lms/teacher/analytics")} />
           </div>
         </Card>
 
-        {/* ── Two-column bottom ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-          {/* Recent courses (3/5) */}
-          <Card className="lg:col-span-6 p-6">
-            <SectionHeader
-              title="Khóa học gần đây"
+        {/* ── Recent courses ── */}
+        <Card className="p-6">
+          <SectionHeader
+            title="Khóa học gần đây"
+            action={
+              <GhostBtn size="sm" icon={<ChevronRight className="w-4 h-4" />}
+                onClick={() => router.push("/lms/teacher/courses")}>
+                Xem tất cả
+              </GhostBtn>
+            }
+          />
+          {recentCourses.length === 0 ? (
+            <EmptyState icon={<BookOpen className="w-10 h-10" />}
+              title="Chưa có khóa học"
+              description="Hãy tạo khóa học đầu tiên của bạn."
               action={
-                <GhostBtn
-                  size="sm"
-                  icon={<ChevronRight className="w-4 h-4" />}
-                  onClick={() => router.push("/lms/teacher/courses")}
-                >
-                  Xem tất cả
-                </GhostBtn>
-              }
-            />
-
-            {recentCourses.length === 0 ? (
-              <EmptyState
-                icon={<BookOpen className="w-10 h-10" />}
-                title="Chưa có khóa học"
-                description="Hãy tạo khóa học đầu tiên của bạn."
-                action={
-                  <PrimaryBtn
-                    size="sm"
-                    icon={<Plus className="w-4 h-4" />}
-                    onClick={() => router.push("/lms/teacher/courses/create")}
-                  >
-                    Tạo khóa học
-                  </PrimaryBtn>
-                }
-              />
-            ) : (
-              <div className="space-y-1 divide-y divide-slate-100 dark:divide-slate-800">
-                {recentCourses.map(course => (
-                  <div
-                    key={course.id}
-                    className="flex items-center gap-3 py-3 cursor-pointer group"
-                    onClick={() => router.push(`/lms/teacher/courses/${course.id}`)}
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
-                      <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">
-                        {course.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant={course.status === "PUBLISHED" ? "green" : "yellow"}>
-                          {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
-                        </Badge>
-                        {course.category && (
-                          <span className="text-xs text-slate-500">{course.category}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-                        onClick={e => {
-                          e.stopPropagation();
-                          router.push(`/lms/teacher/courses/${course.id}`);
-                        }}
-                        title="Quản lý"
-                      >
-                        <Settings className="w-4 h-4" />
-                      </button>
+                <PrimaryBtn size="sm" icon={<Plus className="w-4 h-4" />}
+                  onClick={() => router.push("/lms/teacher/courses/create")}>
+                  Tạo khóa học
+                </PrimaryBtn>
+              } />
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {recentCourses.map(course => (
+                <div key={course.id}
+                  className="flex items-center gap-3 py-3 cursor-pointer group"
+                  onClick={() => router.push(`/lms/teacher/courses/${course.id}`)}>
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                    <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{course.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Badge variant={course.status === "PUBLISHED" ? "green" : "yellow"}>
+                        {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
+                      </Badge>
+                      {course.category && <span className="text-xs text-slate-500">{course.category}</span>}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-        </div>
+                  <button className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 opacity-0 group-hover:opacity-100 transition-all"
+                    onClick={e => { e.stopPropagation(); router.push(`/lms/teacher/courses/${course.id}`); }}>
+                    <Settings className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );

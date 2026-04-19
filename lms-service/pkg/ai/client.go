@@ -32,7 +32,7 @@ func NewClient() *Client {
 		baseURL: baseURL,
 		secret:  secret,
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 600 * time.Second, // quiz gen can take 6+ LLM calls (~60s each)
 		},
 	}
 }
@@ -71,6 +71,13 @@ type DiagnoseRequest struct {
 	QuestionID  int64  `json:"question_id"`
 	WrongAnswer string `json:"wrong_answer"`
 	CourseID    int64  `json:"course_id"`
+	// Enrichment fields — LMS provides these so AI doesn't query LMS DB
+	QuestionText  string                   `json:"question_text"`
+	QuestionType  string                   `json:"question_type"`
+	Explanation   string                   `json:"explanation"`
+	CorrectAnswer string                   `json:"correct_answer"`
+	AnswerOptions []map[string]interface{} `json:"answer_options"`
+	NodeID        *int64                   `json:"node_id,omitempty"`
 }
 
 // DiagnoseResponse contains LLM explanation + deep link.
@@ -83,6 +90,17 @@ type DiagnoseResponse struct {
 	SourceChunkID   *int64                   `json:"source_chunk_id"`
 	SuggestedDocuments []map[string]interface{} `json:"suggested_documents"`
 	Language        string                   `json:"language"`
+}
+
+type ChunkItem struct {
+    ID           int64   `json:"id"`
+    ChunkText    string  `json:"chunk_text"`
+    ChunkIndex   int     `json:"chunk_index"`
+    SourceType   string  `json:"source_type"`
+    PageNumber   *int    `json:"page_number"`
+    StartTimeSec *int    `json:"start_time_sec"`
+    EndTimeSec   *int    `json:"end_time_sec"`
+    Language     string  `json:"language"`
 }
 
 func (c *Client) DiagnoseError(ctx context.Context, req DiagnoseRequest) (*DiagnoseResponse, error) {
@@ -167,13 +185,34 @@ type ApproveQuestionRequest struct {
 	ReviewNote string `json:"review_note"`
 }
 
-func (c *Client) ApproveQuestion(ctx context.Context, genID int64, req ApproveQuestionRequest) (int64, error) {
-	var resp map[string]interface{}
+// ApproveQuestionResponse is the structured response from the AI service
+// containing the full question data that LMS needs to insert into quiz_questions.
+type ApproveQuestionResponse struct {
+	GenID          int64                    `json:"gen_id"`
+	QuizID         int64                    `json:"quiz_id"`
+	QuestionText   string                   `json:"question_text"`
+	QuestionType   string                   `json:"question_type"`
+	Explanation    string                   `json:"explanation"`
+	AnswerOptions  []map[string]interface{} `json:"answer_options"`
+	NodeID         *int64                   `json:"node_id"`
+	BloomLevel     string                   `json:"bloom_level"`
+	SourceChunkID  *int64                   `json:"source_chunk_id"`
+	Language       string                   `json:"language"`
+}
+
+func (c *Client) ApproveQuestion(ctx context.Context, genID int64, req ApproveQuestionRequest) (*ApproveQuestionResponse, error) {
+	var resp ApproveQuestionResponse
 	if err := c.post(ctx, fmt.Sprintf("/ai/quiz/%d/approve", genID), req, &resp); err != nil {
-		return 0, fmt.Errorf("ai.ApproveQuestion: %w", err)
+		return nil, fmt.Errorf("ai.ApproveQuestion: %w", err)
 	}
-	qIDFloat, _ := resp["quiz_question_id"].(float64)
-	return int64(qIDFloat), nil
+	return &resp, nil
+}
+
+// PublishQuestion notifies AI that LMS has successfully created the quiz_question.
+func (c *Client) PublishQuestion(ctx context.Context, genID int64, quizQuestionID int64) error {
+	var resp map[string]interface{}
+	body := map[string]int64{"quiz_question_id": quizQuestionID}
+	return c.post(ctx, fmt.Sprintf("/ai/quiz/%d/publish", genID), body, &resp)
 }
 
 type RejectQuestionRequest struct {
@@ -233,8 +272,13 @@ type GenerateFlashcardsRequest struct {
 }
 
 type AIFlashcard struct {
-	FrontText string `json:"front_text"`
-	BackText  string `json:"back_text"`
+	ID        int64     `json:"id"`
+	CourseID  int64     `json:"course_id"`
+	NodeID    int64     `json:"node_id"`
+	FrontText string    `json:"front_text"`
+	BackText  string    `json:"back_text"`
+	Status    string    `json:"status"`
+	CreatedAt string    `json:"created_at"`
 }
 
 type GenerateFlashcardsResponse struct {
@@ -247,6 +291,38 @@ func (c *Client) GenerateFlashcards(ctx context.Context, req GenerateFlashcardsR
 		return nil, fmt.Errorf("ai.GenerateFlashcards: %w", err)
 	}
 	return &resp, nil
+}
+
+func (c *Client) GetDueFlashcards(ctx context.Context, studentID, courseID int64) ([]map[string]interface{}, error) {
+	var resp []map[string]interface{}
+	path := fmt.Sprintf("/ai/flashcards/due/student/%d/course/%d", studentID, courseID)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetDueFlashcards: %w", err)
+	}
+	return resp, nil
+}
+
+func (c *Client) GetNodeFlashcards(ctx context.Context, nodeID, courseID, studentID int64) ([]map[string]interface{}, error) {
+	var resp []map[string]interface{}
+	path := fmt.Sprintf("/ai/flashcards/node/%d/course/%d/student/%d", nodeID, courseID, studentID)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetNodeFlashcards: %w", err)
+	}
+	return resp, nil
+}
+
+type ReviewFlashcardRequest struct {
+	StudentID   int64 `json:"student_id"`
+	FlashcardID int64 `json:"flashcard_id"`
+	Quality     int   `json:"quality"`
+}
+
+func (c *Client) ReviewFlashcard(ctx context.Context, req ReviewFlashcardRequest) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.post(ctx, "/ai/flashcards/review", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.ReviewFlashcard: %w", err)
+	}
+	return resp, nil
 }
 
 // ── Knowledge Nodes ────────────────────────────────────────────────────────────
@@ -284,6 +360,14 @@ type AutoIndexRequest struct {
 	FileURL     string `json:"file_url"`
 	ContentType string `json:"content_type"`
 }
+
+// AutoIndexTextRequest triggers auto-indexing for TEXT content.
+type AutoIndexTextRequest struct {
+	ContentID   int64  `json:"content_id"`
+	CourseID    int64  `json:"course_id"`
+	Title       string `json:"title"`
+	TextContent string `json:"text_content"`
+}
  
 type AutoIndexResponse struct {
 	JobID     string `json:"job_id"`
@@ -299,12 +383,32 @@ type AutoIndexStatus struct {
 	ChunksCreated int   `json:"chunks_created"`
 	Error        string `json:"error,omitempty"`
 }
- 
-// AutoIndex triggers the auto-index pipeline.
+
+type WeaknessNode struct {
+	NodeID       int64   `json:"node_id"`
+	NodeName     string  `json:"node_name"`
+	NameVI       string  `json:"name_vi"`
+	WrongCount   int     `json:"wrong_count"`
+	TotalAttempt int     `json:"total_attempts"`
+	MasteryLevel float64 `json:"mastery_level"`
+	StatusLevel    string  `json:"status_level"`
+	FlashcardCount int     `json:"flashcard_count"`
+}
+
+// AutoIndex triggers the auto-index pipeline for file content.
 func (c *Client) AutoIndex(ctx context.Context, req AutoIndexRequest) (*AutoIndexResponse, error) {
 	var resp AutoIndexResponse
 	if err := c.post(ctx, "/ai/auto-index", req, &resp); err != nil {
 		return nil, fmt.Errorf("ai.AutoIndex: %w", err)
+	}
+	return &resp, nil
+}
+
+// AutoIndexText triggers auto-indexing for TEXT content.
+func (c *Client) AutoIndexText(ctx context.Context, req AutoIndexTextRequest) (*AutoIndexResponse, error) {
+	var resp AutoIndexResponse
+	if err := c.post(ctx, "/ai/auto-index/text", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.AutoIndexText: %w", err)
 	}
 	return &resp, nil
 }
@@ -318,6 +422,11 @@ func (c *Client) GetAutoIndexStatus(ctx context.Context, contentID int64) (*Auto
 	}
 	return &resp, nil
 }
+
+func (c *Client) GetNodeChunks(ctx context.Context, nodeID int64, limit int) ([]ChunkItem, error) {
+    var resp []ChunkItem
+    return resp, c.get(ctx, fmt.Sprintf("/ai/knowledge-nodes/%d/chunks?limit=%d", nodeID, limit), &resp)
+}
  
 // KnowledgeGraphNode represents a node in the knowledge graph.
 type KnowledgeGraphNode struct {
@@ -328,6 +437,7 @@ type KnowledgeGraphNode struct {
 	Description        string  `json:"description"`
 	SourceContentID    *int64  `json:"source_content_id"`
 	SourceContentTitle string  `json:"source_content_title"`
+	CourseID           *int64  `json:"course_id"`
 	AutoGenerated      bool    `json:"auto_generated"`
 	ChunkCount         int     `json:"chunk_count"`
 	Level              int     `json:"level"`
@@ -356,11 +466,119 @@ func (c *Client) GetKnowledgeGraph(ctx context.Context, courseID int64) (*Knowle
 	}
 	return &resp, nil
 }
+
+// GetGlobalKnowledgeGraph returns the full knowledge graph across all courses.
+func (c *Client) GetGlobalKnowledgeGraph(ctx context.Context, minStrength float64, limit int) (*KnowledgeGraphResponse, error) {
+	var resp KnowledgeGraphResponse
+	path := fmt.Sprintf("/ai/knowledge-graph/global?min_strength=%f&limit=%d", minStrength, limit)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GetGlobalKnowledgeGraph: %w", err)
+	}
+	return &resp, nil
+}
+
+// LinkGlobalGraph triggers a system-wide knowledge graph maintenance task via Kafka command.
+func (c *Client) LinkGlobalGraph(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.post(ctx, "/ai/knowledge-graph/link-global", nil, &resp); err != nil {
+		return nil, fmt.Errorf("ai.LinkGlobalGraph: %w", err)
+	}
+	return resp, nil
+}
  
 // DeleteKnowledgeNode removes an auto-generated node.
 func (c *Client) DeleteKnowledgeNode(ctx context.Context, nodeID int64) error {
 	var resp map[string]interface{}
 	return c.post(ctx, fmt.Sprintf("/ai/knowledge-graph/node/%d", nodeID), nil, &resp)
+}
+
+// GetStudentWeaknesses calls the AI service heatmap endpoint and transforms
+// the response into weakness nodes with status labels.
+// AI service owns student_knowledge_progress — LMS never queries it directly.
+func (c *Client) GetStudentWeaknesses(ctx context.Context, studentID, courseID int64) ([]WeaknessNode, error) {
+	raw, err := c.GetStudentHeatmap(ctx, studentID, courseID)
+	if err != nil {
+		return nil, fmt.Errorf("ai.GetStudentWeaknesses: %w", err)
+	}
+ 
+	nodes := make([]WeaknessNode, 0, len(raw))
+	for _, r := range raw {
+		mastery := GetFloatField(r, "mastery_level")
+		wrongCount := GetIntField(r, "wrong_count")
+		totalAttempt := GetIntField(r, "total_attempts")
+		nodeID := GetInt64Field(r, "node_id")
+		flashcardCount := GetIntField(r, "flashcard_count")
+		fmt.Println("flashcardCount", flashcardCount)
+
+		// Map mastery_level to Vietnamese status label
+		statusLevel := "Rất tốt"
+		switch {
+		case mastery < 0.4:
+			statusLevel = "Cần cải thiện"
+		case mastery < 0.6:
+			statusLevel = "Yếu"
+		case mastery < 0.8:
+			statusLevel = "TB"
+		}
+ 
+		nodes = append(nodes, WeaknessNode{
+			NodeID:         nodeID,
+			NodeName:       GetStringField(r, "node_name"),
+			NameVI:         GetStringField(r, "name_vi"),
+			WrongCount:     wrongCount,
+			TotalAttempt:   totalAttempt,
+			MasteryLevel:   mastery,
+			StatusLevel:    statusLevel,
+			FlashcardCount: flashcardCount,
+		})
+	}
+	return nodes, nil
+}
+ 
+// GetIntField safely extracts an int from map[string]interface{}
+func GetIntField(m map[string]interface{}, key string) int {
+	if v, ok := m[key]; ok {
+		switch tv := v.(type) {
+		case float64:
+			return int(tv)
+		case int:
+			return tv
+		case int64:
+			return int(tv)
+		}
+	}
+	return 0
+}
+
+// GetInt64Field safely extracts an int64 from map[string]interface{}
+func GetInt64Field(m map[string]interface{}, key string) int64 {
+	if v, ok := m[key]; ok {
+		switch tv := v.(type) {
+		case float64:
+			return int64(tv)
+		case int:
+			return int64(tv)
+		case int64:
+			return tv
+		}
+	}
+	return 0
+}
+
+// GetFloatField safely extracts a float64 from map[string]interface{}
+func GetFloatField(m map[string]interface{}, key string) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return 0
+}
+
+// GetStringField safely extracts a string from a map[string]interface{}
+func GetStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────

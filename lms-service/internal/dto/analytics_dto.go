@@ -87,6 +87,7 @@ type WeakNode struct {
 	TotalAttempt int     `json:"total_attempt"`
 	MasteryLevel float64 `json:"mastery_level"` // 0.0 to 1.0
 	StatusLevel  string  `json:"status_level"`  // "Rất tốt", "TB", "Yếu", "Cần cải thiện"
+	FlashcardCount int   `json:"flashcard_count"`
 }
 
 // FlashcardStatsResponse provides the Spaced Repetition (SM-2) stats

@@ -7,14 +7,30 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
 
-    # PostgreSQL
-    db_host: str = "postgres-lms"
-    db_port: int = 5432
-    db_user: str = "lms_user"
-    db_password: str = "lms_password"
-    db_name: str = "lms_db"
-    db_min_connections: int = 2
-    db_max_connections: int = 10
+    # ── AI PostgreSQL ──────────────────────────────────────────────────────────
+    ai_db_host: str = "postgres-ai"
+    ai_db_port: int = 5432
+    ai_db_user: str = "ai_user"
+    ai_db_password: str = "ai_password"
+    ai_db_name: str = "ai_db"
+    ai_db_min_connections: int = 5
+    ai_db_max_connections: int = 20
+
+    # ── Qdrant Vector Store ────────────────────────────────────────────────────
+    qdrant_host: str = "qdrant"
+    qdrant_port: int = 6333
+    qdrant_grpc_port: int = 6334
+    qdrant_prefer_grpc: bool = True
+    qdrant_api_key: str = ""
+
+    # ── Neo4j Knowledge Graph ──────────────────────────────────────────────────
+    neo4j_uri: str = "bolt://neo4j:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j_password"
+    neo4j_enabled: bool = True
+
+    # Feature flags
+    use_qdrant: bool = True
 
     # Redis
     redis_host: str = "redis-lms"
@@ -29,30 +45,34 @@ class Settings(BaseSettings):
     minio_bucket: str = "lms-files"
     minio_use_ssl: bool = False
 
-    # ════════════════════════════════════════════
-    # Groq — FREE tier, rất nhanh
-    # ════════════════════════════════════════════
+    # Groq LLM
     groq_api_key: str = ""
-
-    # llama-3.1-8b-instant  → 560 tok/s, rẻ nhất, dùng cho diagnosis
-    # llama-3.3-70b-versatile → 280 tok/s, tốt hơn, dùng cho quiz gen
     chat_model: str = "llama-3.1-8b-instant"
     quiz_model: str = "llama-3.3-70b-versatile"
 
-    # Embedding (FastEmbed - chạy local, không cần server)
-    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
-    embedding_dimensions: int = 768
+    # Embedding
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimensions: int = 1024
+    vlm_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    vlm_enabled: bool = True
+    embedding_prefix_mode: str = "bge"
+
+    # Reranker
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    use_reranker: bool = True
+    rerank_fetch_k: int = 15
 
     # RAG
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k_chunks: int = 3
+    use_native_multilingual: bool = True
 
-    # Celery
-    celery_task_time_limit: int = 3600
+    # Kafka worker tuning
+    reindex_batch_size: int = 5
 
     # Internal
-    lms_service_url: str = "http://lms-backend:8081"
+    lms_service_url: str = "http://lms-service:8081"
     ai_service_secret: str = "ai-service-secret-change-me"
 
     class Config:
@@ -61,16 +81,19 @@ class Settings(BaseSettings):
         extra = "ignore"
 
     @property
-    def database_url(self) -> str:
+    def ai_database_url(self) -> str:
         return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"postgresql+asyncpg://{self.ai_db_user}:{self.ai_db_password}"
+            f"@{self.ai_db_host}:{self.ai_db_port}/{self.ai_db_name}"
         )
 
     @property
     def redis_url(self) -> str:
         if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            return (
+                f"redis://:{self.redis_password}"
+                f"@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+            )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 

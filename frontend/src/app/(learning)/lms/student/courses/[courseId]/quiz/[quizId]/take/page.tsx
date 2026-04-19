@@ -3,11 +3,14 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import lmsService from "@/services/lmsService";
 import quizService from "@/services/quizService";
 import { Button } from "@/components/ui/button";
+import { BreadcrumbNav, type BreadcrumbItem } from "@/components/lms/BreadcrumbNav";
 import FillBlankTextStudent from "@/components/lms/student/FillBlankTextStudent";
 import FillBlankDropdownStudent from "@/components/lms/student/FillBlankDropdownStudent";
 import FileUploadQuestion from "@/components/lms/student/FileUploadQuestion";
+import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
 import type {
   FillBlankTextSettings,
   FillBlankTextStudentAnswer,
@@ -75,6 +78,7 @@ export default function StudentQuizTakingPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [courseTitle, setCourseTitle] = useState("");
   const [showImageModal, setShowImageModal] = useState<string | null>(null);
 
   useEffect(() => {
@@ -106,9 +110,14 @@ export default function StudentQuizTakingPage() {
 
   const startQuiz = async () => {
     try {
-      const quizData = await quizService.getQuiz(quizId);
+      // 1. Load Quiz & Course info
+      const [quizData, courseRes] = await Promise.all([
+        quizService.getQuiz(quizId),
+        lmsService.getCourse(courseId)
+      ]);
       const quizInfo = quizData.data;
       setQuiz(quizInfo);
+      setCourseTitle(courseRes?.data?.title || "Khóa học");
 
       // 2. Kiểm tra attempts hiện tại
       const attemptsResponse = await quizService.getMyQuizAttempts(quizId);
@@ -367,9 +376,9 @@ export default function StudentQuizTakingPage() {
 
         {/* Question Text */}
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 leading-relaxed">
-            {question.question_text}
-          </h2>
+          <div className="text-xl font-bold text-slate-900 dark:text-slate-50 leading-relaxed prose prose-slate dark:prose-invert max-w-none">
+            <MarkdownRenderer content={question.question_text} />
+          </div>
           {question.question_html && (
             <div
               className="mt-3 text-slate-700 dark:text-slate-300 prose max-w-none"
@@ -394,19 +403,23 @@ export default function StudentQuizTakingPage() {
                       : "border-slate-300 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name={`question_${question.id}`}
-                    checked={answers[question.id]?.selected_option_id === option.id}
-                    onChange={() =>
-                      handleAnswerChange(question.id, {
-                        selected_option_id: option.id,
-                        type: "single_choice",
-                      })
-                    }
-                    className="mt-1 w-5 h-5"
-                  />
-                  <span className="text-slate-900 dark:text-slate-50 flex-1">{option.option_text}</span>
+                  <div className="mt-1 w-5 h-5 flex-shrink-0">
+                    <input
+                      type="radio"
+                      name={`question_${question.id}`}
+                      checked={answers[question.id]?.selected_option_id === option.id}
+                      onChange={() =>
+                        handleAnswerChange(question.id, {
+                          selected_option_id: option.id,
+                          type: "single_choice",
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+                  </div>
+                  <div className="text-slate-900 dark:text-slate-50 flex-1 prose-sm prose-slate dark:prose-invert max-w-none">
+                    <MarkdownRenderer content={option.option_text} />
+                  </div>
                 </label>
               ))}
             </div>
@@ -423,22 +436,26 @@ export default function StudentQuizTakingPage() {
                       : "border-slate-300 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={answers[question.id]?.selected_option_ids?.includes(option.id) || false}
-                    onChange={(e) => {
-                      const currentIds = answers[question.id]?.selected_option_ids || [];
-                      const newIds = e.target.checked
-                        ? [...currentIds, option.id]
-                        : currentIds.filter((id: number) => id !== option.id);
-                      handleAnswerChange(question.id, {
-                        selected_option_ids: newIds,
-                        type: "multiple_choice",
-                      });
-                    }}
-                    className="mt-1 w-5 h-5"
-                  />
-                  <span className="text-slate-900 dark:text-slate-50 flex-1">{option.option_text}</span>
+                  <div className="mt-1 w-5 h-5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={answers[question.id]?.selected_option_ids?.includes(option.id) || false}
+                      onChange={(e) => {
+                        const currentIds = answers[question.id]?.selected_option_ids || [];
+                        const newIds = e.target.checked
+                          ? [...currentIds, option.id]
+                          : currentIds.filter((id: number) => id !== option.id);
+                        handleAnswerChange(question.id, {
+                          selected_option_ids: newIds,
+                          type: "multiple_choice",
+                        });
+                      }}
+                      className="w-5 h-5"
+                    />
+                  </div>
+                  <div className="text-slate-900 dark:text-slate-50 flex-1 prose-sm prose-slate dark:prose-invert max-w-none">
+                    <MarkdownRenderer content={option.option_text} />
+                  </div>
                 </label>
               ))}
             </div>
@@ -531,8 +548,18 @@ export default function StudentQuizTakingPage() {
     );
   }
 
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: "Học tập", href: "/lms/student" },
+    { label: courseTitle || "...", href: `/lms/student/courses/${courseId}/learn` },
+    { label: quiz?.title ? `Quiz: ${quiz.title}` : "Quiz" }
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-4">
+      <div className="max-w-4xl mx-auto px-4 mb-4">
+        <BreadcrumbNav items={breadcrumbItems} />
+      </div>
+
       <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg p-6 mb-6">

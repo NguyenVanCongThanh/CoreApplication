@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -94,10 +95,19 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 			continue
 		}
 
+		// Auto-detect file type from extension if not explicitly provided or mismatched
+		ext := strings.ToLower(filepath.Ext(filename))
+		if fileType == "document" {
+			// Try to auto-detect from extension
+			detectedType := detectFileTypeFromExt(ext)
+			if detectedType != "document" {
+				fileType = detectedType
+			}
+		}
+
 		// Validate extension
 		if !isValidFileType(fileType, filename) {
 			part.Close()
-			ext := strings.ToLower(filepath.Ext(filename))
 			c.JSON(http.StatusBadRequest, dto.NewErrorResponse(
 				"invalid_file_type",
 				fmt.Sprintf("File type %s is not allowed for %s uploads.", ext, fileType),
@@ -136,7 +146,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 
 		fileID := uuid.New().String()
 		timestamp := time.Now().Format("20060102150405")
-		ext := strings.ToLower(filepath.Ext(filename))
+		ext = strings.ToLower(filepath.Ext(filename))
 		cleanName := cleanFilename(filename)
 		nameWithoutExt := strings.TrimSuffix(cleanName, ext)
 		storedFilename := fmt.Sprintf("%s/%s_%s_%s%s", fileType, timestamp, fileID[:8], nameWithoutExt, ext)
@@ -287,6 +297,63 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.NewMessageResponse("File deleted successfully"))
 }
 
+// GetPresignedURL godoc
+// @Summary Get presigned URL for a file (for remote access)
+// @Description Generate a temporary presigned URL for accessing a file directly from MinIO.
+// @Description Useful for VLM image descriptions and external integrations.
+// @Tags Files
+// @Produce json
+// @Param filepath path string true "File path"
+// @Param expires query int false "Expiration in seconds" default(3600)
+// @Success 200 {object} dto.SuccessResponse{data=map[string]interface{}} "Presigned URL"
+// @Failure 400 {object} dto.ErrorResponse "Invalid filename"
+// @Failure 404 {object} dto.ErrorResponse "File not found"
+// @Failure 500 {object} dto.ErrorResponse "Failed to generate presigned URL"
+// @Router /files/presigned/{filepath} [get]
+func (h *FileHandler) GetPresignedURL(c *gin.Context) {
+	filename, ok := sanitizeFilePath(c.Param("filepath"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, dto.NewErrorResponse("invalid_filename", "Invalid file path"))
+		return
+	}
+
+	expiresStr := c.DefaultQuery("expires", "3600")
+	expires, err := strconv.Atoi(expiresStr)
+	if err != nil || expires <= 0 || expires > 24*3600 {
+		expires = 3600 // default 1 hour
+	}
+
+	// Check file exists first
+	result, err := h.storage.GetObject(c.Request.Context(), filename)
+	if err != nil {
+		logger.Error(fmt.Sprintf("File not found: %s", filename), err)
+		c.JSON(http.StatusNotFound, dto.NewErrorResponse("file_not_found", "File not found"))
+		return
+	}
+	result.Body.Close()
+
+	// Cast to MinIO storage and generate presigned URL
+	minioStorage, ok := h.storage.(*storage.MinIOStorage)
+	if !ok {
+		logger.Error("Storage is not MinIO, cannot generate presigned URL", nil)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("unsupported", "Presigned URLs not supported for this storage backend"))
+		return
+	}
+
+	presignedURL, err := minioStorage.GetPresignedURL(c.Request.Context(), filename, time.Duration(expires)*time.Second)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to generate presigned URL for %s", filename), err)
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("presign_failed", "Failed to generate presigned URL"))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewDataResponse(map[string]interface{}{
+		"file_path":      filename,
+		"presigned_url":  presignedURL,
+		"expires_in_sec": expires,
+	}))
+}
+
 func sanitizeFilePath(rawPath string) (string, bool) {
 	cleaned := strings.TrimPrefix(rawPath, "/")
 	if cleaned == "" {
@@ -331,6 +398,24 @@ func cleanFilename(filename string) string {
 		clean = clean[:50]
 	}
 	return clean + ext
+}
+
+// detectFileTypeFromExt auto-detects file type based on extension
+func detectFileTypeFromExt(ext string) string {
+	imageExts := []string{".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp"}
+	videoExts := []string{".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
+
+	for _, e := range imageExts {
+		if ext == e {
+			return "image"
+		}
+	}
+	for _, e := range videoExts {
+		if ext == e {
+			return "video"
+		}
+	}
+	return "document"
 }
 
 func isValidFileType(fileType, filename string) bool {

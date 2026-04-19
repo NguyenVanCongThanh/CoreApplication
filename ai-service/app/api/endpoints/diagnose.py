@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.database import get_async_conn
+from app.core.database import get_ai_conn
 from app.services.diagnosis_service import diagnosis_service
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,13 @@ class DiagnoseRequest(BaseModel):
     question_id: int
     wrong_answer: str
     course_id: int
+    # Enrichment fields from LMS
+    question_text: str
+    question_type: str = "SINGLE_CHOICE"
+    explanation: str = ""
+    correct_answer: str = ""
+    answer_options: list[dict] = []
+    node_id: Optional[int] = None
 
 
 class DiagnoseResponse(BaseModel):
@@ -73,6 +80,12 @@ async def diagnose_error(body: DiagnoseRequest, request: Request):
             question_id=body.question_id,
             wrong_answer=body.wrong_answer,
             course_id=body.course_id,
+            question_text=body.question_text,
+            question_type=body.question_type,
+            explanation=body.explanation,
+            correct_answer=body.correct_answer,
+            answer_options=body.answer_options,
+            node_id=body.node_id,
         )
     except Exception as e:
         logger.error(f"Diagnosis failed: {e}", exc_info=True)
@@ -115,7 +128,7 @@ nodes_router = APIRouter(prefix="/knowledge-nodes", tags=["Knowledge Nodes"])
 @nodes_router.post("")
 async def create_node(body: KnowledgeNodeCreate, request: Request):
     _verify_internal(request)
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         # Calculate level from parent
         level = 0
         if body.parent_id:
@@ -144,7 +157,7 @@ async def list_nodes(course_id: int, request: Request):
     Frontend can build a visual tree from parent_id.
     """
     _verify_internal(request)
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         rows = await conn.fetch(
             """SELECT kn.*,
                       COUNT(DISTINCT dc.id) AS chunk_count
@@ -169,13 +182,29 @@ async def update_node(node_id: int, body: dict, request: Request):
     fields = ", ".join(f"{k}=${i+2}" for i, k in enumerate(updates))
     values = list(updates.values())
 
-    async with get_async_conn() as conn:
+    async with get_ai_conn() as conn:
         await conn.execute(
             f"UPDATE knowledge_nodes SET {fields}, updated_at=NOW() WHERE id=$1",
             node_id, *values,
         )
     return {"ok": True}
 
+@nodes_router.get("/{node_id}/chunks")
+async def get_node_chunks(node_id: int, request: Request, limit: int = 50):
+    _verify_internal(request)
+    
+    async with get_ai_conn() as conn:
+        rows = await conn.fetch(
+            """SELECT id, chunk_text, chunk_index, source_type, 
+                      page_number, start_time_sec, end_time_sec, language
+               FROM document_chunks 
+               WHERE node_id = $1 AND status = 'ready'
+               ORDER BY chunk_index 
+               LIMIT $2""",
+            node_id, limit
+        )
+        
+    return [dict(r) for r in rows]
 
 def _verify_internal(request: Request):
     secret = request.headers.get("X-AI-Secret", "")

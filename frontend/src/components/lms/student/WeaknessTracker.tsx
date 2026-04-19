@@ -25,6 +25,11 @@ const LEVEL_COLORS = {
   "Cần cải thiện": "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400 border-red-200 dark:border-red-800",
 };
 
+const formatPercent = (val: number | null | undefined) => {
+  if (val == null || isNaN(val) || !isFinite(val)) return 0;
+  return Number(Number(val).toFixed(2));
+};
+
 export function WeaknessTracker({ courseId }: Props) {
   const [data, setData] = useState<WeaknessOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,13 +60,43 @@ export function WeaknessTracker({ courseId }: Props) {
     setGeneratingFor(node.node_id);
     try {
       // request AI to generate 3 flashcards specifically targeting the weakness
-      await flashcardService.generateFlashcards(courseId, node.node_id, { count: 3 });
-      toast.success(`Đã tạo flashcard ôn tập cho "${node.node_name}"!`);
-      // Reload stats if needed, but since flashcardStats is usually loaded by FlashcardWidget,
-      // a global event or context would be better. For now a toast works.
-      setTimeout(() => window.location.reload(), 1500);
+      const response = await flashcardService.generateFlashcards(courseId, node.node_id, { count: 3 });
+      
+      if (!response || !response.job_id) {
+        throw new Error("Không nhận được Job ID từ server.");
+      }
+
+      // Polling Logic
+      let isDone = false;
+      const { aiService } = await import("@/services/aiService");
+      
+      while (!isDone) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        
+        const statusCheck = await aiService.getJobStatus(response.job_id);
+        if (statusCheck.status === "completed") {
+          isDone = true;
+          toast.success(`Đã tạo flashcard ôn tập cho "${node.node_name}"!`);
+          
+          // Update local state directly instead of reloading
+          setData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              weak_nodes: prev.weak_nodes.map((n) =>
+                n.node_id === node.node_id
+                  ? { ...n, flashcard_count: (n.flashcard_count || 0) + 3 }
+                  : n
+              ),
+            };
+          });
+        } else if (statusCheck.status === "failed") {
+          isDone = true;
+          throw new Error(statusCheck.error || "Quá trình tạo flashcard lỗi.");
+        }
+      }
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Tạo flashcard thất bại.");
+      toast.error(e?.message || e?.response?.data?.message || "Tạo flashcard thất bại.");
     } finally {
       setGeneratingFor(null);
     }
@@ -122,7 +157,7 @@ export function WeaknessTracker({ courseId }: Props) {
         </div>
         <div className="text-right">
           <div className="text-2xl font-black text-slate-900 dark:text-slate-50">
-            {data.total_wrong_percent}%
+            {formatPercent(data.total_wrong_percent)}%
           </div>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
             Sai sót chung
@@ -132,8 +167,15 @@ export function WeaknessTracker({ courseId }: Props) {
 
       {/* Nodes list */}
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
-        {data.weak_nodes.map((node) => {
+        {[...data.weak_nodes]
+          .sort((a, b) => {
+            const getRate = (n: WeakNode) => n.total_attempt === 0 ? -1 : (n.wrong_count / n.total_attempt) * 100;
+            return getRate(b) - getRate(a);
+          })
+          .map((node) => {
           const colorClass = LEVEL_COLORS[node.mastery_level] || LEVEL_COLORS["TB"];
+          const errorRate = node.total_attempt === 0 ? NaN : (node.wrong_count / node.total_attempt) * 100;
+
 
           return (
             <div key={node.node_id} className="p-5 flex flex-col md:flex-row md:items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
@@ -149,11 +191,15 @@ export function WeaknessTracker({ courseId }: Props) {
                 <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
-                    <strong>{node.wrong_count}</strong> lỗi sai
+                    <strong>{node.wrong_count}</strong> {node.total_attempt === 0 ? "lỗi (Chưa kiểm tra)" : "lỗi sai"}
                   </span>
                   <span className="flex items-center gap-1">
                     <TrendingDown className="w-3.5 h-3.5 text-slate-400" />
-                    <strong>{(node.wrong_count / node.total_attempt) * 100}%</strong> tỷ lệ sai
+                    <strong>{isNaN(errorRate) ? "Chưa có TT" : `${formatPercent(errorRate)}%`}</strong> {isNaN(errorRate) ? "" : "tỷ lệ sai"}
+                  </span>
+                  <span className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                    <strong className="text-violet-600 dark:text-violet-400">{node.flashcard_count || 0}</strong> flashcard
                   </span>
                 </div>
               </div>

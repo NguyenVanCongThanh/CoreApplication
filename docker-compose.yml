@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-common-healthcheck: &common-healthcheck
   interval: 10s
   timeout: 5s
@@ -12,7 +10,106 @@ x-common-logging: &common-logging
     max-size: "10m"
     max-file: "3"
 
+x-ai-env: &ai-env
+  APP_ENV: ${APP_ENV:-production}
+  LOG_LEVEL: INFO
+
+  # LMS PostgreSQL dependency removed - Kafka event driven
+  KAFKA_BROKERS: kafka:9092
+
+  # AI PostgreSQL
+  AI_DB_HOST: postgres-ai
+  AI_DB_PORT: 5432
+  AI_DB_USER: ${AI_POSTGRES_USER}
+  AI_DB_PASSWORD: ${AI_POSTGRES_PASSWORD}
+  AI_DB_NAME: ${AI_POSTGRES_DB}
+
+  # Qdrant vector store
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  QDRANT_GRPC_PORT: 6334
+  QDRANT_PREFER_GRPC: "true"
+  QDRANT_API_KEY: ""
+  USE_QDRANT: "true"
+
+  # Redis
+  REDIS_HOST: redis-lms
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  REDIS_DB: 1
+
+  # MinIO
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  MINIO_BUCKET: lms-files
+  MINIO_USE_SSL: "false"
+
+  # LLM
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
+  QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
+
+  # Embedding / Reranker
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+  EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+  EMBEDDING_PREFIX_MODE: ${EMBEDDING_PREFIX_MODE:-bge}
+  RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+  USE_NATIVE_MULTILINGUAL: "true"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  TOKENIZERS_PARALLELISM: "false"
+  SENTENCE_TRANSFORMERS_HOME: /app/.cache/models
+
+  # RAG tuning
+  CHUNK_SIZE: 500
+  CHUNK_OVERLAP: 50
+  TOP_K_CHUNKS: 3
+
+  # Internal auth
+  AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
+  LMS_SERVICE_URL: http://lms-service:8081
+
+  # Neo4j Knowledge Graph
+  NEO4J_URI: bolt://neo4j:7687
+  NEO4J_USER: neo4j
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+  NEO4J_ENABLED: "true"
+  YOUTUBE_WHISPER_FALLBACK: "true"
+
 services:
+  # ── Kafka Broker (KRaft Mode) ──────────────────────────────────────────────
+  kafka:
+    image: bitnamilegacy/kafka:3.7.0
+    container_name: bdc-kafka
+    restart: unless-stopped
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *common-logging
+    labels:
+      - "service.type=message-broker"
+      - "service.name=kafka"
+
   # Frontend: Next.js Application
   frontend:
     build:
@@ -38,30 +135,23 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXT_TELEMETRY_DISABLED: 1
-
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-
     volumes:
       - ./frontend/logs:/app/logs
       - ./frontend/data:/app/data
-
     depends_on:
       backend:
         condition: service_healthy
       lms-backend:
         condition: service_healthy
-
     networks:
       - app-network
-
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       start_period: 45s
-
     logging: *common-logging
-
     deploy:
       resources:
         limits:
@@ -70,47 +160,35 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-
     security_opt:
       - no-new-privileges:true
-
     labels:
       - "service.type=frontend"
-      - "service.name=nextjs-prod"
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`bdc.hpcc.vn`)"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
-  # Database: PostgreSQL 
+  # ── Auth DB: pure PostgreSQL (no AI extensions needed) ────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: postgres-auth
     restart: unless-stopped
-
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
-      POSTGRES_MAX_CONNECTIONS: 100
-      POSTGRES_SHARED_BUFFERS: "128MB"
-
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./auth-and-management-service/init-scripts:/docker-entrypoint-initdb.d:ro
-
     networks:
       - app-network
-
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-
     logging: *common-logging
-
     deploy:
       resources:
         limits:
@@ -119,105 +197,70 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-
     security_opt:
       - no-new-privileges:true
-
     labels:
       - "service.type=database"
       - "service.name=postgres-auth"
 
-  # auth-and-management-service: Spring Boot
+  # ── Auth/Management Backend ────────────────────────────────────────────────
   backend:
     build:
       context: ./auth-and-management-service
       dockerfile: Dockerfile
-      args:
-        - BUILD_DATE=${BUILD_DATE:-unknown}
-        - VERSION=${VERSION:-1.0.0}
     image: ${DOCKER_USERNAME}/bdc-backend:${IMAGE_TAG:-latest}
     container_name: auth-service
     restart: unless-stopped
-
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-
       LMS_API_URL: ${LMS_API_URL}
       LMS_API_SECRET: ${LMS_API_SECRET}
-
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_MAX_POOL_SIZE:-20}
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${HIKARI_MIN_IDLE:-5}
       SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 20000
       SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: 300000
       SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: 1200000
       SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME: 300000
-
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${JPA_DDL_AUTO:-update}
       SPRING_JPA_SHOW_SQL: false
       SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: false
       SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_BATCH_SIZE: 50
-      SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_INSERTS: true
-      SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_UPDATES: true
-      SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_FETCH_SIZE: 50
-
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
-
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      ASYNC_EMAIL_CORE: ${ASYNC_EMAIL_CORE:-5}
-      ASYNC_EMAIL_MAX: ${ASYNC_EMAIL_MAX:-30}
-      ASYNC_SYNC_CORE: ${ASYNC_SYNC_CORE:-3}
-      ASYNC_SYNC_MAX: ${ASYNC_SYNC_MAX:-10}
-
       CORS_ALLOWED_ORIGINS: http://frontend:3000,https://bdc.hpcc.vn,http://localhost:3000
-
       LOGGING_LEVEL_ROOT: ${LOG_LEVEL:-INFO}
-      LOGGING_LEVEL_COM_EXAMPLE: ${LOG_LEVEL:-INFO}
-      LOGGING_PATTERN_CONSOLE: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
-      MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED: true
-      MANAGEMENT_HEALTH_READINESSSTATE_ENABLED: true
-
       JAVA_OPTS: >-
         -XX:+UseContainerSupport
         -XX:MaxRAMPercentage=75.0
         -XX:+UseG1GC
         -XX:MaxGCPauseMillis=200
-        -XX:+ParallelRefProcEnabled
         -Djava.security.egd=file:/dev/./urandom
-
       EMAIL_PASSWORD: ${EMAIL_PASSWORD}
       EMAIL: ${EMAIL}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL}
-
     ports:
       - "${BACKEND_PORT:-8080}:8080"
-
     volumes:
       - upload_data:/app/uploads
       - ./auth-and-management-service/logs:/app/logs
-
     depends_on:
       postgres:
         condition: service_healthy
-
     networks:
       - app-network
-
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health/liveness"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
+             "http://localhost:8080/actuator/health/liveness"]
       start_period: 60s
-
     logging: *common-logging
-
     deploy:
       resources:
         limits:
@@ -226,10 +269,8 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
     security_opt:
       - no-new-privileges:true
-
     labels:
       - "service.type=backend"
       - "service.name=auth-service"
@@ -239,7 +280,7 @@ services:
 
   # Database: PostgreSQL (LMS Service)
   postgres-lms:
-    image: pgvector/pgvector:pg15
+    image: postgres:15-alpine
     container_name: postgres-lms
     restart: unless-stopped
     environment:
@@ -252,7 +293,6 @@ services:
       - "${LMS_POSTGRES_PORT:-5434}:5432"
     volumes:
       - postgres_lms_data:/var/lib/postgresql/data
-      - ./lms-service/init-scripts:/docker-entrypoint-initdb.d:ro
     networks:
       - app-network
     healthcheck:
@@ -273,7 +313,7 @@ services:
       - "service.type=database"
       - "service.name=postgres-lms"
 
-  # Cache: Redis (LMS Service)
+  # Redis
   redis-lms:
     image: redis:7-alpine
     container_name: redis-lms
@@ -288,7 +328,6 @@ services:
       --save 60 10000
       --appendonly yes
       --appendfsync everysec
-
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -307,10 +346,8 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
-    
     security_opt:
       - no-new-privileges:true
-    
     labels:
       - "service.type=cache"
       - "service.name=redis-lms"
@@ -331,9 +368,7 @@ services:
       APP_PORT: ${LMS_PORT:-8081}
       APP_NAME: "LMS Service"
       GIN_MODE: release
-
       LMS_SYNC_SECRET: ${LMS_SYNC_SECRET}
-
       DB_HOST: postgres-lms
       DB_PORT: 5432
       DB_USER: ${LMS_POSTGRES_USER}
@@ -344,41 +379,34 @@ services:
       DB_MAX_IDLE_CONNS: 10
       DB_CONN_MAX_LIFETIME: 5m
       DB_CONN_MAX_IDLE_TIME: 10m
-
+      KAFKA_BROKERS: kafka:9092
       REDIS_HOST: redis-lms
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_DB: 0
       REDIS_POOL_SIZE: 10
-
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_HOURS: 1
-
       STORAGE_TYPE: ${STORAGE_TYPE}
       UPLOAD_MAX_SIZE: 104857600
       UPLOAD_DIR: /app/uploads
       ALLOWED_VIDEO_FORMATS: "mp4,avi,mov,mkv,webm,flv"
       ALLOWED_DOCUMENT_FORMATS: "pdf,doc,docx,ppt,pptx,xls,xlsx,txt"
       ALLOWED_IMAGE_FORMATS: "jpg,jpeg,png,gif,webp,svg"
-
       AUTH_SERVICE_URL: http://backend:8080
       AUTH_SERVICE_TIMEOUT: 10s
-
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,OPTIONS,PATCH"
       CORS_ALLOWED_HEADERS: "Authorization,Content-Type,Accept"
-
-      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET}
-
       GOMAXPROCS: 2
       GOGC: 100
-
     ports:
       - "${LMS_PORT:-8081}:8081"
     volumes:
       - lms_upload_data:/app/uploads
       - ./lms-service/logs:/app/logs
-
     depends_on:
       postgres-lms:
         condition: service_healthy
@@ -386,17 +414,14 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-
     networks:
       - app-network
-
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
+             "http://localhost:8081/health"]
       start_period: 45s
-
     logging: *common-logging
-
     deploy:
       resources:
         limits:
@@ -405,17 +430,94 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-
     security_opt:
       - no-new-privileges:true
-
     labels:
       - "service.type=backend"
       - "service.name=lms-service"
       - "traefik.enable=true"
       - "traefik.http.routers.lms.rule=Host(`bdc.hpcc.vn`) && PathPrefix(`/lmsapiv1`)"
       - "traefik.http.services.lms.loadbalancer.server.port=8081"
+      - "traefik.http.services.lms.loadbalancer.responseTimeout=300s"
 
+  postgres-ai:
+    image: postgres:15-alpine
+    container_name: postgres-ai
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AI_POSTGRES_DB:-ai_db}
+      POSTGRES_USER: ${AI_POSTGRES_USER:-ai_user}
+      POSTGRES_PASSWORD: ${AI_POSTGRES_PASSWORD:-ai_password}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "${AI_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - postgres_ai_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      <<: *common-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+    logging: *common-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "service.type=database"
+      - "service.name=postgres-ai"
+
+  # ── Qdrant Vector Store ────────────────────────────────────────────────────
+  # Purpose-built ANN engine replacing pgvector for semantic search.
+  # Collections: document_chunks (1024d) + knowledge_nodes (1024d), cosine distance.
+  # gRPC port 6334 used by ai-service/ai-worker for fast batch upserts.
+  # REST port 6333 used for health checks and Qdrant Web UI.
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    container_name: qdrant
+    restart: unless-stopped
+    environment:
+      # Keep HNSW graph in RAM; store vectors on disk (good default for 1-8 GB datasets)
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      # Enable gRPC (required for prefer_grpc=True in client)
+      QDRANT__SERVICE__ENABLE_TLS: "false"
+      # Telemetry off for production
+      QDRANT__TELEMETRY_DISABLED: "true"
+    ports:
+      - "6333:6333"   # REST + Web UI
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *common-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G     # HNSW graph in RAM; adjust to dataset size
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    labels:
+      - "service.type=vector-store"
+      - "service.name=qdrant"
+
+  # AI Service: FastAPI
   ai-service:
     build:
       context: ./ai-service
@@ -423,82 +525,50 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-service
     restart: unless-stopped
- 
     environment:
-      APP_ENV: ${APP_ENV:-production}
+      <<: *ai-env
       APP_PORT: 8000
-      LOG_LEVEL: INFO
- 
-      # Database (shared with lms-service)
-      DB_HOST: postgres-lms
-      DB_PORT: 5432
-      DB_USER: ${LMS_POSTGRES_USER}
-      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
-      DB_NAME: ${LMS_POSTGRES_DB}
- 
-      # Redis (shared)
-      REDIS_HOST: redis-lms
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 1
- 
-      # MinIO
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: lms-files
-      MINIO_USE_SSL: "false"
- 
-      GROQ_API_KEY: ${GROQ_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
-
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
-
-      AI_SERVICE_SECRET: ${AI_SERVICE_SECRET:-ai-service-secret-change-me}
-
-      CHUNK_SIZE: 500
-      CHUNK_OVERLAP: 50
-      TOP_K_CHUNKS: 3
-
+      USE_RERANKER: "true"
+      RERANK_FETCH_K: ${RERANK_FETCH_K:-15}
     ports:
       - "8000:8000"
-
     depends_on:
-      postgres-lms:
+      kafka:
+        condition: service_healthy
+      postgres-ai:
         condition: service_healthy
       redis-lms:
         condition: service_healthy
       minio:
         condition: service_healthy
-
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
     networks:
       - app-network
-
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
-
+      start_period: 90s
+    logging: *common-logging
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 1G
+          cpus: '1.5'
+          memory: 1.5G
         reservations:
           cpus: '0.5'
-          memory: 256M
-
+          memory: 512M
+    volumes:
+      - ai_model_cache:/app/.cache/models
     labels:
       - "service.type=ai"
       - "service.name=ai-service"
 
-    volumes:
-      - ai_model_cache:/app/.cache/fastembed
-
+  # AI Worker: Celery
   ai-worker:
     build:
       context: ./ai-service
@@ -506,61 +576,43 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-worker
     restart: unless-stopped
- 
-    # Override CMD to run Celery worker
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
- 
+    # concurrency=1: one model set (~900 MB) per process.
+    # Scale horizontally by adding replicas, not concurrency.
+    command: python -m app.worker.kafka_worker
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      DB_HOST: postgres-lms
-      DB_PORT: 5432
-      DB_USER: ${LMS_POSTGRES_USER}
-      DB_PASSWORD: ${LMS_POSTGRES_PASSWORD}
-      DB_NAME: ${LMS_POSTGRES_DB}
-      REDIS_HOST: redis-lms
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 1
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: lms-files
-
-      GROQ_API_KEY: ${GROQ_API_KEY:-None}
-      CHAT_MODEL: ${AI_CHAT_MODEL:-llama-3.1-8b-instant}
-      QUIZ_MODEL: ${AI_QUIZ_MODEL:-llama-3.3-70b-versatile}
-
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-Q}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
-      CHUNK_SIZE: 500
-      CHUNK_OVERLAP: 50
-
+      <<: *ai-env
+      # Worker doesn't serve user traffic → reranker disabled to save RAM
+      USE_RERANKER: "false"
+      REINDEX_BATCH_SIZE: ${REINDEX_BATCH_SIZE:-5}
     depends_on:
-      postgres-lms:
+      kafka:
+        condition: service_healthy
+      postgres-ai:
         condition: service_healthy
       redis-lms:
         condition: service_healthy
- 
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
     networks:
       - app-network
- 
+    logging: *common-logging
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: '1.5'
           memory: 2G
         reservations:
           cpus: '0.5'
-          memory: 256M
- 
+          memory: 1G
+    volumes:
+      - ai_model_cache:/app/.cache/models
     labels:
       - "service.type=worker"
       - "service.name=ai-worker"
 
-    volumes:
-      - ai_model_cache:/app/.cache/fastembed
-
-  # MinIO: Object Storage
+  # Object Storage
   minio:
     image: minio/minio:latest
     container_name: minio-lms
@@ -590,13 +642,54 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    
     security_opt:
       - no-new-privileges:true
-    
     labels:
       - "service.type=storage"
       - "service.name=minio"
+
+  # ── Neo4j Knowledge Graph ──────────────────────────────────────────────────
+  # Purpose: Knowledge base linking (prerequisites, extends, equivalent, related).
+  # Stores both intra-course and cross-course graph edges.
+  # gRPC disabled; HTTP only for simplicity. Consider gRPC for production.
+  neo4j:
+    image: neo4j:5.26.24-ubi9
+    container_name: neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: "512m"
+      NEO4J_dbms_memory_heap_max__size: "1g"
+      NEO4J_dbms_memory_pagecache_size: "512m"
+      NEO4J_dbms_default__listen__address: "0.0.0.0"
+      NEO4J_server_bolt_listen__address: "0.0.0.0:7687"
+    ports:
+      - "7474:7474"   # Neo4j Browser (dev only)
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - app-network
+    healthcheck:
+      <<: *common-healthcheck
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474/browser"]
+      start_period: 60s
+    logging: *common-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "service.type=database"
+      - "service.name=neo4j"
 
 # Volumes
 volumes:
@@ -610,6 +703,23 @@ volumes:
     labels:
       - "backup.enabled=true"
       - "backup.schedule=daily"
+  postgres_ai_data:
+    driver: local
+    labels:
+      - "backup.enabled=true"
+      - "backup.schedule=daily"
+  qdrant_data:
+    driver: local
+    labels:
+      - "backup.enabled=true"
+      - "backup.schedule=daily"
+  neo4j_data:
+    driver: local
+    labels:
+      - "backup.enabled=true"
+      - "backup.schedule=daily"
+  neo4j_logs:
+    driver: local
   redis_lms_data:
     driver: local
     labels:
@@ -631,6 +741,8 @@ volumes:
       - "backup.enabled=true"
       - "backup.schedule=daily"
   ai_model_cache:
+    driver: local
+  kafka_data:
     driver: local
 
 # Networks

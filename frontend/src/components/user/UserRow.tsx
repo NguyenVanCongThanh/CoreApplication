@@ -3,7 +3,7 @@ import React from "react";
 import { User } from "@/types";
 import Avatar from "./Avatar";
 
-export default function UserRow({ user, onClick, onToggleStatus }: { user: User; onClick: (u: User) => void; onToggleStatus: (id: string | number) => void; }) {
+export default function UserRow({ user, onClick, onToggleStatus, isAdmin }: { user: User; onClick: (u: User) => void; onToggleStatus: (id: string | number) => void; isAdmin: boolean; }) {
   return (
     <div
       className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-x-auto min-w-max sm:min-w-full"
@@ -51,11 +51,12 @@ export default function UserRow({ user, onClick, onToggleStatus }: { user: User;
               e.stopPropagation();
               onToggleStatus(user.id);
             }}
+            disabled={!isAdmin}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${
               user.status
                 ? "bg-blue-600"
                 : "bg-slate-300 dark:bg-slate-600"
-            }`}
+            } ${!isAdmin ? "opacity-50 cursor-not-allowed" : ""}`}
             role="switch"
             aria-checked={user.status}
           >

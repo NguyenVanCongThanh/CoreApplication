@@ -13,7 +13,7 @@ export interface DeepLink {
   page_number?: number;
   start_time_sec?: number;
   end_time_sec?: number;
-  url_fragment?: string; // '#page=5' or '#t=120'
+  url_fragment?: string;
   file_url?: string;
   title?: string;
   content_type?: string;
@@ -91,9 +91,75 @@ export interface KnowledgeNode {
   level: number;
   order_index: number;
   chunk_count: number;
+  auto_generated?: boolean;
+}
+
+// ─── Knowledge Graph ──────────────────────────────────────────────────────────
+
+export type RelationType = "prerequisite" | "related" | "extends" | "parent_child" | "equivalent" | "contrasts_with";
+
+export interface KnowledgeGraphNode {
+  id: number;
+  name: string;
+  name_vi?: string;
+  name_en?: string;
+  description?: string;
+  source_content_id?: number;
+  source_content_title?: string;
+  auto_generated: boolean;
+  chunk_count: number;
+  level: number;
+  /** course_id is present on global graph nodes */
+  course_id?: number;
+}
+
+export interface KnowledgeGraphEdge {
+  source: number;
+  target: number;
+  relation_type: RelationType | string;
+  strength: number;
+  auto_generated: boolean;
+  cross_course?: boolean;
+  reason?: string;
+}
+
+export interface KnowledgeGraphResponse {
+  course_id: number;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
+export interface ChunkItem {
+  id: number;
+  chunk_text: string;
+  chunk_index: number;
+  source_type: string;
+  page_number?: number;
+  start_time_sec?: number;
+  end_time_sec?: number;
+  language: string;
+}
+
+export interface AIJobResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface AIJobStatus<T = any> {
+  job_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  result?: T;
+  error?: string;
 }
 
 class AIService {
+  // ─── Polling Jobs ────────────────────────────────────────────────────────
+  
+  async getJobStatus<T = any>(jobId: string): Promise<AIJobStatus<T>> {
+    const res = await lmsApiClient.get(`/ai/jobs/${jobId}/status`);
+    return res.data?.data ?? res.data;
+  }
+
   // ─── Diagnosis ─────────────────────────────────────────────────────────────
 
   async diagnoseWrongAnswer(
@@ -101,7 +167,7 @@ class AIService {
     questionId: number,
     wrongAnswer: string,
     courseId: number
-  ): Promise<DiagnosisResult> {
+  ): Promise<AIJobResponse> {
     const res = await lmsApiClient.post(
       `/ai/attempts/${attemptId}/questions/${questionId}/diagnose`,
       {
@@ -114,11 +180,13 @@ class AIService {
 
   async getClassHeatmap(courseId: number): Promise<HeatmapNode[]> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/heatmap`);
+    console.log(res)
     return res.data?.data ?? res.data ?? [];
   }
 
   async getStudentHeatmap(courseId: number): Promise<HeatmapNode[]> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/my-heatmap`);
+    console.log(res)
     return res.data?.data ?? res.data ?? [];
   }
 
@@ -147,16 +215,18 @@ class AIService {
       language?: string;
       questions_per_level?: number;
     }
-  ): Promise<GeneratedQuestion[]> {
+  ): Promise<AIJobResponse> {
     const res = await lmsApiClient.post(`/courses/${courseId}/ai/generate-quiz`, {
       node_id: nodeId,
       ...options,
     });
-    return res.data?.data ?? res.data ?? [];
+    return res.data?.data ?? res.data;
   }
 
   async listDraftQuestions(courseId: number): Promise<GeneratedQuestion[]> {
-    const res = await lmsApiClient.get(`/courses/${courseId}/ai/drafts`);
+    const res = await lmsApiClient.get(`/courses/${courseId}/ai/drafts`, {
+      params: { _t: Date.now() }
+    });
     return res.data?.data ?? res.data ?? [];
   }
 
@@ -198,6 +268,41 @@ class AIService {
   async getReviewStats(courseId: number): Promise<ReviewStats> {
     const res = await lmsApiClient.get(`/courses/${courseId}/ai/reviews/stats`);
     return res.data?.data ?? res.data ?? { due_today: 0, upcoming: 0, total_tracked: 0 };
+  }
+
+  async getNodeChunks(courseId: number, nodeId: number): Promise<ChunkItem[]> {
+      const res = await lmsApiClient.get(`/courses/${courseId}/ai/nodes/${nodeId}/chunks`)
+      return res.data?.data ?? []
+  }
+
+  // ─── Knowledge Graph ───────────────────────────────────────────────────────
+
+  async getKnowledgeGraph(courseId: number): Promise<KnowledgeGraphResponse> {
+    const res = await lmsApiClient.get(`/courses/${courseId}/ai/knowledge-graph`);
+    return res.data?.data ?? { course_id: courseId, nodes: [], edges: [] };
+  }
+
+  /**
+   * Global knowledge graph — all courses, all nodes, all edges.
+   * Used by Admin Dashboard and the global knowledge map page.
+   * Requires the ai-service /ai/knowledge-graph/global endpoint
+   * to be proxied by Go lms-service at /ai/knowledge-graph/global.
+   */
+  async getGlobalKnowledgeGraph(params?: {
+    min_strength?: number;
+    limit?: number;
+  }): Promise<KnowledgeGraphResponse> {
+    const res = await lmsApiClient.get(`/ai/knowledge-graph/global`, { params });
+    return res.data?.data ?? { course_id: 0, nodes: [], edges: [] };
+  }
+
+  /**
+   * Triggers a system-wide background task to discover and link
+   * knowledge nodes across all courses.
+   */
+  async linkGlobalKnowledgeGraph(): Promise<{ status: string; message: string }> {
+    const res = await lmsApiClient.post(`/ai/knowledge-graph/link-global`);
+    return res.data?.data ?? res.data;
   }
 }
 

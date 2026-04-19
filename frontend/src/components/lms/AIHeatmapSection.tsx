@@ -45,6 +45,11 @@ function getMasteryTextColor(rate: number): string {
   return "text-red-700 dark:text-red-300";
 }
 
+const formatPercent = (val: number | null | undefined) => {
+  if (val == null || isNaN(val) || !isFinite(val)) return 0;
+  return Number(Number(val).toFixed(2));
+};
+
 function HeatCell({ node }: { node: HeatmapNode }) {
   const [hovered, setHovered] = useState(false);
 
@@ -62,7 +67,9 @@ function HeatCell({ node }: { node: HeatmapNode }) {
         <p className="text-white font-semibold text-xs leading-tight truncate">
           {node.name_vi ?? node.node_name}
         </p>
-        <p className="text-white/80 text-xs mt-1 font-mono">{node.total_wrong / node.total_attempts}% sai</p>
+        <p className="text-white/80 text-xs mt-1 font-mono">
+          {node.total_attempts === 0 ? "Chưa có TT" : `${formatPercent(node.wrong_rate)}% sai`}
+        </p>
       </div>
 
       {/* Tooltip */}
@@ -98,6 +105,7 @@ export function AIHeatmapSection({ courseId, role }: Props) {
       const data = role === "teacher"
         ? await aiService.getClassHeatmap(courseId)
         : await aiService.getStudentHeatmap(courseId);
+      console.log(data)
       setNodes(data);
     } catch (e: any) {
       setError(e?.response?.data?.error ?? "Không thể tải heatmap. AI service có thể chưa khởi động.");
@@ -169,7 +177,12 @@ export function AIHeatmapSection({ courseId, role }: Props) {
         <>
           {/* Heatmap grid */}
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {nodes.map((n) => <HeatCell key={n.node_id} node={n} />)}
+            {[...nodes].sort((a, b) => {
+              if (a.total_attempts === 0 && b.total_attempts === 0) return 0;
+              if (a.total_attempts === 0) return 1;
+              if (b.total_attempts === 0) return -1;
+              return b.wrong_rate - a.wrong_rate;
+            }).map((n) => <HeatCell key={n.node_id} node={n} />)}
           </div>
 
           {/* Legend */}
@@ -204,7 +217,7 @@ export function AIHeatmapSection({ courseId, role }: Props) {
                       {n.name_vi ?? n.node_name}
                     </span>
                     <span className="text-xs font-bold text-rose-700 dark:text-rose-400">
-                      {n.wrong_rate}% sai
+                      {n.total_attempts === 0 ? "Chưa kiểm tra" : `${formatPercent(n.wrong_rate)}% sai`}
                     </span>
                   </div>
                 ))}

@@ -8,6 +8,8 @@ import type {
   FillBlankTextCorrectAnswer,
   FillBlankTextEditorProps,
 } from '@/types';
+import { useMarkdownImage } from '@/hooks/useMarkdownImage';
+import { Image } from 'lucide-react';
 
 /**
  * Component để teacher tạo câu hỏi FILL_BLANK_TEXT
@@ -29,6 +31,7 @@ export default function FillBlankTextEditor({
   const [settings, setSettings] = useState<FillBlankTextSettings>(
     initialSettings || { blank_count: 0, blanks: [] }
   );
+  const { uploadImage, uploading } = useMarkdownImage();
 
   // Auto-detect blanks from question text
   useEffect(() => {
@@ -116,6 +119,28 @@ export default function FillBlankTextEditor({
       .filter(ans => ans.blank_id === blankId);
   };
 
+  const handleImageUpload = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        try {
+          const url = await uploadImage(file);
+          const cursorPosition = (document.activeElement as HTMLTextAreaElement)?.selectionStart || localText.length;
+          const textBefore = localText.substring(0, cursorPosition);
+          const textAfter = localText.substring(cursorPosition);
+          const insertion = (textBefore.endsWith('\n') || textBefore === '' ? '' : '\n') + `![image](${url})` + (textAfter.startsWith('\n') ? '' : '\n');
+          setLocalText(textBefore + insertion + textAfter);
+        } catch (err: any) {
+          alert(err.message);
+        }
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="space-y-6">
       {/* Instructions */}
@@ -134,14 +159,28 @@ export default function FillBlankTextEditor({
         <label className="block text-sm font-medium mb-2">
           Câu hỏi với blanks *
         </label>
-        <textarea
-          value={localText}
-          onChange={(e) => setLocalText(e.target.value)}
-          className="w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono"
-          rows={4}
-          placeholder="VD: The capital of {BLANK_1} is {BLANK_2}."
-          required
-        />
+        <div className="relative">
+          <textarea
+            value={localText}
+            onChange={(e) => setLocalText(e.target.value)}
+            className="w-full px-4 py-3 border-2 border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+            rows={6}
+            placeholder="VD: The capital of {BLANK_1} is {BLANK_2}."
+            required
+          />
+          <Button
+            type="button"
+            onClick={handleImageUpload}
+            disabled={uploading}
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-3 right-3 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            title="Chèn ảnh"
+          >
+            <Image className="w-4 h-4 mr-2" />
+            {uploading ? 'Đang tải...' : 'Chèn ảnh'}
+          </Button>
+        </div>
         <p className="text-xs text-gray-500 mt-1">
           {settings.blank_count > 0
             ? `✓ Đã phát hiện ${settings.blank_count} blank(s)`

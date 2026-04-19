@@ -112,6 +112,115 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// ServiceOrAuthMiddleware allows access via either a valid JWT OR a shared service secret
+func ServiceOrAuthMiddleware(jwtSecret string, serviceSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 1. First check for Service Secret (used by AI service and other internal services)
+		apiSecret := c.GetHeader("X-API-Secret")
+		if apiSecret == "" {
+			apiSecret = c.GetHeader("X-Sync-Secret")
+		}
+
+		if apiSecret != "" && apiSecret == serviceSecret {
+			// Authorized as internal service
+			c.Set("user_id", int64(0)) // System/Internal user ID
+			c.Set("user_email", "system@bdc.internal")
+			c.Set("user_roles", []string{"ADMIN"})
+			c.Set("user_role", "ADMIN")
+			c.Next()
+			return
+		}
+
+		// 2. Fallback to standard JWT Auth
+		// Get token from Authorization header or Cookie
+		var tokenString string
+		authHeader := c.GetHeader("Authorization")
+
+		if authHeader != "" {
+			// Check if it's a Bearer token
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// Fallback to Cookie if header is missing or invalid
+		if tokenString == "" {
+			cookie, err := c.Cookie("authToken")
+			if err == nil {
+				tokenString = cookie
+			}
+		}
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Missing authorization header, cookie, or valid service secret"))
+			c.Abort()
+			return
+		}
+
+		// Parse and validate token
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			// Validate signing method
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Invalid or expired token"))
+			c.Abort()
+			return
+		}
+
+		// Extract claims
+		claims, ok := token.Claims.(*Claims)
+		if !ok || !token.Valid {
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "Invalid token claims"))
+			c.Abort()
+			return
+		}
+
+		// Validate user_id is not empty
+		if claims.UserID <= 0 {
+			logger.Warn(fmt.Sprintf("JWT token has invalid or missing user_id: %d", claims.UserID))
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "User ID not found in token"))
+			c.Abort()
+			return
+		}
+
+		// Validate roles is not empty
+		if len(claims.Roles) == 0 {
+			logger.Warn("JWT token has no roles")
+			c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", "No roles found in token"))
+			c.Abort()
+			return
+		}
+
+		// Normalize all roles
+		normalizedRoles := make([]string, len(claims.Roles))
+		for i, r := range claims.Roles {
+			normalizedRoles[i] = normalizeRole(r)
+		}
+
+		// Set user info in context
+		c.Set("user_id", claims.UserID)
+		c.Set("user_email", claims.Email)
+		c.Set("user_roles", normalizedRoles)
+
+		primaryRole := normalizedRoles[0]
+		for _, r := range normalizedRoles {
+			if r == "ADMIN" {
+				primaryRole = "ADMIN"
+				break
+			}
+		}
+		c.Set("user_role", primaryRole)
+
+		c.Next()
+	}
+}
+
 // normalizeRole converts role strings (for backward compatibility)
 // Note: Roles now come from Java already normalized, so this is mainly for reference
 func normalizeRole(role string) string {

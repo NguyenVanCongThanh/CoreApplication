@@ -4,15 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import lmsService from "@/services/lmsService";
 import { Button } from "@/components/ui/button";
-
-const COURSE_CATEGORIES = [
-  "Lập trình",
-  "Khoa học dữ liệu",
-  "Thiết kế",
-  "Kinh doanh",
-  "Ngôn ngữ",
-  "Khác"
-];
+import FileUpload from "@/components/lms/teacher/upload/FileUpload";
+import { FileInfo } from "@/types";
 
 const COURSE_LEVELS = [
   { value: "BEGINNER", label: "Cơ bản" },
@@ -48,21 +41,8 @@ export default function CreateCoursePage() {
       newErrors.description = "Mô tả không được quá 5000 ký tự";
     }
 
-    if (formData.thumbnail_url && !isValidUrl(formData.thumbnail_url)) {
-      newErrors.thumbnail_url = "URL ảnh không hợp lệ";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  const isValidUrl = (url: string): boolean => {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,7 +59,7 @@ export default function CreateCoursePage() {
         description: formData.description || undefined,
         category: formData.category || undefined,
         level: formData.level || undefined,
-        thumbnail_url: formData.thumbnail_url || undefined,
+        thumbnail_url: formData.thumbnail_url ? formData.thumbnail_url : undefined,
       });
       
       alert("Tạo khóa học thành công!");
@@ -154,18 +134,13 @@ export default function CreateCoursePage() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Danh mục
               </label>
-              <select
+              <input
+                type="text"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              >
-                <option value="">Chọn danh mục</option>
-                {COURSE_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
+                placeholder="VD: Lập trình, Thiết kế, Kinh doanh..."
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              />
             </div>
 
             <div>
@@ -190,16 +165,26 @@ export default function CreateCoursePage() {
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               URL ảnh đại diện
             </label>
-            <input
-              type="text"
-              value={formData.thumbnail_url}
-              onChange={(e) => setFormData({ ...formData, thumbnail_url: e.target.value })}
-              placeholder="https://example.com/image.jpg"
-              className={`w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
-                errors.thumbnail_url ? "border-red-500 dark:border-red-500" : "border-slate-300 dark:border-slate-700"
-              }`}
+            <FileUpload
+              onFileUploaded={(fileInfo: FileInfo) => {
+                setFormData({ ...formData, thumbnail_url: fileInfo.file_url });
+              }}
+              fileType="image"
+              maxSize={10}
+              disabled={loading}
             />
-            {errors.thumbnail_url && <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.thumbnail_url}</p>}
+            {formData.thumbnail_url && (
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+                <span className="text-green-700 dark:text-green-400 text-sm">✓ Đã upload ảnh thành công</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, thumbnail_url: "" })}
+                  className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm font-medium ml-auto"
+                >
+                  Xóa
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

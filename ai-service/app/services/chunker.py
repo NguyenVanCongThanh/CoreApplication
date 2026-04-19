@@ -7,9 +7,11 @@ Handles bilingual content (VI/EN).
 from __future__ import annotations
 
 import io
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
+from typing import Callable, Awaitable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -368,3 +370,292 @@ def format_timestamp(seconds: int) -> str:
     if h > 0:
         return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"
+
+class MarkdownChunker(PDFChunker):   # type: ignore[name-defined]
+    """
+    Semantic chunker for Markdown text (TEXT content type).
+ 
+    Pipeline (async path):
+      1. Protect code blocks (replaced with placeholders during processing)
+      2. Replace image references with VLM descriptions (async, concurrent)
+      3. Add semantic context prefix to tables
+      4. Split at heading boundaries, building heading breadcrumbs
+      5. Sub-chunk oversized sections at paragraph / sentence boundaries
+      6. Restore code blocks
+ 
+    Sync path (chunk_bytes): images replaced with alt text only — suitable
+    for Celery workers that don't have an async event loop.
+    """
+ 
+    # ── Regex patterns ────────────────────────────────────────────────────────
+ 
+    _RE_IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)[^)]*\)")
+    _RE_HEADING = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+    _RE_TABLE_BLOCK = re.compile(
+        r"(\|[^\n]+\|\n)(\|[-:| ]+\|\n)((?:\|[^\n]+\|\n)*)",
+        re.MULTILINE,
+    )
+    _RE_CODE_BLOCK = re.compile(r"```([^\n]*)\n([\s\S]*?)```", re.MULTILINE)
+    _RE_BLANK_LINES = re.compile(r"\n{3,}")
+ 
+    _MIN_CHUNK_LEN = 30
+ 
+    # ── Public interface ──────────────────────────────────────────────────────
+ 
+    async def chunk_async(
+        self,
+        markdown_text: str,
+        image_describer: Optional[Callable[[str, str], Awaitable[str]]] = None,
+    ) -> list:  # list[DocumentChunk]
+        """
+        Full async pipeline — use this from FastAPI / auto_index_service.
+        image_describer(url, alt_text) -> description string.
+        """
+        text = markdown_text
+ 
+        # Step 1: protect code blocks
+        text, code_blocks = self._extract_code_blocks(text)
+ 
+        # Step 2: replace images with VLM descriptions (concurrent)
+        text = await self._process_images(text, image_describer)
+ 
+        # Step 3: table semantic prefix
+        text = self._add_table_context(text)
+ 
+        # Step 4–5: heading-based semantic split
+        chunks = self._heading_split(text)
+ 
+        # Step 6: restore code blocks inside chunk texts
+        chunks = self._restore_code_blocks(chunks, code_blocks)
+ 
+        return chunks
+ 
+    def chunk_bytes(self, text_bytes: bytes) -> list:  # list[DocumentChunk]
+        """
+        Sync fallback — images get alt text, no VLM.
+        Used by Celery process_document_task.
+        """
+        text = text_bytes.decode("utf-8", errors="replace")
+        text, code_blocks = self._extract_code_blocks(text)
+        text = self._replace_images_sync(text)
+        text = self._add_table_context(text)
+        chunks = self._heading_split(text)
+        chunks = self._restore_code_blocks(chunks, code_blocks)
+        return chunks
+ 
+    # ── Step 1: code block protection ────────────────────────────────────────
+ 
+    def _extract_code_blocks(self, text: str) -> tuple[str, dict[str, str]]:
+        """Replace code blocks with placeholders; return (text, placeholder_map)."""
+        placeholders: dict[str, str] = {}
+ 
+        def _replace(m: re.Match) -> str:
+            lang = m.group(1).strip() or "code"
+            code = m.group(2)
+            key = f"\x00CODE_{len(placeholders)}\x00"
+            # Store with a helpful label so it reads naturally in the chunk
+            placeholders[key] = f"[Đoạn code {lang}]:\n```{lang}\n{code}```"
+            return key
+ 
+        return self._RE_CODE_BLOCK.sub(_replace, text), placeholders
+ 
+    def _restore_code_blocks(self, chunks: list, placeholders: dict[str, str]) -> list:
+        restored = []
+        for chunk in chunks:
+            text = chunk.text
+            for key, value in placeholders.items():
+                text = text.replace(key, value)
+            chunk.text = sanitize_text(text)  # type: ignore[name-defined]
+            restored.append(chunk)
+        return restored
+ 
+    # ── Step 2: image processing ──────────────────────────────────────────────
+ 
+    async def _process_images(
+        self,
+        text: str,
+        image_describer: Optional[Callable],
+    ) -> str:
+        """Replace all ![alt](url) with VLM descriptions (concurrent)."""
+        matches = list(self._RE_IMAGE.finditer(text))
+        if not matches:
+            return text
+ 
+        if image_describer is None:
+            return self._replace_images_sync(text)
+ 
+        # Call VLM concurrently for all images
+        tasks = [
+            image_describer(m.group(2), m.group(1))  # (url, alt_text)
+            for m in matches
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+ 
+        # Rebuild text by replacing matches in reverse order (preserve indices)
+        result = text
+        for match, desc in zip(reversed(matches), reversed(results)):
+            if isinstance(desc, Exception) or not desc:
+                alt = match.group(1) or "hình ảnh"
+                replacement = f"\n[Hình ảnh: {alt}]\n"
+            else:
+                replacement = f"\n[Mô tả hình ảnh: {desc}]\n"
+            result = result[: match.start()] + replacement + result[match.end() :]
+ 
+        return result
+ 
+    def _replace_images_sync(self, text: str) -> str:
+        """Sync fallback: replace images with alt text."""
+        def _sub(m: re.Match) -> str:
+            alt = m.group(1).strip()
+            return f"\n[Hình ảnh: {alt or 'không có mô tả'}]\n"
+ 
+        return self._RE_IMAGE.sub(_sub, text)
+ 
+    # ── Step 3: table semantic context ────────────────────────────────────────
+ 
+    def _add_table_context(self, text: str) -> str:
+        """
+        Prepend a natural-language header summary to each markdown table.
+ 
+        Before:
+          | Tên | Tuổi | Điểm |
+          |-----|------|------|
+          | An  | 20   | 8.5  |
+ 
+        After:
+          [Bảng dữ liệu - Các cột: Tên, Tuổi, Điểm]
+          | Tên | Tuổi | Điểm |
+          ...
+        """
+        def _replace(m: re.Match) -> str:
+            header_row = m.group(1)
+            # Parse column names from | col1 | col2 | col3 |
+            cols = [c.strip() for c in header_row.strip().strip("|").split("|") if c.strip()]
+            if cols:
+                summary = f"[Bảng dữ liệu — Các cột: {', '.join(cols)}]\n"
+            else:
+                summary = "[Bảng dữ liệu]\n"
+            return summary + m.group(0)
+ 
+        return self._RE_TABLE_BLOCK.sub(_replace, text)
+ 
+    # ── Steps 4–5: heading-based semantic split ────────────────────────────────
+ 
+    def _heading_split(self, text: str) -> list:  # list[DocumentChunk]
+        """
+        Split markdown at heading boundaries.
+        Each resulting chunk is prefixed with its heading breadcrumb so the
+        embedding knows which section this passage belongs to even without
+        surrounding context.
+        """
+        # Normalize blank lines
+        text = self._RE_BLANK_LINES.sub("\n\n", text)
+ 
+        # Split text at heading lines, keeping the heading with its section
+        # (?=...) lookahead preserves the heading line in the next split token
+        parts = re.split(r"(?=^#{1,6}\s)", text, flags=re.MULTILINE)
+ 
+        chunks = []
+        chunk_idx = 0
+        heading_stack: list[tuple[int, str]] = []  # [(level, title), ...]
+ 
+        for part in parts:
+            if not part.strip():
+                continue
+ 
+            # Extract leading heading (if any)
+            heading_match = self._RE_HEADING.match(part.strip())
+            if heading_match:
+                level = len(heading_match.group(1))
+                title = heading_match.group(2).strip()
+                # Pop headings of equal or deeper level
+                heading_stack = [(l, t) for l, t in heading_stack if l < level]
+                heading_stack.append((level, title))
+ 
+                # Body text = everything after the first heading line
+                lines = part.split("\n", 1)
+                body = lines[1].strip() if len(lines) > 1 else ""
+            else:
+                body = part.strip()
+ 
+            if not body:
+                continue
+ 
+            # Build breadcrumb
+            breadcrumb = " > ".join(t for _, t in heading_stack)
+            prefix = f"[{breadcrumb}]\n" if breadcrumb else ""
+ 
+            # Combine prefix + body
+            full_text = prefix + body
+ 
+            # Sub-chunk if section is too large
+            sub_texts = self._split_text(full_text)
+            for sub in sub_texts:
+                sub = sanitize_text(sub.strip())  # type: ignore[name-defined]
+                if len(sub) < self._MIN_CHUNK_LEN:
+                    continue
+ 
+                # Each sub-chunk still carries the breadcrumb if it was stripped
+                if prefix and not sub.startswith("["):
+                    sub = prefix.rstrip("\n") + "\n" + sub
+ 
+                chunks.append(
+                    DocumentChunk(  # type: ignore[name-defined]
+                        text=sub,
+                        index=chunk_idx,
+                        source_type="document",
+                        page_number=None,
+                        language=detect_language(sub),  # type: ignore[name-defined]
+                    )
+                )
+                chunk_idx += 1
+ 
+        return chunks
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+ 
+class ImageChunker:
+    """
+    Handles standalone IMAGE content type.
+ 
+    Async path: calls VLM to generate a rich description.
+    Sync path:  returns a placeholder chunk (re-index later with VLM).
+ 
+    The description is stored as a single DocumentChunk; the auto_index_service
+    then runs node extraction on it just like any other text.
+    """
+ 
+    async def chunk_async(
+        self,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        language: str = "vi",
+    ) -> list:  # list[DocumentChunk]
+        from app.core.vlm import describe_image_bytes
+ 
+        description = await describe_image_bytes(image_bytes, language=language, mime_type=mime_type)
+ 
+        return [
+            DocumentChunk(  # type: ignore[name-defined]
+                text=description,
+                index=0,
+                source_type="document",
+                page_number=1,
+                language=detect_language(description),  # type: ignore[name-defined]
+            )
+        ]
+ 
+    def chunk_bytes(self, image_bytes: bytes) -> list:  # list[DocumentChunk]
+        """Sync fallback — used by Celery. Returns placeholder."""
+        return [
+            DocumentChunk(  # type: ignore[name-defined]
+                text="[Hình ảnh chưa được mô tả — cần chạy lại pipeline với VLM]",
+                index=0,
+                source_type="document",
+                page_number=1,
+                language="vi",
+            )
+        ]
+ 

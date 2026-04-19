@@ -68,11 +68,44 @@ export default function AIDiagnosisModal({
   const [selectedDoc, setSelectedDoc] = useState<DeepLink | null>(null);
 
   useEffect(() => {
-    aiService
-      .diagnoseWrongAnswer(attemptId, questionId, wrongAnswer, courseId)
-      .then(setResult)
-      .catch((e) => setError(e?.response?.data?.error ?? "Không thể phân tích lỗi này."))
-      .finally(() => setLoading(false));
+    let isSubscribed = true;
+    
+    const fetchDiagnosis = async () => {
+      try {
+        const response = await aiService.diagnoseWrongAnswer(attemptId, questionId, wrongAnswer, courseId);
+        if (!response || !response.job_id) {
+          throw new Error("Không nhận được Job ID từ server.");
+        }
+
+        // Polling Logic
+        let isDone = false;
+        while (!isDone && isSubscribed) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          if (!isSubscribed) break;
+
+          const statusCheck = await aiService.getJobStatus(response.job_id);
+          if (statusCheck.status === "completed") {
+            isDone = true;
+            if (isSubscribed) setResult(statusCheck.result as DiagnosisResult);
+          } else if (statusCheck.status === "failed") {
+            isDone = true;
+            throw new Error(statusCheck.error || "Quá trình phân tích lỗi.");
+          }
+        }
+      } catch (e: any) {
+        if (isSubscribed) {
+          setError(e?.response?.data?.error ?? e.message ?? "Không thể phân tích lỗi này.");
+        }
+      } finally {
+        if (isSubscribed) setLoading(false);
+      }
+    };
+
+    fetchDiagnosis();
+
+    return () => {
+      isSubscribed = false;
+    };
   }, [attemptId, questionId, wrongAnswer, courseId]);
 
   const gapCfg = result

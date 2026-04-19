@@ -6,16 +6,21 @@ import (
 
 	"example/hello/internal/dto"
 	"example/hello/internal/service"
+	"example/hello/pkg/ai"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AnalyticsHandler struct {
 	analyticsService *service.AnalyticsService
+	aiClient         *ai.Client // thêm để gọi AI service cho weakness/flashcard stats
 }
 
-func NewAnalyticsHandler(analyticsService *service.AnalyticsService) *AnalyticsHandler {
-	return &AnalyticsHandler{analyticsService: analyticsService}
+func NewAnalyticsHandler(analyticsService *service.AnalyticsService, aiClient *ai.Client) *AnalyticsHandler {
+	return &AnalyticsHandler{
+		analyticsService: analyticsService,
+		aiClient:         aiClient,
+	}
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -40,19 +45,6 @@ func getQuizIDParam(c *gin.Context) (int64, bool) {
 
 // ─── Teacher endpoints ────────────────────────────────────────────────────────
 
-// GetCourseQuizAnalytics godoc
-// @Summary      Quiz performance analytics for a course
-// @Description  Returns a performance summary (avg score, pass rate, unique students …)
-//               for every quiz in the course. Caller must own the course or be ADMIN.
-// @Tags         Analytics
-// @Produce      json
-// @Param        courseId path int true "Course ID"
-// @Security     BearerAuth
-// @Success      200 {array}  dto.QuizPerformanceSummary
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      403 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /courses/{courseId}/quiz-analytics [get]
 func (h *AnalyticsHandler) GetCourseQuizAnalytics(c *gin.Context) {
 	courseID, ok := getCourseIDParam(c)
 	if !ok {
@@ -76,19 +68,6 @@ func (h *AnalyticsHandler) GetCourseQuizAnalytics(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// GetQuizAllAttempts godoc
-// @Summary      All student attempts for a quiz
-// @Description  Returns every SUBMITTED / GRADED attempt with student details.
-//               Caller must own the course that contains the quiz, or be ADMIN.
-// @Tags         Analytics
-// @Produce      json
-// @Param        quizId path int true "Quiz ID"
-// @Security     BearerAuth
-// @Success      200 {array}  dto.StudentAttemptOverview
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      403 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /quizzes/{quizId}/all-attempts [get]
 func (h *AnalyticsHandler) GetQuizAllAttempts(c *gin.Context) {
 	quizID, ok := getQuizIDParam(c)
 	if !ok {
@@ -112,20 +91,6 @@ func (h *AnalyticsHandler) GetQuizAllAttempts(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// GetQuizWrongAnswerStats godoc
-// @Summary      Per-question wrong-answer rates for a quiz
-// @Description  Returns questions ordered by wrong-answer rate (highest first).
-//               Only auto-graded questions (is_correct IS NOT NULL) are counted.
-//               Caller must own the course that contains the quiz, or be ADMIN.
-// @Tags         Analytics
-// @Produce      json
-// @Param        quizId path int true "Quiz ID"
-// @Security     BearerAuth
-// @Success      200 {array}  dto.WrongAnswerStat
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      403 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /quizzes/{quizId}/wrong-answer-stats [get]
 func (h *AnalyticsHandler) GetQuizWrongAnswerStats(c *gin.Context) {
 	quizID, ok := getQuizIDParam(c)
 	if !ok {
@@ -149,20 +114,6 @@ func (h *AnalyticsHandler) GetQuizWrongAnswerStats(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// GetStudentProgressOverview godoc
-// @Summary      All enrolled students' progress in a course
-// @Description  Returns one row per ACCEPTED student: mandatory-content completion
-//               percentage and quiz score average. Ordered by progress desc.
-//               Caller must own the course or be ADMIN.
-// @Tags         Analytics
-// @Produce      json
-// @Param        courseId path int true "Course ID"
-// @Security     BearerAuth
-// @Success      200 {array}  dto.CourseStudentProgress
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      403 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /courses/{courseId}/student-progress-overview [get]
 func (h *AnalyticsHandler) GetStudentProgressOverview(c *gin.Context) {
 	courseID, ok := getCourseIDParam(c)
 	if !ok {
@@ -186,20 +137,8 @@ func (h *AnalyticsHandler) GetStudentProgressOverview(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// ─── Student endpoint ─────────────────────────────────────────────────────────
+// ─── Student endpoints ─────────────────────────────────────────────────────────
 
-// GetMyQuizScores godoc
-// @Summary      My quiz scores in a course
-// @Description  Returns the best attempt per quiz for the authenticated student,
-//               along with status: not_started | in_progress | passed | failed | submitted.
-// @Tags         Analytics
-// @Produce      json
-// @Param        courseId path int true "Course ID"
-// @Security     BearerAuth
-// @Success      200 {array}  dto.StudentQuizScore
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /courses/{courseId}/my-quiz-scores [get]
 func (h *AnalyticsHandler) GetMyQuizScores(c *gin.Context) {
 	courseID, ok := getCourseIDParam(c)
 	if !ok {
@@ -218,27 +157,23 @@ func (h *AnalyticsHandler) GetMyQuizScores(c *gin.Context) {
 }
 
 // GetStudentWeaknesses godoc
-// @Summary      Get the student's weak knowledge nodes
-// @Description  Returns weak nodes and overall error percentage for a student in a course
-// @Tags         Analytics
-// @Produce      json
-// @Param        courseId path int true "Course ID"
-// @Security     BearerAuth
-// @Success      200 {object} dto.StudentWeaknessOverview
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /courses/{courseId}/analytics/weaknesses [get]
+// Gọi AI service để lấy dữ liệu weakness — không query trực tiếp AI DB.
+// Đây là pattern loose coupling: LMS không biết schema AI DB.
 func (h *AnalyticsHandler) GetStudentWeaknesses(c *gin.Context) {
 	courseID, ok := getCourseIDParam(c)
 	if !ok {
 		return
 	}
-
 	userID := c.MustGet("user_id").(int64)
 
+	// Delegate to service which handles AI client calls and consistent DTO mapping
 	data, err := h.analyticsService.GetCourseStudentWeaknesses(c.Request.Context(), courseID, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("internal_error", "Failed to retrieve student weaknesses"))
+		// Graceful degradation: return empty overview instead of 500
+		c.JSON(http.StatusOK, dto.NewDataResponse(&dto.StudentWeaknessOverview{
+			TotalWrongPercent: 0,
+			WeakNodes:         []dto.WeakNode{},
+		}))
 		return
 	}
 
@@ -246,22 +181,12 @@ func (h *AnalyticsHandler) GetStudentWeaknesses(c *gin.Context) {
 }
 
 // GetFlashcardStats godoc
-// @Summary      Get Spaced Repetition (SM-2) stats for flashcards
-// @Description  Returns counts of due, upcoming, and total learning flashcards for a student
-// @Tags         Analytics
-// @Produce      json
-// @Param        courseId path int true "Course ID"
-// @Security     BearerAuth
-// @Success      200 {object} dto.FlashcardStatsResponse
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Router       /courses/{courseId}/analytics/flashcard-stats [get]
+// Lấy SM-2 stats từ LMS DB (flashcard_repetitions đã migrate về LMS DB).
 func (h *AnalyticsHandler) GetFlashcardStats(c *gin.Context) {
 	courseID, ok := getCourseIDParam(c)
 	if !ok {
 		return
 	}
-
 	userID := c.MustGet("user_id").(int64)
 
 	data, err := h.analyticsService.GetFlashcardStats(c.Request.Context(), courseID, userID)

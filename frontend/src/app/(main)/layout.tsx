@@ -3,7 +3,7 @@ import MobileNav from "@/components/layout/MobileNav";
 import Sidebar from "@/components/layout/Sidebar";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 
 type MainLayoutProps = {
   children: React.ReactNode;

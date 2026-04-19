@@ -6,6 +6,7 @@ import type {
   FillBlankDropdownStudentAnswer,
   FillBlankDropdownStudentProps,
 } from '@/types';
+import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 
 /**
  * Component for students to answer FILL_BLANK_DROPDOWN questions
@@ -133,7 +134,13 @@ export default function FillBlankDropdownStudent({
       <div className="text-lg leading-relaxed">
         {parts.map((part, index) => {
           if (part.type === 'text') {
-            return <span key={index}>{part.content}</span>;
+            return (
+              <MarkdownRenderer 
+                key={index} 
+                content={part.content} 
+                className="inline-markdown prose-p:inline prose-p:m-0" 
+              />
+            );
           }
 
           // Render blank dropdown

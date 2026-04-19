@@ -40,6 +40,11 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BadRequestException("Invalid email or password");
         }
+
+        if (!user.getActive()) {
+            throw new BadRequestException("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
+        }
+
         return user;
     }
 

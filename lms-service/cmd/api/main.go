@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"example/hello/pkg/ai"
 	"example/hello/pkg/cache"
 	"example/hello/pkg/database"
+	"example/hello/pkg/kafka"
 	"example/hello/pkg/logger"
 	"example/hello/pkg/storage"
 
@@ -104,17 +106,36 @@ func main() {
 
 	flashcardRepo := repository.NewFlashcardRepository(db)
 
+	kafka.InitProducer()
+	defer kafka.CloseProducer()
+
+	go kafka.StartConsumer(context.Background(), func(ctx context.Context, event kafka.ProcessDocumentStatusEvent) error {
+		logger.Info(fmt.Sprintf("Received status update for content %d: %s", event.ContentID, event.Status))
+		if event.Status == "completed" || event.Status == "success" {
+			event.Status = "indexed"
+		}
+		return courseRepo.UpdateContentAIIndexStatus(ctx, event.ContentID, event.Status)
+	})
+
+	go kafka.StartAIJobStatusConsumer(context.Background(), func(ctx context.Context, event kafka.AIJobStatusEvent) error {
+		logger.Info(fmt.Sprintf("Received AI job status for %s: %s", event.JobID, event.Status))
+		// Serialize and store into Redis
+		data, _ := json.Marshal(event)
+		redisKey := "ai_job:" + event.JobID
+		return redisClient.Set(ctx, redisKey, data, 24*time.Hour) // Keep for 24 hours
+	})
+
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
-	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo)
-	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo)
+	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo, progressRepo)
+	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo, aiClient)
 	userSyncService := service.NewUserSyncService(userRepo)
 	forumService := service.NewForumService(forumRepo, courseRepo)
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
 	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
-	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo)
-	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient)
+	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo, aiClient)
+	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient, redisClient)
 
 	// Initialize handlers
 	userHandler := handler.NewUserHandler(userService)
@@ -125,8 +146,8 @@ func main() {
 	quizHandler := handler.NewQuizHandler(quizService, storageProvider)
 	forumHandler := handler.NewForumHandler(forumService)
 	progressHandler := handler.NewProgressHandler(progressService)
-	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
-	aiHandler := handler.NewAIHandler(aiClient, courseRepo)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
+	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo, redisClient)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
 
 	// Setup Gin router
@@ -182,7 +203,15 @@ func main() {
 			files.GET("/serve/*filepath", fileHandler.ServeFile)
 			files.GET("/download/*filepath", fileHandler.DownloadFile)
 
-			// Protected endpoints
+			// Protected endpoints - require authentication
+			// 1. Flexible endpoints (Internal Service Secret OR JWT)
+			flexible := files.Group("")
+			flexible.Use(middleware.ServiceOrAuthMiddleware(cfg.JWT.Secret, cfg.AIConf.Secret))
+			{
+				flexible.GET("/presigned/*filepath", fileHandler.GetPresignedURL)
+			}
+
+			// 2. Strict protected endpoints (JWT ONLY)
 			protected := files.Group("")
 			protected.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
 			{
@@ -381,6 +410,14 @@ func main() {
 				// POST /api/v1/ai/attempts/:attemptId/questions/:questionId/diagnose
 				aiGroup.POST("/attempts/:attemptId/questions/:questionId/diagnose",
 					aiHandler.DiagnoseWrongAnswer)
+				aiGroup.GET("/knowledge-graph/global", 
+					aiHandler.GetGlobalKnowledgeGraph)
+				aiGroup.POST("/knowledge-graph/link-global",
+					aiHandler.TriggerGlobalLinking)
+				
+				// System-wide Polling Endpoint for AI Jobs
+				aiGroup.GET("/jobs/:jobId/status",
+					aiHandler.GetJobStatus())
 			}
 
 			// Per-course AI routes (reuse courseId param)
@@ -390,47 +427,49 @@ func main() {
 				aiCourses.GET("/heatmap",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.GetClassHeatmap)
-			
+
 				aiCourses.GET("/my-heatmap",
 					aiHandler.GetStudentHeatmap)
-			
+
 				// ── Knowledge Graph ───────────────────────────────────────────────────
 				aiCourses.POST("/nodes",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.CreateKnowledgeNode)
-			
+
 				aiCourses.GET("/nodes",
 					aiHandler.ListKnowledgeNodes)
-			
+
 				// ── Phase 2: Quiz Generation ──────────────────────────────────────────
 				aiCourses.POST("/generate-quiz",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.GenerateQuiz)
-			
+
 				aiCourses.GET("/drafts",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.ListDraftQuestions)
-			
+
 				// ── Phase 2: Spaced Repetition ────────────────────────────────────────
 				aiCourses.GET("/reviews/due",
 					aiHandler.GetDueReviews)
-			
+
 				aiCourses.POST("/reviews/record",
 					aiHandler.RecordReviewResponse)
-			
+
 				aiCourses.GET("/reviews/stats",
 					aiHandler.GetReviewStats)
 
 				aiCourses.GET("/knowledge-graph", aiHandler.GetCourseKnowledgeGraph)
+
+				aiCourses.GET("/nodes/:nodeId/chunks", aiHandler.GetNodeChunks)
 			}
-			
+
 			// Quiz draft review (outside course context)
 			quizDrafts := auth.Group("/ai/quiz-drafts")
 			{
 				quizDrafts.POST("/:genId/approve",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.ApproveQuestion)
-			
+
 				quizDrafts.POST("/:genId/reject",
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.RejectQuestion)

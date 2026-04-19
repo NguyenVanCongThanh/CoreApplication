@@ -8,6 +8,8 @@ import type {
   FillBlankDropdownOption,
   FillBlankDropdownEditorProps,
 } from '@/types';
+import { useMarkdownImage } from '@/hooks/useMarkdownImage';
+import { Image } from 'lucide-react';
 
 /**
  * Component để teacher tạo câu hỏi FILL_BLANK_DROPDOWN
@@ -28,6 +30,7 @@ export default function FillBlankDropdownEditor({
   const [settings, setSettings] = useState<FillBlankDropdownSettings>(
     initialSettings || { blank_count: 0, blanks: [] }
   );
+  const { uploadImage, uploading } = useMarkdownImage();
 
   // Auto-detect blanks from question text
   useEffect(() => {
@@ -169,11 +172,29 @@ export default function FillBlankDropdownEditor({
     }
 
     const emptyOptions = options.filter(o => !o.option_text.trim());
-    if (emptyOptions.length > 0) {
-      errors.push(`${emptyOptions.length} option chưa có nội dung`);
-    }
-
     return errors;
+  };
+    
+  const handleImageUpload = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        try {
+          const url = await uploadImage(file);
+          const cursorPosition = (document.activeElement as HTMLTextAreaElement)?.selectionStart || localText.length;
+          const textBefore = localText.substring(0, cursorPosition);
+          const textAfter = localText.substring(cursorPosition);
+          const insertion = (textBefore.endsWith('\n') || textBefore === '' ? '' : '\n') + `![image](${url})` + (textAfter.startsWith('\n') ? '' : '\n');
+          setLocalText(textBefore + insertion + textAfter);
+        } catch (err: any) {
+          alert(err.message);
+        }
+      }
+    };
+    input.click();
   };
 
   return (
@@ -194,14 +215,28 @@ export default function FillBlankDropdownEditor({
         <label className="block text-sm font-medium mb-2">
           Câu hỏi với blanks *
         </label>
-        <textarea
-          value={localText}
-          onChange={(e) => setLocalText(e.target.value)}
-          className="w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono"
-          rows={4}
-          placeholder="VD: Python is a {BLANK_1} programming language."
-          required
-        />
+        <div className="relative">
+          <textarea
+            value={localText}
+            onChange={(e) => setLocalText(e.target.value)}
+            className="w-full px-4 py-3 border-2 border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500/20 focus:border-blue-500 font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+            rows={6}
+            placeholder="VD: Python is a {BLANK_1} programming language."
+            required
+          />
+          <Button
+            type="button"
+            onClick={handleImageUpload}
+            disabled={uploading}
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-3 right-3 text-slate-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+            title="Chèn ảnh"
+          >
+            <Image className="w-4 h-4 mr-2" />
+            {uploading ? 'Đang tải...' : 'Chèn ảnh'}
+          </Button>
+        </div>
         <p className="text-xs text-gray-500 mt-1">
           {settings.blank_count > 0
             ? `✓ Đã phát hiện ${settings.blank_count} blank(s)`
