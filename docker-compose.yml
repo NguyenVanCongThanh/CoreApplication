@@ -293,10 +293,6 @@ services:
       - "${LMS_POSTGRES_PORT:-5434}:5432"
     volumes:
       - postgres_lms_data:/var/lib/postgresql/data
-      - ./lms-service/migrations/001_core_schema.sql:/docker-entrypoint-initdb.d/001_core_schema.sql:ro
-      - ./lms-service/migrations/002_quiz_system.sql:/docker-entrypoint-initdb.d/002_quiz_system.sql:ro
-      - ./lms-service/migrations/003_forum.sql:/docker-entrypoint-initdb.d/003_forum.sql:ro
-      - ./lms-service/migrations/004_ai_references.sql:/docker-entrypoint-initdb.d/004_ai_references.sql:ro
     networks:
       - app-network
     healthcheck:
@@ -457,8 +453,6 @@ services:
       - "${AI_POSTGRES_PORT:-5435}:5432"
     volumes:
       - postgres_ai_data:/var/lib/postgresql/data
-      - ./ai-service/migrations/001_ai_core.sql:/docker-entrypoint-initdb.d/001_ai_core.sql:ro
-      - ./ai-service/migrations/003_performance_indexes.sql:/docker-entrypoint-initdb.d/003_performance_indexes.sql:ro
     networks:
       - app-network
     healthcheck:

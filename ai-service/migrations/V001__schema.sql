@@ -1,15 +1,3 @@
--- =============================================================
--- AI Service — isolated database schema (v2)
--- postgres-ai instance ONLY — not applied to postgres-lms
---
--- Changes from v1:
---   - embedding column in document_chunks is now nullable (will be
---     populated by Qdrant when USE_QDRANT=true; kept for rollback safety)
---     same reason
---   - Added embedding_model tracking columns
---   - Added ON CONFLICT DO NOTHING to all index creations
--- =============================================================
-
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -22,7 +10,8 @@ $$ LANGUAGE plpgsql;
 
 -- =============================================================
 -- KNOWLEDGE NODES
--- Embeddings: stored in Qdrant when USE_QDRANT=true.
+-- Embeddings stored in Qdrant (USE_QDRANT=true).
+-- description_embedding column nullable — pgvector fallback only.
 -- =============================================================
 
 CREATE TABLE IF NOT EXISTS knowledge_nodes (
@@ -33,10 +22,10 @@ CREATE TABLE IF NOT EXISTS knowledge_nodes (
     name_vi               VARCHAR(255),
     name_en               VARCHAR(255),
     description           TEXT,
-    -- Nullable: NULL when Qdrant is active, populated when pgvector is used
     level                 INTEGER DEFAULT 0,
     order_index           INTEGER DEFAULT 0,
     source_content_id     BIGINT,
+    source_content_title  TEXT DEFAULT '',
     auto_generated        BOOLEAN DEFAULT false,
     created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -48,9 +37,15 @@ CREATE INDEX IF NOT EXISTS idx_kn_level   ON knowledge_nodes(course_id, level);
 CREATE INDEX IF NOT EXISTS idx_kn_source  ON knowledge_nodes(source_content_id)
     WHERE source_content_id IS NOT NULL;
 
-CREATE TRIGGER tr_kn_updated
-    BEFORE UPDATE ON knowledge_nodes
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_kn_updated'
+                     AND tgrelid = 'knowledge_nodes'::regclass) THEN
+        CREATE TRIGGER tr_kn_updated
+            BEFORE UPDATE ON knowledge_nodes
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- KNOWLEDGE NODE RELATIONS
@@ -75,8 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_knr_course ON knowledge_node_relations(course_id)
 
 -- =============================================================
 -- DOCUMENT CHUNKS
--- embedding column: NULL when USE_QDRANT=true (vectors in Qdrant).
---                   Populated when USE_QDRANT=false (pgvector fallback).
+-- embedding column NULL when USE_QDRANT=true.
 -- =============================================================
 
 CREATE TABLE IF NOT EXISTS document_chunks (
@@ -87,7 +81,6 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_text      TEXT NOT NULL,
     chunk_index     INTEGER NOT NULL,
     chunk_hash      VARCHAR(64) UNIQUE,
-    -- Nullable when Qdrant is active
     embedding_model VARCHAR(64) DEFAULT 'bge-m3',
     source_type     VARCHAR(20) DEFAULT 'document'
                         CHECK (source_type IN ('document', 'video')),
@@ -107,54 +100,53 @@ CREATE INDEX IF NOT EXISTS idx_dc_status  ON document_chunks(status);
 CREATE INDEX IF NOT EXISTS idx_dc_hash    ON document_chunks(chunk_hash);
 
 -- =============================================================
--- DOCUMENT PROCESSING JOBS
--- =============================================================
-
-CREATE TABLE IF NOT EXISTS document_processing_jobs (
-    id             BIGSERIAL PRIMARY KEY,
-    content_id     BIGINT NOT NULL,
-    course_id      BIGINT NOT NULL,
-    node_id        BIGINT REFERENCES knowledge_nodes(id) ON DELETE SET NULL,
-    status         VARCHAR(20) DEFAULT 'queued'
-                       CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
-    error_message  TEXT,
-    chunks_created INTEGER DEFAULT 0,
-    started_at     TIMESTAMP,
-    completed_at   TIMESTAMP,
-    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_dpj_content ON document_processing_jobs(content_id);
-CREATE INDEX IF NOT EXISTS idx_dpj_status  ON document_processing_jobs(status);
-
-CREATE TRIGGER tr_dpj_updated
-    BEFORE UPDATE ON document_processing_jobs
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- =============================================================
 -- AI DIAGNOSES
+-- Includes cache fields from 002_add_diagnosis_cache_fields.sql
 -- =============================================================
 
 CREATE TABLE IF NOT EXISTS ai_diagnoses (
-    id              BIGSERIAL PRIMARY KEY,
-    student_id      BIGINT NOT NULL,
-    attempt_id      BIGINT,
-    question_id     BIGINT,
-    node_id         BIGINT REFERENCES knowledge_nodes(id) ON DELETE SET NULL,
-    wrong_answer    TEXT,
-    correct_answer  TEXT,
-    explanation     TEXT NOT NULL,
-    gap_type        VARCHAR(50),
-    confidence      FLOAT DEFAULT 0.8,
-    source_chunk_id BIGINT REFERENCES document_chunks(id) ON DELETE SET NULL,
-    language        VARCHAR(10) DEFAULT 'vi',
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id                 BIGSERIAL PRIMARY KEY,
+    student_id         BIGINT NOT NULL,
+    attempt_id         BIGINT,
+    question_id        BIGINT,
+    node_id            BIGINT REFERENCES knowledge_nodes(id) ON DELETE SET NULL,
+    wrong_answer       TEXT,
+    correct_answer     TEXT,
+    explanation        TEXT NOT NULL,
+    gap_type           VARCHAR(50),
+    knowledge_gap      TEXT,
+    study_suggestion   TEXT,
+    suggested_docs_json JSONB,
+    confidence         FLOAT DEFAULT 0.8,
+    source_chunk_id    BIGINT REFERENCES document_chunks(id) ON DELETE SET NULL,
+    language           VARCHAR(10) DEFAULT 'vi',
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_ad_student  ON ai_diagnoses(student_id);
 CREATE INDEX IF NOT EXISTS idx_ad_question ON ai_diagnoses(question_id);
 CREATE INDEX IF NOT EXISTS idx_ad_node     ON ai_diagnoses(node_id);
+CREATE INDEX IF NOT EXISTS idx_ad_cache_lookup
+    ON ai_diagnoses (question_id, md5(wrong_answer))
+    WHERE question_id IS NOT NULL;
+
+-- =============================================================
+-- CONTENT INDEX STATUS
+-- (from 002_decouple_lms.sql — AI tracks its own indexing state)
+-- =============================================================
+
+CREATE TABLE IF NOT EXISTS content_index_status (
+    content_id  BIGINT PRIMARY KEY,
+    course_id   BIGINT NOT NULL,
+    title       TEXT DEFAULT '',
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    error       TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cis_course ON content_index_status(course_id);
+CREATE INDEX IF NOT EXISTS idx_cis_status ON content_index_status(status);
 
 -- =============================================================
 -- STUDENT KNOWLEDGE PROGRESS
@@ -178,9 +170,15 @@ CREATE INDEX IF NOT EXISTS idx_skp_student_course ON student_knowledge_progress(
 CREATE INDEX IF NOT EXISTS idx_skp_node           ON student_knowledge_progress(node_id);
 CREATE INDEX IF NOT EXISTS idx_skp_mastery        ON student_knowledge_progress(mastery_level);
 
-CREATE TRIGGER tr_skp_updated
-    BEFORE UPDATE ON student_knowledge_progress
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_skp_updated'
+                     AND tgrelid = 'student_knowledge_progress'::regclass) THEN
+        CREATE TRIGGER tr_skp_updated
+            BEFORE UPDATE ON student_knowledge_progress
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- SPACED REPETITIONS (SM-2)
@@ -206,9 +204,15 @@ CREATE TABLE IF NOT EXISTS spaced_repetitions (
 CREATE INDEX IF NOT EXISTS idx_sr_due    ON spaced_repetitions(student_id, next_review_date);
 CREATE INDEX IF NOT EXISTS idx_sr_course ON spaced_repetitions(student_id, course_id);
 
-CREATE TRIGGER tr_sr_updated
-    BEFORE UPDATE ON spaced_repetitions
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_sr_updated'
+                     AND tgrelid = 'spaced_repetitions'::regclass) THEN
+        CREATE TRIGGER tr_sr_updated
+            BEFORE UPDATE ON spaced_repetitions
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- AI QUIZ GENERATIONS
@@ -244,9 +248,15 @@ CREATE INDEX IF NOT EXISTS idx_aiqg_node   ON ai_quiz_generations(node_id);
 CREATE INDEX IF NOT EXISTS idx_aiqg_status ON ai_quiz_generations(status);
 CREATE INDEX IF NOT EXISTS idx_aiqg_course ON ai_quiz_generations(course_id);
 
-CREATE TRIGGER tr_aiqg_updated
-    BEFORE UPDATE ON ai_quiz_generations
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_aiqg_updated'
+                     AND tgrelid = 'ai_quiz_generations'::regclass) THEN
+        CREATE TRIGGER tr_aiqg_updated
+            BEFORE UPDATE ON ai_quiz_generations
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- FLASHCARDS
@@ -269,9 +279,15 @@ CREATE TABLE IF NOT EXISTS flashcards (
 CREATE INDEX IF NOT EXISTS idx_fc_student_node ON flashcards(student_id, node_id);
 CREATE INDEX IF NOT EXISTS idx_fc_course       ON flashcards(course_id);
 
-CREATE TRIGGER tr_fc_updated
-    BEFORE UPDATE ON flashcards
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_fc_updated'
+                     AND tgrelid = 'flashcards'::regclass) THEN
+        CREATE TRIGGER tr_fc_updated
+            BEFORE UPDATE ON flashcards
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- FLASHCARD REPETITIONS
@@ -295,9 +311,15 @@ CREATE TABLE IF NOT EXISTS flashcard_repetitions (
 
 CREATE INDEX IF NOT EXISTS idx_fcr_due ON flashcard_repetitions(student_id, course_id, next_review_date);
 
-CREATE TRIGGER tr_fcr_updated
-    BEFORE UPDATE ON flashcard_repetitions
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_fcr_updated'
+                     AND tgrelid = 'flashcard_repetitions'::regclass) THEN
+        CREATE TRIGGER tr_fcr_updated
+            BEFORE UPDATE ON flashcard_repetitions
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- EMBEDDING REINDEX JOBS
@@ -322,9 +344,15 @@ CREATE INDEX IF NOT EXISTS idx_erj_status  ON embedding_reindex_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_erj_course  ON embedding_reindex_jobs(course_id);
 CREATE INDEX IF NOT EXISTS idx_erj_content ON embedding_reindex_jobs(content_id);
 
-CREATE TRIGGER tr_erj_updated
-    BEFORE UPDATE ON embedding_reindex_jobs
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                   WHERE tgname = 'tr_erj_updated'
+                     AND tgrelid = 'embedding_reindex_jobs'::regclass) THEN
+        CREATE TRIGGER tr_erj_updated
+            BEFORE UPDATE ON embedding_reindex_jobs
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- =============================================================
 -- VIEWS
