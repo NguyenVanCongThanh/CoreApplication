@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_diagnosis_prompt
+from app.core.cache import diagnosis_cache
 from app.services.rag_service import rag_service, RetrievedChunk
 from app.core.config import get_settings
 
@@ -33,7 +34,6 @@ class DiagnosisService:
         question_id: int,
         wrong_answer: str,
         course_id: int,
-        # ── Enrichment fields (provided by LMS caller) ────────────────────
         question_text: str = "",
         question_type: str = "SINGLE_CHOICE",
         explanation: str = "",
@@ -41,43 +41,14 @@ class DiagnosisService:
         answer_options: list[dict] | None = None,
         node_id: int | None = None,
     ) -> DiagnosisResult:
-        # ── 0. Cache Lookup ──────────────────────────────────────────────
-        async with get_ai_conn() as conn:
-            cached = await conn.fetchrow(
-                """
-                SELECT explanation, gap_type, knowledge_gap, study_suggestion, 
-                       confidence, source_chunk_id, suggested_docs_json, language
-                FROM ai_diagnoses
-                WHERE question_id = $1 AND md5(wrong_answer) = md5($2)
-                ORDER BY created_at DESC LIMIT 1
-                """,
-                question_id, wrong_answer
-            )
-            
-            if cached:
-                import json
-                logger.info(f"Cache hit for question {question_id}, wrong_answer hash match.")
-                
-                # Parse suggested docs from JSON
-                suggested_docs = []
-                if cached["suggested_docs_json"]:
-                    if isinstance(cached["suggested_docs_json"], str):
-                        suggested_docs = json.loads(cached["suggested_docs_json"])
-                    else:
-                        suggested_docs = cached["suggested_docs_json"]
 
-                return DiagnosisResult(
-                    explanation=cached["explanation"],
-                    gap_type=cached["gap_type"],
-                    knowledge_gap=cached["knowledge_gap"] or "",
-                    study_suggestion=cached["study_suggestion"] or "",
-                    confidence=float(cached["confidence"]),
-                    source_chunk_id=cached["source_chunk_id"],
-                    suggested_documents=suggested_docs,
-                    language=cached["language"],
-                )
+        # ── 0. Redis cache lookup ────────────────────────────────────────────
+        cached = await diagnosis_cache.get(question_id, wrong_answer)
+        if cached:
+            logger.debug("Diagnosis Redis cache hit: question_id=%d", question_id)
+            return DiagnosisResult(**cached)
 
-        # ── 1. Use enriched data from LMS (no LMS DB access) ─────────────
+        # ── 1. Validate input ────────────────────────────────────────────────
         if not question_text:
             raise ValueError(f"question_text is required (question_id={question_id})")
 
@@ -86,15 +57,13 @@ class DiagnosisService:
             correct_answer = " | ".join(
                 o.get("option_text", "") for o in options if o.get("is_correct")
             )
-        distractor_opts = [
-            o.get("option_text", "") for o in options if not o.get("is_correct")
-        ]
+        distractor_opts = [o.get("option_text", "") for o in options if not o.get("is_correct")]
 
-        # ── 2. Detect language ────────────────────────────────────────────
+        # ── 2. Detect language ───────────────────────────────────────────────
         from app.services.chunker import detect_language
         language = detect_language(question_text)
 
-        # ── 3. Cross-lingual RAG (reads AI DB via rag_service) ────────────
+        # ── 3. Cross-lingual RAG ─────────────────────────────────────────────
         chunks: list[RetrievedChunk] = await rag_service.search_for_question(
             question_text=question_text,
             course_id=course_id,
@@ -102,12 +71,13 @@ class DiagnosisService:
             top_k=settings.top_k_chunks,
         )
         if not chunks:
-            query = f"{question_text} {wrong_answer}"
             chunks = await rag_service.search_multilingual(
-                query=query, course_id=course_id, top_k=settings.top_k_chunks,
+                query=f"{question_text} {wrong_answer}",
+                course_id=course_id,
+                top_k=settings.top_k_chunks,
             )
 
-        # ── 4. Build prompt + call LLM ────────────────────────────────────
+        # ── 4. LLM diagnosis ─────────────────────────────────────────────────
         context_texts = [c.chunk_text for c in chunks] if chunks else []
         if not context_texts and correct_answer:
             context_texts = [f"Đáp án đúng: {correct_answer}"]
@@ -123,33 +93,30 @@ class DiagnosisService:
 
         try:
             llm_result = await chat_complete_json(messages=messages)
-        except Exception as e:
-            logger.error("LLM diagnosis failed: %s", e)
+        except Exception as exc:
+            logger.error("LLM diagnosis failed: %s", exc)
             llm_result = {
-                "explanation":     "Không thể phân tích lỗi lúc này." if language == "vi" else "Unable to analyze error at this time.",
+                "explanation":     "Không thể phân tích lỗi lúc này." if language == "vi" else "Unable to analyze at this time.",
                 "gap_type":        "other",
                 "knowledge_gap":   "",
-                "study_suggestion":"Xem lại tài liệu liên quan." if language == "vi" else "Review related materials.",
+                "study_suggestion": "Xem lại tài liệu liên quan." if language == "vi" else "Review related materials.",
                 "confidence":      0.5,
             }
 
-        # ── 5. Build suggested documents ──────────────────────────────────
-        indices = llm_result.get("relevant_source_indices", [])
+        # ── 5. Build suggested documents ─────────────────────────────────────
+        indices    = llm_result.get("relevant_source_indices", [])
         if not isinstance(indices, list):
             indices = []
 
-        suggested_documents = []
+        suggested_documents: list[dict] = []
         seen_content_ids: set[int] = set()
 
         for idx in indices:
             if isinstance(idx, int) and 1 <= idx <= len(chunks):
                 chunk = chunks[idx - 1]
                 if chunk.content_id and chunk.content_id not in seen_content_ids:
-                    link = self._build_deep_link(chunk)
-                    snip = chunk.chunk_text[:150]
-                    if len(chunk.chunk_text) > 150:
-                        snip += "..."
-                    link["snippet"]        = snip
+                    link          = self._build_deep_link(chunk)
+                    link["snippet"]        = chunk.chunk_text[:150] + ("..." if len(chunk.chunk_text) > 150 else "")
                     link["chunk_language"] = chunk.language
                     suggested_documents.append(link)
                     seen_content_ids.add(chunk.content_id)
@@ -168,7 +135,7 @@ class DiagnosisService:
             else (chunks[0] if chunks else None)
         )
 
-        # ── 6. Persist diagnosis to AI DB ─────────────────────────────────
+        # ── 6. Persist to AI DB ───────────────────────────────────────────────
         await self._save_diagnosis(
             student_id=student_id, attempt_id=attempt_id,
             question_id=question_id, node_id=node_id,
@@ -179,7 +146,8 @@ class DiagnosisService:
             language=language,
         )
 
-        return DiagnosisResult(
+        # ── 7. Store in Redis cache ───────────────────────────────────────────
+        result = DiagnosisResult(
             explanation=llm_result.get("explanation", ""),
             gap_type=llm_result.get("gap_type", "other"),
             knowledge_gap=llm_result.get("knowledge_gap", ""),
@@ -189,6 +157,18 @@ class DiagnosisService:
             suggested_documents=suggested_documents,
             language=language,
         )
+        await diagnosis_cache.set(question_id, wrong_answer, {
+            "explanation":        result.explanation,
+            "gap_type":           result.gap_type,
+            "knowledge_gap":      result.knowledge_gap,
+            "study_suggestion":   result.study_suggestion,
+            "confidence":         result.confidence,
+            "source_chunk_id":    result.source_chunk_id,
+            "suggested_documents": result.suggested_documents,
+            "language":           result.language,
+        })
+
+        return result
 
     def _build_deep_link(self, chunk: RetrievedChunk) -> dict:
         link: dict = {"content_id": chunk.content_id, "source_type": chunk.source_type}
@@ -231,7 +211,7 @@ class DiagnosisService:
             )
         return row["id"]
 
-    # ── Heatmaps ──────────────────────────────────────────────────────────
+    # ── Heatmaps (no cache needed — called infrequently) ─────────────────────
 
     async def get_class_heatmap(self, course_id: int) -> list[dict]:
         async with get_ai_conn() as conn:
@@ -243,10 +223,10 @@ class DiagnosisService:
                     kn.name_vi,
                     kn.name_en,
                     COUNT(DISTINCT skp.student_id)                               AS student_count,
-                    AVG(skp.mastery_level)                                       AS avg_mastery,
-                    SUM(skp.wrong_count)                                         AS total_wrong,
-                    SUM(skp.total_attempts)                                      AS total_attempts,
-                    CASE WHEN SUM(skp.total_attempts) > 0
+                    COALESCE(AVG(skp.mastery_level), 0)                          AS avg_mastery,
+                    COALESCE(SUM(skp.wrong_count), 0)                            AS total_wrong,
+                    COALESCE(SUM(skp.total_attempts), 0)                         AS total_attempts,
+                    CASE WHEN COALESCE(SUM(skp.total_attempts), 0) > 0
                          THEN SUM(skp.wrong_count)::FLOAT / SUM(skp.total_attempts) * 100
                          ELSE 0 END                                              AS wrong_rate
                 FROM knowledge_nodes kn
@@ -272,7 +252,8 @@ class DiagnosisService:
                     COALESCE(skp.total_attempts, 0)  AS total_attempts,
                     COALESCE(skp.wrong_count, 0)     AS wrong_count,
                     skp.last_tested_at,
-                    (SELECT COUNT(*) FROM flashcards f WHERE f.node_id = kn.id AND f.student_id = $1) AS flashcard_count
+                    (SELECT COUNT(*) FROM flashcards f
+                     WHERE f.node_id = kn.id AND f.student_id = $1) AS flashcard_count
                 FROM knowledge_nodes kn
                 LEFT JOIN student_knowledge_progress skp
                     ON skp.node_id = kn.id AND skp.student_id = $1

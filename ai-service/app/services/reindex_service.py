@@ -12,9 +12,11 @@ settings = get_settings()
 class ReindexService:
 
     async def enqueue_all(self, course_id: int | None = None) -> dict:
-        from app.worker.celery_app import reindex_content_task
-
-        # Find content IDs from AI DB that have chunks without embeddings
+        """
+        Find all content_ids with missing embeddings in AI DB,
+        then publish REINDEX_CONTENT commands to Kafka for each.
+        The ai-worker picks them up via process_maintenance_command().
+        """
         async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
@@ -43,11 +45,12 @@ class ReindexService:
                 [(r["course_id"], r["content_id"]) for r in rows_to_enqueue],
             )
 
+        # Publish to Kafka (no Celery)
         from app.worker.kafka_producer import get_kafka_producer
         producer = await get_kafka_producer()
 
-        batch = settings.reindex_batch_size
         enqueued = 0
+        batch = settings.reindex_batch_size
         for i in range(0, len(rows_to_enqueue), batch):
             for row in rows_to_enqueue[i: i + batch]:
                 payload = {
@@ -67,6 +70,10 @@ class ReindexService:
         return dict(row) if row else {}
 
     async def reindex_content_sync(self, content_id: int, course_id: int) -> dict:
+        """
+        Called directly by kafka_worker when processing a REINDEX_CONTENT command.
+        Runs synchronously within the async worker event loop.
+        """
         from app.core.embeddings import create_passage_embeddings_batch
 
         async with get_ai_conn() as conn:
@@ -139,8 +146,12 @@ class ReindexService:
                 )
 
     async def _mark_job(
-        self, content_id: int, status: str,
-        chunks_total: int, chunks_done: int, error: str | None = None,
+        self,
+        content_id: int,
+        status: str,
+        chunks_total: int,
+        chunks_done: int,
+        error: str | None = None,
     ) -> None:
         async with get_ai_conn() as conn:
             await conn.execute(

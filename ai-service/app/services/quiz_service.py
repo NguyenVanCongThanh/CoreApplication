@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -14,6 +15,7 @@ settings = get_settings()
 
 BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"]
 
+_LLM_SEMAPHORE = asyncio.Semaphore(4)
 
 class QuizGenerationService:
 
@@ -41,33 +43,41 @@ class QuizGenerationService:
 
         async with get_ai_conn() as conn:
             existing = await conn.fetch(
-                "SELECT question_text FROM ai_quiz_generations WHERE node_id = $1", node_id
+                "SELECT question_text FROM ai_quiz_generations WHERE node_id = $1", node_id,
             )
         existing_texts = [r["question_text"] for r in existing]
 
-        import asyncio
         tasks = []
         for bloom_level in levels:
             for _ in range(questions_per_level):
                 tasks.append(
-                    self._generate_single(
+                    self._generate_single_with_semaphore(
                         node_id=node_id, course_id=course_id, created_by=created_by,
                         bloom_level=bloom_level, node_name=node_name,
                         language=language, existing_questions=existing_texts,
                     )
                 )
 
-        # Execute all LLM calls in parallel (significantly faster)
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         for i, res in enumerate(results):
             if isinstance(res, Exception):
-                # Using levels[i // questions_per_level] but list might be shorter if many Qs per level
-                logger.error("Failed a parallel generation task: %s", res)
+                level_index = i // max(questions_per_level, 1)
+                level_name  = levels[level_index] if level_index < len(levels) else "unknown"
+                logger.error("Quiz gen failed for bloom_level=%s node_id=%d: %s", level_name, node_id, res)
             else:
                 gen_ids.append(res)
 
+        logger.info(
+            "Generated %d/%d questions for node_id=%d",
+            len(gen_ids), len(tasks), node_id,
+        )
         return gen_ids
+
+    async def _generate_single_with_semaphore(self, **kwargs) -> int:
+        """Wraps _generate_single with the shared LLM semaphore."""
+        async with _LLM_SEMAPHORE:
+            return await self._generate_single(**kwargs)
 
     async def _generate_single(
         self, node_id, course_id, created_by, bloom_level, node_name, language, existing_questions,
@@ -80,15 +90,17 @@ class QuizGenerationService:
                 query=node_name, course_id=course_id, top_k=3,
             )
 
-        context_texts  = [c.chunk_text for c in chunks]
-        best_chunk_id  = chunks[0].chunk_id if chunks else None
+        context_texts = [c.chunk_text for c in chunks]
+        best_chunk_id = chunks[0].chunk_id if chunks else None
 
         if not context_texts:
             raise ValueError(f"No context chunks found for node {node_id}")
 
         messages = build_quiz_generation_prompt(
-            bloom_level=bloom_level, context_chunks=context_texts,
-            node_name=node_name, language=language,
+            bloom_level=bloom_level,
+            context_chunks=context_texts,
+            node_name=node_name,
+            language=language,
             existing_questions=existing_questions[:5],
         )
         result = await chat_complete_json(
@@ -135,20 +147,13 @@ class QuizGenerationService:
         return [dict(r) for r in rows]
 
     async def approve_question(
-        self, gen_id: int, reviewer_id: int, quiz_id: int, review_note: str = ""
+        self, gen_id: int, reviewer_id: int, quiz_id: int, review_note: str = "",
     ) -> dict:
-        """
-        Approve a generated question.
-
-        Instead of writing directly to LMS DB, we mark it as APPROVED in AI DB
-        and return the full question data so the LMS Go handler can create the
-        quiz_question record in its own database.
-        """
         import json as json_lib
 
         async with get_ai_conn() as conn:
             gen = await conn.fetchrow(
-                "SELECT * FROM ai_quiz_generations WHERE id = $1", gen_id
+                "SELECT * FROM ai_quiz_generations WHERE id = $1", gen_id,
             )
         if not gen:
             raise ValueError(f"Generation {gen_id} not found")
@@ -157,47 +162,50 @@ class QuizGenerationService:
         if isinstance(options, str):
             options = json_lib.loads(options)
 
-        # Mark as APPROVED in AI DB (no LMS DB write)
         async with get_ai_conn() as conn:
             await conn.execute(
-                """UPDATE ai_quiz_generations
-                   SET status='APPROVED', reviewed_by=$1, reviewed_at=NOW(),
-                       review_note=$2, updated_at=NOW()
-                   WHERE id=$3""",
+                """
+                UPDATE ai_quiz_generations
+                SET status='APPROVED', reviewed_by=$1, reviewed_at=NOW(),
+                    review_note=$2, updated_at=NOW()
+                WHERE id=$3
+                """,
                 reviewer_id, review_note, gen_id,
             )
 
-        # Return full question data for LMS to insert
         return {
-            "gen_id": gen_id,
-            "quiz_id": quiz_id,
+            "gen_id":        gen_id,
+            "quiz_id":       quiz_id,
             "question_text": gen["question_text"],
             "question_type": gen["question_type"] or "SINGLE_CHOICE",
-            "explanation": gen["explanation"] or "",
+            "explanation":   gen["explanation"] or "",
             "answer_options": options,
-            "node_id": gen["node_id"],
-            "bloom_level": gen["bloom_level"],
+            "node_id":       gen["node_id"],
+            "bloom_level":   gen["bloom_level"],
             "source_chunk_id": gen["source_chunk_id"],
-            "language": gen["language"],
+            "language":      gen["language"],
         }
 
     async def update_quiz_question_id(self, gen_id: int, quiz_question_id: int) -> None:
-        """Called by LMS after it creates the quiz_question in its own DB."""
         async with get_ai_conn() as conn:
             await conn.execute(
-                """UPDATE ai_quiz_generations
-                   SET status='PUBLISHED', quiz_question_id=$1, updated_at=NOW()
-                   WHERE id=$2""",
+                """
+                UPDATE ai_quiz_generations
+                SET status='PUBLISHED', quiz_question_id=$1, updated_at=NOW()
+                WHERE id=$2
+                """,
                 quiz_question_id, gen_id,
             )
 
     async def reject_question(self, gen_id: int, reviewer_id: int, review_note: str) -> None:
         async with get_ai_conn() as conn:
             await conn.execute(
-                """UPDATE ai_quiz_generations
-                   SET status='REJECTED', reviewed_by=$1, reviewed_at=NOW(),
-                       review_note=$2, updated_at=NOW()
-                   WHERE id=$3""",
+                """
+                UPDATE ai_quiz_generations
+                SET status='REJECTED', reviewed_by=$1, reviewed_at=NOW(),
+                    review_note=$2, updated_at=NOW()
+                WHERE id=$3
+                """,
                 reviewer_id, review_note, gen_id,
             )
 
@@ -220,12 +228,14 @@ class SpacedRepetitionService:
         return new_ef, new_interval, new_reps
 
     async def record_response(
-        self, student_id, question_id, course_id, node_id, quality
+        self, student_id, question_id, course_id, node_id, quality,
     ) -> dict:
         async with get_ai_conn() as conn:
             row = await conn.fetchrow(
-                """SELECT easiness_factor, interval_days, repetitions
-                   FROM spaced_repetitions WHERE student_id=$1 AND question_id=$2""",
+                """
+                SELECT easiness_factor, interval_days, repetitions
+                FROM spaced_repetitions WHERE student_id=$1 AND question_id=$2
+                """,
                 student_id, question_id,
             )
             ef       = float(row["easiness_factor"]) if row else 2.5
@@ -233,37 +243,42 @@ class SpacedRepetitionService:
             reps     = int(row["repetitions"])         if row else 0
 
             new_ef, new_interval, new_reps = self.update(ef, interval, reps, quality)
-            next_date = date.today() + timedelta(days=new_interval)
+            next_date  = date.today() + timedelta(days=new_interval)
+            is_correct = 1 if quality >= 3 else 0
+            is_wrong   = 1 if quality < 3  else 0
 
             await conn.execute(
-                """INSERT INTO spaced_repetitions
+                """
+                INSERT INTO spaced_repetitions
                        (student_id, question_id, node_id, course_id,
                         easiness_factor, interval_days, repetitions,
                         quality_last, next_review_date, last_reviewed_at)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-                   ON CONFLICT (student_id, question_id) DO UPDATE SET
-                       easiness_factor  = $5, interval_days    = $6,
-                       repetitions      = $7, quality_last     = $8,
-                       next_review_date = $9, last_reviewed_at = NOW(),
-                       updated_at       = NOW()""",
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+                ON CONFLICT (student_id, question_id) DO UPDATE SET
+                    easiness_factor  = $5, interval_days    = $6,
+                    repetitions      = $7, quality_last     = $8,
+                    next_review_date = $9, last_reviewed_at = NOW(),
+                    updated_at       = NOW()
+                """,
                 student_id, question_id, node_id, course_id,
                 new_ef, new_interval, new_reps, quality, next_date,
             )
 
-            # Update student_knowledge_progress
-            is_correct = 1 if quality >= 3 else 0
-            is_wrong = 1 if quality < 3 else 0
             await conn.execute(
-                """INSERT INTO student_knowledge_progress
-                       (student_id, node_id, course_id, total_attempts, correct_count, wrong_count, mastery_level, last_tested_at)
-                   VALUES ($1, $2, $3, 1, $4, $5, $6, NOW())
-                   ON CONFLICT (student_id, node_id) DO UPDATE SET
-                       total_attempts = student_knowledge_progress.total_attempts + 1,
-                       correct_count = student_knowledge_progress.correct_count + $4,
-                       wrong_count = student_knowledge_progress.wrong_count + $5,
-                       mastery_level = (student_knowledge_progress.correct_count + $4)::FLOAT / (student_knowledge_progress.total_attempts + 1),
-                       last_tested_at = NOW(),
-                       updated_at = NOW()""",
+                """
+                INSERT INTO student_knowledge_progress
+                       (student_id, node_id, course_id, total_attempts, correct_count,
+                        wrong_count, mastery_level, last_tested_at)
+                VALUES ($1, $2, $3, 1, $4, $5, $6, NOW())
+                ON CONFLICT (student_id, node_id) DO UPDATE SET
+                    total_attempts = student_knowledge_progress.total_attempts + 1,
+                    correct_count  = student_knowledge_progress.correct_count + $4,
+                    wrong_count    = student_knowledge_progress.wrong_count + $5,
+                    mastery_level  = (student_knowledge_progress.correct_count + $4)::FLOAT
+                                     / (student_knowledge_progress.total_attempts + 1),
+                    last_tested_at = NOW(),
+                    updated_at     = NOW()
+                """,
                 student_id, node_id, course_id, is_correct, is_wrong, float(is_correct),
             )
 
@@ -275,10 +290,6 @@ class SpacedRepetitionService:
         }
 
     async def get_due_reviews(self, student_id, course_id, limit=20) -> list[dict]:
-        """
-        Return due reviews with question_id and node info only.
-        question_text enrichment is done by the LMS Go handler.
-        """
         async with get_ai_conn() as conn:
             rows = await conn.fetch(
                 """
@@ -293,7 +304,6 @@ class SpacedRepetitionService:
                 """,
                 student_id, course_id, limit,
             )
-
         return [dict(r) for r in rows]
 
     async def get_review_stats(self, student_id, course_id) -> dict:

@@ -1,3 +1,16 @@
+"""
+ai-service/app/api/endpoints/auto_index.py
+
+POST /ai/auto-index              — trigger auto-indexing via Kafka
+POST /ai/auto-index/text         — trigger text content indexing via Kafka
+GET  /ai/auto-index/{id}/status  — poll status from AI DB (no Celery)
+
+POST /ai/knowledge-graph/global          — trigger global cross-course linking
+GET  /ai/knowledge-graph/global          — get full graph (admin)
+GET  /ai/knowledge-graph/{course_id}     — get course graph
+DELETE /ai/knowledge-graph/node/{node_id}
+GET  /ai/knowledge-graph/node/{node_id}/neighbors
+"""
 from __future__ import annotations
 
 import logging
@@ -12,7 +25,7 @@ from app.core.database import get_ai_conn
 logger   = logging.getLogger(__name__)
 settings = get_settings()
 
-router       = APIRouter(prefix="/auto-index",    tags=["Auto-Index"])
+router       = APIRouter(prefix="/auto-index",      tags=["Auto-Index"])
 graph_router = APIRouter(prefix="/knowledge-graph", tags=["Knowledge Graph"])
 
 
@@ -49,7 +62,6 @@ class AutoIndexStatusResponse(BaseModel):
     progress: int = 0
     stage: str = ""
     error: Optional[str] = None
-    job_id: Optional[str] = None
 
 
 class GraphNode(BaseModel):
@@ -80,22 +92,22 @@ class KnowledgeGraphResponse(BaseModel):
     edges: list[GraphEdge]
 
 
-# ── Helper: AI-owned content index status ──────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 async def _upsert_content_status(content_id: int, course_id: int, status: str, title: str = ""):
-    """Create or update the content index status in AI DB."""
     async with get_ai_conn() as conn:
         await conn.execute(
-            """INSERT INTO content_index_status (content_id, course_id, title, status, updated_at)
-               VALUES ($1, $2, $3, $4, NOW())
-               ON CONFLICT (content_id) DO UPDATE
-                   SET status = $4, updated_at = NOW()""",
+            """
+            INSERT INTO content_index_status (content_id, course_id, title, status, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (content_id) DO UPDATE
+                SET status = $4, updated_at = NOW()
+            """,
             content_id, course_id, title, status,
         )
 
 
 async def _get_content_status(content_id: int) -> dict | None:
-    """Read content index status from AI DB."""
     async with get_ai_conn() as conn:
         row = await conn.fetchrow(
             "SELECT status, error FROM content_index_status WHERE content_id=$1",
@@ -104,19 +116,18 @@ async def _get_content_status(content_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-# ── Helper: build title map from AI DB knowledge_nodes ─────────────────────────
-
 async def _build_title_map(content_ids: list[int]) -> dict[int, str]:
-    """Get source_content_title from knowledge_nodes (denormalized, no LMS DB)."""
     if not content_ids:
         return {}
     async with get_ai_conn() as conn:
         rows = await conn.fetch(
-            """SELECT DISTINCT source_content_id, source_content_title
-               FROM knowledge_nodes
-               WHERE source_content_id = ANY($1)
-                 AND source_content_title IS NOT NULL
-                 AND source_content_title != ''""",
+            """
+            SELECT DISTINCT source_content_id, source_content_title
+            FROM knowledge_nodes
+            WHERE source_content_id = ANY($1)
+              AND source_content_title IS NOT NULL
+              AND source_content_title != ''
+            """,
             content_ids,
         )
     return {r["source_content_id"]: r["source_content_title"] for r in rows}
@@ -133,25 +144,22 @@ async def trigger_auto_index(body: AutoIndexRequest, request: Request):
         await rag_service.delete_chunks_for_content(body.content_id)
         async with get_ai_conn() as conn:
             await conn.execute(
-                "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id
+                "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id,
             )
 
-    # Track status in AI DB
     await _upsert_content_status(body.content_id, body.course_id, "processing")
 
-    # Use Kafka instead of Celery
     from app.worker.kafka_producer import get_kafka_producer
     producer = await get_kafka_producer()
-    payload = {
-        "content_id": body.content_id,
-        "course_id":  body.course_id,
-        "file_url":   body.file_url,
+    await producer.send_and_wait("lms.document.uploaded", value={
+        "content_id":   body.content_id,
+        "course_id":    body.course_id,
+        "file_url":     body.file_url,
         "content_type": body.content_type,
-        "force":      body.force,
-    }
-    await producer.send_and_wait("lms.document.uploaded", value=payload)
+        "force":        body.force,
+    })
 
-    return AutoIndexResponse(job_id="kafka-event", content_id=body.content_id)
+    return AutoIndexResponse(job_id=f"content-{body.content_id}", content_id=body.content_id)
 
 
 @router.post("/text", response_model=AutoIndexResponse)
@@ -163,72 +171,51 @@ async def trigger_auto_index_text(body: AutoIndexTextRequest, request: Request):
         await rag_service.delete_chunks_for_content(body.content_id)
         async with get_ai_conn() as conn:
             await conn.execute(
-                "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id
+                "DELETE FROM knowledge_nodes WHERE source_content_id=$1", body.content_id,
             )
 
     await _upsert_content_status(body.content_id, body.course_id, "processing")
 
-    # Use Kafka instead of Celery
     from app.worker.kafka_producer import get_kafka_producer
     producer = await get_kafka_producer()
-    payload = {
+    await producer.send_and_wait("lms.document.uploaded", value={
         "content_id":   body.content_id,
         "course_id":    body.course_id,
         "title":        body.title,
         "text_content": body.text_content,
         "content_type": "TEXT",
         "force":        body.force,
-    }
-    await producer.send_and_wait("lms.document.uploaded", value=payload)
+    })
 
-    return AutoIndexResponse(job_id="kafka-event", content_id=body.content_id)
+    return AutoIndexResponse(job_id=f"content-{body.content_id}", content_id=body.content_id)
 
 
 @router.get("/{content_id}/status", response_model=AutoIndexStatusResponse)
-async def get_auto_index_status(
-    content_id: int, request: Request, job_id: Optional[str] = None
-):
+async def get_auto_index_status(content_id: int, request: Request):
     _verify(request)
 
-    # Read status from AI DB
     status_data = await _get_content_status(content_id)
-    if not status_data:
-        ai_status = "unindexed"
-    else:
-        ai_status = status_data["status"]
+    ai_status   = status_data["status"] if status_data else "unindexed"
 
     async with get_ai_conn() as conn:
         nodes_row  = await conn.fetchrow(
-            "SELECT COUNT(*) AS n FROM knowledge_nodes WHERE source_content_id=$1", content_id
+            "SELECT COUNT(*) AS n FROM knowledge_nodes WHERE source_content_id=$1", content_id,
         )
         chunks_row = await conn.fetchrow(
-            "SELECT COUNT(*) AS n FROM document_chunks WHERE content_id=$1 AND status='ready'", content_id
+            "SELECT COUNT(*) AS n FROM document_chunks WHERE content_id=$1 AND status='ready'", content_id,
         )
 
-    progress, stage = 0, ""
-    if job_id:
-        try:
-            from app.worker.celery_app import celery_app
-            task_result = celery_app.AsyncResult(job_id)
-            if task_result.state == "PROGRESS" and task_result.info:
-                progress = task_result.info.get("progress", 0)
-                stage    = task_result.info.get("stage", "")
-            elif task_result.state == "SUCCESS":
-                progress, stage = 100, "done"
-        except Exception:
-            pass
-
-    if not progress:
-        progress = {"pending": 0, "processing": 50, "indexed": 100, "failed": 0}.get(
-            ai_status, 0
-        )
+    # Map status → rough progress percentage (no Celery task to query)
+    progress_map = {"pending": 5, "processing": 50, "indexed": 100, "failed": 0}
+    progress = progress_map.get(ai_status, 0)
 
     return AutoIndexStatusResponse(
         content_id=content_id,
         status=ai_status,
         nodes_created=nodes_row["n"]  or 0,
         chunks_created=chunks_row["n"] or 0,
-        progress=progress, stage=stage, job_id=job_id,
+        progress=progress,
+        error=status_data.get("error") if status_data else None,
     )
 
 
@@ -240,26 +227,16 @@ async def get_global_knowledge_graph(
     min_strength: float = 0.5,
     limit: int = 2000,
 ):
-    """
-    Entire knowledge graph across all courses.
-    For admin dashboard and AI agent context.
-    """
     _verify(request)
 
     if not settings.neo4j_enabled:
         raise HTTPException(status_code=501, detail="Neo4j not enabled")
 
     from app.services.neo4j_service import neo4j_service
-    graph = await neo4j_service.get_global_graph(
-        limit_nodes=limit, min_strength=min_strength
-    )
+    graph = await neo4j_service.get_global_graph(limit_nodes=limit, min_strength=min_strength)
 
-    # Enrich source_content_title from AI DB (denormalized)
-    content_ids = [
-        n["source_content_id"] for n in graph["nodes"]
-        if n.get("source_content_id")
-    ]
-    title_map = await _build_title_map(content_ids)
+    content_ids = [n["source_content_id"] for n in graph["nodes"] if n.get("source_content_id")]
+    title_map   = await _build_title_map(content_ids)
 
     nodes = [
         GraphNode(
@@ -267,8 +244,7 @@ async def get_global_knowledge_graph(
             name_vi=n.get("name_vi"), name_en=n.get("name_en"),
             description=n.get("description"),
             source_content_id=n.get("source_content_id"),
-            source_content_title=title_map.get(n["source_content_id"])
-                if n.get("source_content_id") else None,
+            source_content_title=title_map.get(n["source_content_id"]) if n.get("source_content_id") else None,
             course_id=n.get("course_id"),
             auto_generated=bool(n.get("auto_generated", True)),
             chunk_count=0, level=0,
@@ -284,24 +260,16 @@ async def get_global_knowledge_graph(
         )
         for e in graph["edges"]
     ]
-    return KnowledgeGraphResponse(
-        course_id=0, nodes=nodes, edges=edges  # course_id=0 for global
-    )
+    return KnowledgeGraphResponse(course_id=0, nodes=nodes, edges=edges)
 
 
 @graph_router.post("/link-global")
 async def trigger_global_link(request: Request):
-    """
-    Trigger a system-wide knowledge graph maintenance task via Kafka.
-    This will find missing cross-course relationships.
-    """
     _verify(request)
 
     from app.worker.kafka_producer import get_kafka_producer
     producer = await get_kafka_producer()
-    payload  = {"command": "GLOBAL_LINK"}
-    
-    await producer.send_and_wait("lms.graph.command", value=payload)
+    await producer.send_and_wait("lms.graph.command", value={"command": "GLOBAL_LINK"})
     return {"ok": True, "message": "Global linking command queued via Kafka"}
 
 
@@ -309,17 +277,12 @@ async def trigger_global_link(request: Request):
 async def get_knowledge_graph(course_id: int, request: Request):
     _verify(request)
 
-    # Use Neo4j if enabled — richer graph with cross-course edges
     if settings.neo4j_enabled:
         from app.services.neo4j_service import neo4j_service
         graph = await neo4j_service.get_course_graph(course_id)
 
-        # Enrich source_content_title from AI DB
-        content_ids = [
-            n["source_content_id"] for n in graph["nodes"]
-            if n.get("source_content_id")
-        ]
-        title_map = await _build_title_map(content_ids)
+        content_ids = [n["source_content_id"] for n in graph["nodes"] if n.get("source_content_id")]
+        title_map   = await _build_title_map(content_ids)
 
         nodes = [
             GraphNode(
@@ -327,12 +290,10 @@ async def get_knowledge_graph(course_id: int, request: Request):
                 name_vi=n.get("name_vi"), name_en=n.get("name_en"),
                 description=n.get("description"),
                 source_content_id=n.get("source_content_id"),
-                source_content_title=title_map.get(n["source_content_id"])
-                    if n.get("source_content_id") else None,
+                source_content_title=title_map.get(n["source_content_id"]) if n.get("source_content_id") else None,
                 course_id=n.get("course_id", course_id),
                 auto_generated=bool(n.get("auto_generated", True)),
-                chunk_count=0,
-                level=0,
+                chunk_count=0, level=0,
             )
             for n in graph["nodes"]
         ]
@@ -345,11 +306,9 @@ async def get_knowledge_graph(course_id: int, request: Request):
             )
             for e in graph["edges"]
         ]
-        return KnowledgeGraphResponse(
-            course_id=course_id, nodes=nodes, edges=edges
-        )
+        return KnowledgeGraphResponse(course_id=course_id, nodes=nodes, edges=edges)
 
-    # Fallback: PostgreSQL path (legacy)
+    # Fallback: PostgreSQL path
     async with get_ai_conn() as conn:
         node_rows = await conn.fetch(
             """
@@ -361,8 +320,7 @@ async def get_knowledge_graph(course_id: int, request: Request):
             LEFT JOIN document_chunks dc ON dc.node_id = kn.id
             WHERE kn.course_id = $1
             GROUP BY kn.id, kn.course_id, kn.name, kn.name_vi, kn.name_en, kn.description,
-                     kn.source_content_id, kn.source_content_title,
-                     kn.auto_generated, kn.level
+                     kn.source_content_id, kn.source_content_title, kn.auto_generated, kn.level
             ORDER BY kn.level, kn.order_index
             """,
             course_id,
@@ -380,8 +338,7 @@ async def get_knowledge_graph(course_id: int, request: Request):
             id=r["id"], name=r["name"], name_vi=r["name_vi"], name_en=r["name_en"],
             description=r["description"], source_content_id=r["source_content_id"],
             source_content_title=r["source_content_title"] if r["source_content_id"] else None,
-            course_id=r["course_id"],
-            auto_generated=r["auto_generated"],
+            course_id=r["course_id"], auto_generated=r["auto_generated"],
             chunk_count=r["chunk_count"] or 0, level=r["level"],
         )
         for r in node_rows
@@ -403,15 +360,17 @@ async def delete_knowledge_node(node_id: int, request: Request):
 
     async with get_ai_conn() as conn:
         node = await conn.fetchrow(
-            "SELECT id, course_id, auto_generated FROM knowledge_nodes WHERE id=$1", node_id
+            "SELECT id, course_id, auto_generated FROM knowledge_nodes WHERE id=$1", node_id,
         )
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
         await conn.execute("DELETE FROM knowledge_nodes WHERE id=$1", node_id)
 
+    if settings.neo4j_enabled:
+        from app.services.neo4j_service import neo4j_service
+        await neo4j_service.delete_node(node_id)
+
     return {"ok": True, "deleted_node_id": node_id}
-
-
 
 
 @graph_router.get("/node/{node_id}/neighbors")
@@ -421,10 +380,6 @@ async def get_node_neighbors(
     depth: int = 2,
     max_nodes: int = 50,
 ):
-    """
-    BFS from a node across all courses.
-    For AI learning agent context building.
-    """
     _verify(request)
 
     if not settings.neo4j_enabled:
@@ -432,17 +387,13 @@ async def get_node_neighbors(
 
     from app.services.neo4j_service import neo4j_service
     result = await neo4j_service.get_node_neighbors(
-        node_id=node_id, max_depth=min(depth, 4), max_nodes=min(max_nodes, 200)
+        node_id=node_id, max_depth=min(depth, 4), max_nodes=min(max_nodes, 200),
     )
 
-    # Enrich content titles from AI DB
     all_nodes = [result.get("center")] if result.get("center") else []
     all_nodes.extend(result.get("neighbors", []))
-    content_ids = [
-        n["source_content_id"] for n in all_nodes
-        if n and n.get("source_content_id")
-    ]
-    title_map = await _build_title_map(content_ids)
+    content_ids = [n["source_content_id"] for n in all_nodes if n and n.get("source_content_id")]
+    title_map   = await _build_title_map(content_ids)
 
     nodes = [
         GraphNode(
@@ -450,8 +401,7 @@ async def get_node_neighbors(
             name_vi=n.get("name_vi"), name_en=n.get("name_en"),
             description=n.get("description"),
             source_content_id=n.get("source_content_id"),
-            source_content_title=title_map.get(n["source_content_id"])
-                if n.get("source_content_id") else None,
+            source_content_title=title_map.get(n["source_content_id"]) if n.get("source_content_id") else None,
             course_id=n.get("course_id"),
             auto_generated=bool(n.get("auto_generated", True)),
             chunk_count=0, level=0,
@@ -467,9 +417,8 @@ async def get_node_neighbors(
         )
         for e in result.get("edges", [])
     ]
-    return KnowledgeGraphResponse(
-        course_id=0, nodes=nodes, edges=edges
-    )
+    return KnowledgeGraphResponse(course_id=0, nodes=nodes, edges=edges)
+
 
 def _verify(request: Request):
     if request.headers.get("X-AI-Secret", "") != settings.ai_service_secret:

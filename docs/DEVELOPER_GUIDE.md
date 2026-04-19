@@ -1,58 +1,50 @@
-# 🛠️ Hướng Dẫn Developer — BDC Application
+# 🛠️ Developer Guide — BDC Application
 
-> Tài liệu này dành cho **developer**, **contributor** và bất kỳ ai muốn chạy dự án ở local, tìm hiểu cấu trúc codebase, hoặc đóng góp tính năng mới. Đọc từ đầu đến cuối một lần — bạn sẽ tiết kiệm rất nhiều thời gian debug về sau.
-
----
-
-> 🌐 **Chọn ngôn ngữ / Language:**
-> &nbsp;&nbsp;[🇻🇳 Tiếng Việt](./DEVELOPER_GUIDE.md) &nbsp;|&nbsp; [🇬🇧 English](./DEVELOPER_GUIDE.en.md)
-
-> 📚 **Tài liệu liên quan:**
-> [📖 README — Tổng quan dự án](../README.md) · [⚠️ TECHNICAL_NOTES — Các vấn đề kỹ thuật quan trọng](./TECHNICAL_NOTES.md)
+> This guide is for **developers**, **contributors**, and anyone who wants to run the project locally, understand the codebase structure, or add new features. Read it once from top to bottom — it will save you a lot of debugging time later.
 
 ---
 
-## 📋 Mục Lục
+## 📋 Table of Contents
 
-1. [Tổng Quan Dự Án](#1-tổng-quan-dự-án)
-2. [Cấu Trúc Thư Mục](#2-cấu-trúc-thư-mục)
-3. [Yêu Cầu Cài Đặt](#3-yêu-cầu-cài-đặt)
-4. [Chạy Toàn Bộ Dự Án với Docker](#4-chạy-toàn-bộ-dự-án-với-docker)
-5. [Chạy Từng Service Riêng Lẻ](#5-chạy-từng-service-riêng-lẻ)
-6. [Cấu Hình Biến Môi Trường](#6-cấu-hình-biến-môi-trường)
-7. [Luồng Hoạt Động Của Hệ Thống](#7-luồng-hoạt-động-của-hệ-thống)
-8. [API Endpoints Tham Khảo Nhanh](#8-api-endpoints-tham-khảo-nhanh)
-9. [Hướng Dẫn Đóng Góp Code](#9-hướng-dẫn-đóng-góp-code)
-10. [Quy Trình CI/CD](#10-quy-trình-cicd)
-11. [Xử Lý Sự Cố Thường Gặp](#11-xử-lý-sự-cố-thường-gặp)
-12. [Câu Hỏi Thường Gặp](#12-câu-hỏi-thường-gặp)
+1. [Project Overview](#1-project-overview)
+2. [Directory Structure](#2-directory-structure)
+3. [Prerequisites](#3-prerequisites)
+4. [Running the Full Stack with Docker](#4-running-the-full-stack-with-docker)
+5. [Running Individual Services Locally](#5-running-individual-services-locally)
+6. [Environment Variable Configuration](#6-environment-variable-configuration)
+7. [System Workflows](#7-system-workflows)
+8. [API Quick Reference](#8-api-quick-reference)
+9. [Contributing](#9-contributing)
+10. [CI/CD Pipeline](#10-cicd-pipeline)
+11. [Troubleshooting](#11-troubleshooting)
+12. [FAQ](#12-faq)
 
 ---
 
-## 1. Tổng Quan Dự Án
+## 1. Project Overview
 
-BDC Application là một **Learning Management System (LMS)** dạng microservices gồm 3 service chính giao tiếp với nhau qua mạng Docker nội bộ. Hiểu rõ sơ đồ dưới đây sẽ giúp bạn debug nhanh hơn rất nhiều khi gặp sự cố.
+BDC Application is a **microservices-based Learning Management System (LMS)** consisting of 3 main services that communicate over an internal Docker network. Understanding the diagram below will help you debug problems much faster.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    🌐 Trình duyệt / Client                    │
+│                      🌐 Browser / Client                      │
 └──────────────────────────┬───────────────────────────────────┘
                            │ Port 3000
                            ▼
 ┌──────────────────────────────────────────────────────────────┐
-│             🖥️  Frontend — Next.js 14 (TypeScript)            │
-│   /apiv1/*  ──► Spring Boot Backend  (proxy rewrite)        │
-│   /lmsapiv1/* ──► Go LMS Backend     (proxy rewrite)        │
-│   /files/*  ──► LMS file serving                            │
+│              🖥️  Frontend — Next.js 14 (TypeScript)           │
+│   /apiv1/*  ────────► Spring Boot Backend  (proxy rewrite)   │
+│   /lmsapiv1/* ──────► Go LMS Backend       (proxy rewrite)   │
+│   /files/*  ────────► LMS file serving                       │
 └──────────┬──────────────────────────────┬────────────────────┘
            │ :8080                         │ :8081
            ▼                               ▼
 ┌──────────────────────┐     ┌─────────────────────────────────┐
 │  ⚙️  Auth Backend     │     │  ⚙️  LMS Backend                 │
 │   Spring Boot 3.x    │◄────│   Go 1.21 + Gin                 │
-│   - Auth / JWT       │     │   - Khoá học, Quiz              │
-│   - Users, Events    │     │   - Enroll, File upload         │
-│   - Announcements    │     │   - Đồng bộ user từ Auth        │
+│   - JWT / Auth       │     │   - Courses, Quizzes            │
+│   - Users, Events    │     │   - Enrollments, File upload    │
+│   - Announcements    │     │   - User sync from Auth         │
 └──────────┬───────────┘     └──────────┬──────────────────────┘
            │                             │         │
            ▼                             ▼         ▼
@@ -66,9 +58,9 @@ BDC Application là một **Learning Management System (LMS)** dạng microservi
                                                     └──────────┘
 ```
 
-### Công Nghệ Sử Dụng
+### Technology Stack
 
-| Thành phần | Công nghệ | Phiên bản |
+| Component | Technology | Version |
 |---|---|---|
 | Frontend | Next.js, TypeScript, Tailwind CSS, NextAuth.js | 14+ |
 | Auth Backend | Spring Boot, Spring Security, JWT | 3.x (Java 21) |
@@ -80,7 +72,7 @@ BDC Application là một **Learning Management System (LMS)** dạng microservi
 
 ---
 
-## 2. Cấu Trúc Thư Mục
+## 2. Directory Structure
 
 ```
 CoreApplication/
@@ -88,9 +80,9 @@ CoreApplication/
 ├── 📁 frontend/                     # Next.js application
 │   ├── src/
 │   │   ├── app/                     # App Router (Next.js 14)
-│   │   ├── components/              # React components tái sử dụng
+│   │   ├── components/              # Reusable React components
 │   │   └── lib/                     # Utility functions, custom hooks
-│   ├── next.config.ts               # Cấu hình Next.js + proxy rewrites ← QUAN TRỌNG
+│   ├── next.config.ts               # Next.js config + proxy rewrites ← IMPORTANT
 │   └── Dockerfile
 │
 ├── 📁 auth-and-management-service/                      # Spring Boot (Auth Service)
@@ -101,8 +93,8 @@ CoreApplication/
 │   │   ├── model/                   # Entity / Domain models
 │   │   └── config/                  # Security, CORS, JWT config
 │   ├── src/main/resources/
-│   │   └── application.yml          # Cấu hình Spring Boot
-│   ├── init-scripts/                # SQL khởi tạo Auth database
+│   │   └── application.yml          # Spring Boot configuration
+│   ├── init-scripts/                # SQL for Auth database initialization
 │   ├── pom.xml
 │   └── Dockerfile
 │
@@ -113,129 +105,129 @@ CoreApplication/
 │   │   ├── service/                 # Business logic
 │   │   ├── repository/              # Database queries (GORM)
 │   │   └── model/                   # Data models
-│   ├── migrations/                  # SQL migrations LMS database
+│   ├── migrations/                  # SQL migrations for LMS database
 │   ├── go.mod
 │   └── Dockerfile
 │
-├── 📁 docs/                         # Tài liệu kỹ thuật ← BẠN ĐANG Ở ĐÂY
-│   ├── DEVELOPER_GUIDE.md           # File này (Tiếng Việt)
-│   ├── DEVELOPER_GUIDE.en.md        # Phiên bản Tiếng Anh
-│   ├── TECHNICAL_NOTES.md           # Vấn đề kỹ thuật quan trọng (VI)
-│   └── TECHNICAL_NOTES.en.md        # Vấn đề kỹ thuật quan trọng (EN)
+├── 📁 docs/                         # Technical documentation ← YOU ARE HERE
+│   ├── DEVELOPER_GUIDE.md           # This file (Vietnamese)
+│   ├── DEVELOPER_GUIDE.en.md        # English version
+│   ├── TECHNICAL_NOTES.md           # Critical technical issues (VI)
+│   └── TECHNICAL_NOTES.en.md        # Critical technical issues (EN)
 │
 ├── 📁 .github/
 │   ├── workflows/
 │   │   ├── ci.yml                   # CI: Build, Test, Push Docker image
-│   │   └── cd-production.yml        # CD: Deploy lên production
+│   │   └── cd-production.yml        # CD: Deploy to production
 │   └── ISSUE_TEMPLATE/
 │
-├── docker-compose.yml               # Khởi chạy toàn bộ stack
-├── .env.example                     # Template biến môi trường ← COPY CÁI NÀY
-├── .env                             # File thực tế (KHÔNG bao giờ commit!)
-└── README.md
+├── docker-compose.yml               # Launch the full stack
+├── .env.example                     # Environment variable template ← COPY THIS
+├── .env                             # Actual config (NEVER commit this!)
+└── README.en.md
 ```
 
-> ⚠️ **Quan trọng:** File `.env` chứa thông tin bí mật (mật khẩu, JWT secret...) và đã được thêm vào `.gitignore`. Tuyệt đối **không commit** file này lên repository.
+> ⚠️ **Important:** `.env` contains sensitive information (passwords, JWT secrets...) and is listed in `.gitignore`. **Never commit** this file to the repository.
 
 ---
 
-## 3. Yêu Cầu Cài Đặt
+## 3. Prerequisites
 
-### Chạy bằng Docker — Khuyến nghị cho dev mới
+### Running with Docker — Recommended for new developers
 
-Đây là cách đơn giản nhất. Bạn chỉ cần cài:
+The simplest approach. You only need:
 
-| Công cụ | Phiên bản tối thiểu | Link tải |
+| Tool | Minimum Version | Download |
 |---|---|---|
 | Docker Desktop | 24.0+ | https://docs.docker.com/get-docker/ |
-| Docker Compose | 2.0+ | Đi kèm Docker Desktop |
-| Git | Bất kỳ | https://git-scm.com/ |
+| Docker Compose | 2.0+ | Bundled with Docker Desktop |
+| Git | Any | https://git-scm.com/ |
 
-> Đảm bảo Docker Desktop đang chạy và được cấp ít nhất **4GB RAM** trong phần Settings → Resources.
+> Make sure Docker Desktop is running and has at least **4GB RAM** allocated under Settings → Resources.
 
-### Chạy từng service riêng lẻ — Cho dev nâng cao
+### Running services individually — For advanced development
 
-Nếu bạn muốn hot-reload và debug trực tiếp trên máy:
+If you want hot-reload and direct debugging on your machine:
 
-| Công cụ | Phiên bản | Dùng cho |
+| Tool | Version | Used For |
 |---|---|---|
 | Node.js + npm | 20 LTS | Frontend |
-| JDK (Temurin) | 21 | Backend Java |
+| JDK (Temurin) | 21 | Java Backend |
 | Go | 1.21+ | LMS Service |
 
 ---
 
-## 4. Chạy Toàn Bộ Dự Án với Docker
+## 4. Running the Full Stack with Docker
 
-Đây là cách **nhanh nhất** để có môi trường đầy đủ hoạt động trên máy bạn.
+This is the **fastest** way to get a complete working environment on your machine.
 
-### Bước 1 — Clone repository
+### Step 1 — Clone the repository
 
 ```bash
 git clone https://github.com/Big-Data-Club/CoreApplication.git
 cd CoreApplication
 ```
 
-### Bước 2 — Tạo file biến môi trường
+### Step 2 — Create your environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Mở `.env` và điền các giá trị quan trọng. Xem [Mục 6](#6-cấu-hình-biến-môi-trường) để hiểu từng biến, và [TECHNICAL_NOTES.md](./TECHNICAL_NOTES.md) để biết những biến nào nếu sai sẽ gây lỗi im lặng.
+Open `.env` and fill in the required values. See [Section 6](#6-environment-variable-configuration) for an explanation of each variable, and [TECHNICAL_NOTES.en.md](./TECHNICAL_NOTES.en.md) to learn which ones cause silent failures when set incorrectly.
 
-### Bước 3 — Build và khởi chạy
+### Step 3 — Build and launch
 
 ```bash
-# Lần đầu tiên — sẽ pull image và build, mất 3-5 phút
+# First time — pulls images and builds, takes 3–5 minutes
 docker compose up -d --build
 
-# Những lần sau khi không có thay đổi code
+# Subsequent launches with no code changes
 docker compose up -d
 ```
 
-### Bước 4 — Kiểm tra trạng thái
+### Step 4 — Check service status
 
 ```bash
-# Xem tất cả container (STATUS phải là "healthy", không phải "starting")
+# All STATUS values should be "healthy", not "starting"
 docker compose ps
 
-# Xem log realtime của từng service
+# Stream logs for specific services
 docker compose logs -f frontend
 docker compose logs -f backend
 docker compose logs -f lms-backend
 ```
 
-### Bước 5 — Truy cập ứng dụng
+### Step 5 — Access the application
 
-| Dịch vụ | URL |
+| Service | URL |
 |---|---|
 | 🌐 Frontend | http://localhost:3000 |
-| ⚙️ Auth API | http://localhost:3000/apiv1 hoặc http://localhost:8080 |
-| ⚙️ LMS API | http://localhost:3000/lmsapiv1 hoặc http://localhost:8081 |
+| ⚙️ Auth API | http://localhost:3000/apiv1 or http://localhost:8080 |
+| ⚙️ LMS API | http://localhost:3000/lmsapiv1 or http://localhost:8081 |
 | 📚 Swagger Auth | http://localhost:8080/swagger-ui.html |
 | 📚 Swagger LMS | http://localhost:8081/swagger/index.html |
 | 📦 MinIO Console | http://localhost:9001 |
 
-### Dừng và dọn dẹp
+### Stopping and cleaning up
 
 ```bash
-docker compose down           # Dừng tất cả, giữ nguyên data
-docker compose down -v        # Dừng + xoá toàn bộ data (volumes)
-docker compose restart backend         # Restart riêng một service
-docker compose up -d --build frontend  # Rebuild sau khi sửa code
+docker compose down                    # Stop all services, keep data
+docker compose down -v                 # Stop + delete all data (volumes)
+docker compose restart backend         # Restart a single service
+docker compose up -d --build frontend  # Rebuild after code changes
 ```
 
 ---
 
-## 5. Chạy Từng Service Riêng Lẻ
+## 5. Running Individual Services Locally
 
-Phương pháp này phù hợp khi bạn đang **tập trung phát triển một service** và muốn hot-reload nhanh hơn.
+This approach is best when you're **focused on developing one service** and want faster hot-reload.
 
-**Chiến lược:** Giữ các service infrastructure (database, Redis, MinIO) chạy bằng Docker, còn service đang phát triển thì chạy trực tiếp trên máy.
+**Strategy:** Keep infrastructure services (database, Redis, MinIO) running in Docker, and run your target service directly on your machine.
 
 ```bash
-# Chỉ khởi động infrastructure — không cần build lại code
+# Start only infrastructure — no code rebuild needed
 docker compose up -d postgres postgres-lms redis-lms minio
 ```
 
@@ -246,43 +238,43 @@ cd frontend
 
 npm install
 
-# Tạo file env local (trỏ BACKEND_URL về localhost thay vì Docker container)
+# Create a local env file pointing URLs to localhost instead of Docker containers
 cp .env.local.example .env.local
-# Chỉnh: BACKEND_URL=http://localhost:8080, LMS_API_URL=http://localhost:8081
+# Set: BACKEND_URL=http://localhost:8080, LMS_API_URL=http://localhost:8081
 
-npm run dev    # Dev server với hot-reload tự động
+npm run dev    # Dev server with automatic hot-reload
 ```
 
-Frontend chạy tại **http://localhost:3000**
+Frontend runs at **http://localhost:3000**
 
-**Các script hữu ích:**
+**Useful scripts:**
 
-| Lệnh | Mô tả |
+| Command | Description |
 |---|---|
-| `npm run dev` | Dev server với hot-reload |
-| `npm run build` | Build production |
-| `npm run lint` | Kiểm tra lỗi ESLint |
-| `npm run test:ci` | Chạy unit tests |
+| `npm run dev` | Dev server with hot-reload |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint check |
+| `npm run test:ci` | Run unit tests |
 
-> **Về proxy:** File `next.config.ts` đã cấu hình rewrite để route `/apiv1/*` → Spring Boot và `/lmsapiv1/*` → Go. Khi chạy local, bạn cần đảm bảo các backend service đang lắng nghe đúng port.
+> **About proxy:** `next.config.ts` configures rewrites so `/apiv1/*` → Spring Boot and `/lmsapiv1/*` → Go. When running locally, make sure the backend services are listening on the expected ports.
 
 ### 5.2 Auth Backend (Spring Boot)
 
 ```bash
 cd Backend
 
-# Đảm bảo PostgreSQL đang chạy (từ Docker): docker compose ps postgres
+# Ensure PostgreSQL is running via Docker: docker compose ps postgres
 
-# Chạy bằng Maven Wrapper (không cần cài Maven)
+# Run using Maven Wrapper (no Maven installation needed)
 ./mvnw spring-boot:run
 
-# Hoặc chỉ định profile local
+# Or specify a specific profile
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-Backend chạy tại **http://localhost:8080**
+Backend runs at **http://localhost:8080**
 
-Nếu muốn kết nối database local, tạo file `src/main/resources/application-local.yml`:
+To connect to the local database, create `src/main/resources/application-local.yml`:
 
 ```yaml
 spring:
@@ -292,13 +284,13 @@ spring:
     password: 123456
 ```
 
-**Các lệnh Maven hữu ích:**
+**Useful Maven commands:**
 
-| Lệnh | Mô tả |
+| Command | Description |
 |---|---|
-| `./mvnw spring-boot:run` | Chạy dev |
-| `./mvnw test` | Chạy tests |
-| `./mvnw clean package -DskipTests` | Build JAR |
+| `./mvnw spring-boot:run` | Run dev server |
+| `./mvnw test` | Run tests |
+| `./mvnw clean package -DskipTests` | Build JAR without tests |
 | `./mvnw clean package` | Build + test |
 
 ### 5.3 LMS Backend (Go + Gin)
@@ -311,9 +303,9 @@ go mod download
 go run cmd/server/main.go
 ```
 
-LMS Service chạy tại **http://localhost:8081**
+LMS Service runs at **http://localhost:8081**
 
-Các biến môi trường cần thiết khi chạy local (tạo file `.env` trong thư mục `lms-service/` hoặc export):
+Required environment variables when running locally (create a `.env` file in `lms-service/` or export):
 
 ```bash
 export DB_HOST=localhost
@@ -328,47 +320,47 @@ export JWT_SECRET=your-dev-secret-min-32-chars
 export APP_PORT=8081
 ```
 
-**Các lệnh Go hữu ích:**
+**Useful Go commands:**
 
-| Lệnh | Mô tả |
+| Command | Description |
 |---|---|
-| `go run cmd/server/main.go` | Chạy dev |
-| `go test ./...` | Chạy toàn bộ tests |
+| `go run cmd/server/main.go` | Run dev server |
+| `go test ./...` | Run all tests |
 | `go test -v ./... -coverprofile=coverage.out` | Test + coverage report |
-| `go build -v ./...` | Build kiểm tra lỗi compile |
+| `go build -v ./...` | Build with compile error check |
 | `go vet ./...` | Static analysis |
 
 ---
 
-## 6. Cấu Hình Biến Môi Trường
+## 6. Environment Variable Configuration
 
-Sao chép `.env.example` thành `.env` và điền các giá trị. Dưới đây là giải thích theo nhóm.
+Copy `.env.example` to `.env` and fill in the values. Here's an explanation by group.
 
-### 🔐 Bảo mật — Bắt buộc phải đổi
+### 🔐 Security — Must be changed
 
 ```env
-# JWT: Khoá bí mật dùng để ký và xác thực token
-# PHẢI giống nhau giữa Backend và LMS — PHẢI >= 32 ký tự!
-JWT_SECRET=thay-bang-chuoi-ngau-nhien-dai-hon-32-ky-tu
+# JWT: Secret key used to sign and verify tokens
+# MUST be identical between Backend and LMS — MUST be >= 32 characters!
+JWT_SECRET=replace-with-a-random-string-longer-than-32-chars
 
-# NextAuth: Khoá mã hoá session của Next.js
-NEXTAUTH_SECRET=thay-bang-chuoi-ngau-nhien-khac-hoàn-toàn
+# NextAuth: Session encryption key for Next.js
+NEXTAUTH_SECRET=replace-with-a-completely-different-random-string
 
-# Secret đồng bộ user giữa 2 service backend (PHẢI bằng nhau)
-LMS_API_SECRET=chuoi-bi-mat-sync
-LMS_SYNC_SECRET=chuoi-bi-mat-sync   # phải bằng LMS_API_SECRET
+# Shared secret for user sync between the two backends (must match)
+LMS_API_SECRET=your-sync-secret
+LMS_SYNC_SECRET=your-sync-secret   # must equal LMS_API_SECRET
 ```
 
-> 💡 Tạo chuỗi ngẫu nhiên an toàn: `openssl rand -base64 32`
+> 💡 Generate a secure random string: `openssl rand -base64 32`
 
-### 🌐 URL — Tuỳ theo môi trường
+### 🌐 URLs — Environment-dependent
 
 ```env
-# Dev local
+# Local development
 NEXTAUTH_URL=http://localhost:3000
-APP_PUBLIC_URL=http://localhost:3000    # Dùng trong link email reset password
+APP_PUBLIC_URL=http://localhost:3000   # Used in password reset emails
 
-# Giao tiếp nội bộ Docker network (giữ nguyên khi dùng Docker Compose)
+# Internal Docker network communication (keep as-is when using Docker Compose)
 BACKEND_URL=http://backend:8080
 LMS_API_URL=http://lms-backend:8081
 ```
@@ -379,45 +371,45 @@ LMS_API_URL=http://lms-backend:8081
 # Auth Database (PostgreSQL)
 POSTGRES_DB=club_db
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=mat-khau-manh-cua-ban
+POSTGRES_PASSWORD=your-strong-password
 POSTGRES_PORT=5433
 
 # LMS Database (PostgreSQL)
 LMS_POSTGRES_DB=lms_db
 LMS_POSTGRES_USER=lms_user
-LMS_POSTGRES_PASSWORD=mat-khau-lms-manh
+LMS_POSTGRES_PASSWORD=your-strong-lms-password
 LMS_POSTGRES_PORT=5434
 ```
 
 ### ⚡ Redis & MinIO
 
 ```env
-REDIS_PASSWORD=mat-khau-redis-manh
+REDIS_PASSWORD=your-strong-redis-password
 REDIS_PORT=6379
 
 MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=mat-khau-minio-dai-hon-8-ky-tu  # MinIO yêu cầu >= 8 ký tự
+MINIO_ROOT_PASSWORD=your-minio-password-8-plus-chars   # MinIO requires >= 8 chars
 ```
 
 ### 📧 Email
 
 ```env
 EMAIL=your-email@gmail.com
-EMAIL_PASSWORD=google-app-password-16-ky-tu   # Xem TECHNICAL_NOTES.md Mục 2
+EMAIL_PASSWORD=google-app-password-16-chars   # See TECHNICAL_NOTES.en.md Section 2
 
-APP_PUBLIC_URL=http://localhost:3000   # Link trong email, phải truy cập được từ máy user
+APP_PUBLIC_URL=http://localhost:3000   # Must be reachable by the email recipient's browser
 ```
 
-> ⚠️ Cấu hình email sai sẽ khiến `bulkRegister` vẫn tạo user thành công nhưng user không nhận được mật khẩu — không thể đăng nhập. Xem chi tiết tại [TECHNICAL_NOTES.md — Mục 2](./TECHNICAL_NOTES.md#2-email--cấu-hình-gmail-smtp).
+> ⚠️ Incorrect email config will cause `bulkRegister` to create users silently without sending passwords — they cannot log in. See [TECHNICAL_NOTES.en.md — Section 2](./TECHNICAL_NOTES.en.md#2-email--gmail-smtp-configuration).
 
 ---
 
-## 7. Luồng Hoạt Động Của Hệ Thống
+## 7. System Workflows
 
-### Luồng Xác Thực (Authentication)
+### Authentication Flow
 
 ```
-Client           Frontend                Backend (Spring)
+Client           Frontend               Auth Backend (Spring)
   │                 │                          │
   │── POST /apiv1/auth/login ────────────────►│
   │                 │                          │ Validate credentials
@@ -429,28 +421,28 @@ Client           Frontend                Backend (Spring)
   │◄── User data ───────────────────────────────│
 ```
 
-### Luồng Đồng Bộ User (User Sync)
+### User Sync Flow
 
-Khi Admin tạo user mới, hệ thống tự động sync sang LMS để user có thể đăng ký khoá học ngay:
+When an Admin creates a new user, the system automatically syncs them to the LMS:
 
 ```
-Admin tạo user
-      │
-      ▼
-Backend (Spring) ─── POST /api/v1/sync/user ───► LMS Backend (Go)
-     (kèm X-Sync-Secret header)                         │
-                                              Lưu user vào LMS DB
-                                              (chạy async, không block response)
+Admin creates user
+        │
+        ▼
+Auth Backend (Spring) ─── POST /api/v1/sync/user ───► LMS Backend (Go)
+     (with X-Sync-Secret header)                              │
+                                                   Save user to LMS DB
+                                                   (runs async, doesn't block response)
 ```
 
-> Vì sync chạy **bất đồng bộ**, lỗi sync chỉ hiện trong log, không throw exception về client. Xem [TECHNICAL_NOTES.md — Mục 4](./TECHNICAL_NOTES.md#4-user-sync--đồng-bộ-bất-đồng-bộ-dễ-bị-bỏ-lỡ).
+> Because sync runs **asynchronously**, sync failures only appear in logs — no exception is thrown to the client. See [TECHNICAL_NOTES.en.md — Section 4](./TECHNICAL_NOTES.en.md#4-user-sync--asynchronous-sync-easy-to-miss).
 
-### Luồng Upload File
+### File Upload Flow
 
 ```
 Client ─── POST /lmsapiv1/files/upload ────► LMS Backend
-                                                   │ Lưu vào /app/uploads
-                                                   │ Trả về filepath
+                                                   │ Save to /app/uploads
+                                                   │ Return filepath
 Client ─── GET /files/{filepath} ──────────► Next.js (proxy)
                                                    │
                                         ──────► LMS /api/v1/files/serve/{filepath}
@@ -458,91 +450,91 @@ Client ─── GET /files/{filepath} ──────────► Next.js
 
 ---
 
-## 8. API Endpoints Tham Khảo Nhanh
+## 8. API Quick Reference
 
 ### Auth Service (`/apiv1`)
 
-| Method | Endpoint | Mô tả | Role |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| POST | `/api/auth/login` | Đăng nhập | Public |
-| POST | `/api/auth/logout` | Đăng xuất | Authenticated |
-| POST | `/api/auth/register/bulk` | Tạo hàng loạt user | Admin |
-| GET | `/api/users` | Danh sách users | Admin/Manager |
-| GET | `/api/events` | Danh sách sự kiện | Authenticated |
-| GET | `/api/tasks` | Danh sách nhiệm vụ | Authenticated |
-| GET | `/api/announcements` | Thông báo hệ thống | Authenticated |
+| POST | `/api/auth/login` | Log in, receive JWT | Public |
+| POST | `/api/auth/logout` | Log out, clear cookie | Authenticated |
+| POST | `/api/auth/register/bulk` | Bulk create users | Admin |
+| GET | `/api/users` | Paginated user list | Admin/Manager |
+| GET | `/api/events` | Event list | Authenticated |
+| GET | `/api/tasks` | Task list | Authenticated |
+| GET | `/api/announcements` | System announcements | Authenticated |
 
 ### LMS Service (`/lmsapiv1`)
 
-| Method | Endpoint | Mô tả | Role |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| GET | `/api/v1/courses` | Danh sách khoá học | Authenticated |
-| POST | `/api/v1/courses` | Tạo khoá học | Teacher/Admin |
-| PUT | `/api/v1/courses/:id` | Cập nhật khoá học | Teacher/Admin |
-| POST | `/api/v1/enrollments` | Đăng ký khoá học | Student |
-| GET | `/api/v1/quizzes` | Danh sách quiz | Authenticated |
-| POST | `/api/v1/quizzes` | Tạo quiz | Teacher/Admin |
-| POST | `/api/v1/files/upload` | Upload file | Authenticated |
-| GET | `/api/v1/files/serve/:path` | Serve file | Public |
-| POST | `/api/v1/sync/user` | Sync một user | Internal (Sync Secret) |
-| POST | `/api/v1/sync/users/bulk` | Sync nhiều user | Internal (Sync Secret) |
+| GET | `/api/v1/courses` | List all courses | Authenticated |
+| POST | `/api/v1/courses` | Create a new course | Teacher/Admin |
+| PUT | `/api/v1/courses/:id` | Update a course | Teacher/Admin |
+| POST | `/api/v1/enrollments` | Enroll in a course | Student |
+| GET | `/api/v1/quizzes` | List quizzes | Authenticated |
+| POST | `/api/v1/quizzes` | Create a quiz | Teacher/Admin |
+| POST | `/api/v1/files/upload` | Upload a file | Authenticated |
+| GET | `/api/v1/files/serve/:path` | Serve a file | Public |
+| POST | `/api/v1/sync/user` | Sync a single user | Internal (Sync Secret) |
+| POST | `/api/v1/sync/users/bulk` | Bulk sync users | Internal (Sync Secret) |
 
-> Xem đầy đủ tại Swagger UI: http://localhost:8080/swagger-ui.html (Auth) và http://localhost:8081/swagger/index.html (LMS)
+> Full API docs via Swagger UI: http://localhost:8080/swagger-ui.html (Auth) and http://localhost:8081/swagger/index.html (LMS)
 
 ---
 
-## 9. Hướng Dẫn Đóng Góp Code
+## 9. Contributing
 
-### Quy Tắc Đặt Tên Branch
+### Branch Naming Conventions
 
 ```
-feature/ten-tinh-nang-moi       # Tính năng mới
-fix/mo-ta-bug-can-sua           # Sửa bug
-hotfix/van-de-khẩn-cap          # Sửa lỗi production khẩn cấp
-refactor/phan-can-cai-thien     # Cải thiện code không đổi behaviour
-docs/cap-nhat-tai-lieu          # Cập nhật tài liệu
+feature/new-feature-name        # New feature
+fix/description-of-bug          # Bug fix
+hotfix/critical-issue           # Urgent production fix
+refactor/part-to-improve        # Code improvement without behavior change
+docs/update-documentation       # Documentation update
 ```
 
-### Quy Trình Đóng Góp
+### Contribution Workflow
 
 ```bash
-# 1. Fork repo trên GitHub (nhấn nút "Fork")
+# 1. Fork the repo on GitHub (click the "Fork" button)
 
-# 2. Clone về máy
+# 2. Clone locally
 git clone https://github.com/YOUR_USERNAME/CoreApplication.git
 cd CoreApplication
 
-# 3. Thêm upstream để sync với repo gốc
+# 3. Add upstream to sync with the original repo
 git remote add upstream https://github.com/Big-Data-Club/CoreApplication.git
 
-# 4. Tạo branch mới
+# 4. Create a new branch
 git checkout -b feature/quiz-timer
 
-# 5. Viết code, commit thường xuyên
+# 5. Write code, commit frequently
 git add .
 git commit -m "feat(lms): add countdown timer for quiz"
 
-# 6. Sync với upstream trước khi push để tránh conflict
+# 6. Sync with upstream before pushing to avoid conflicts
 git fetch upstream
 git rebase upstream/develop
 
-# 7. Push lên fork của bạn
+# 7. Push to your fork
 git push origin feature/quiz-timer
 
-# 8. Tạo Pull Request lên branch develop của repo gốc
+# 8. Open a Pull Request targeting the develop branch of the original repo
 ```
 
-### Format Commit Message
+### Commit Message Format
 
-Tuân theo [Conventional Commits](https://www.conventionalcommits.org/):
+Following [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-<type>(<scope>): <mô tả ngắn gọn>
+<type>(<scope>): <short description>
 
 # type: feat | fix | docs | style | refactor | test | chore | hotfix
 # scope: frontend | backend | lms | docker | ci
 
-# Ví dụ thực tế:
+# Real examples:
 feat(lms): add video upload progress bar
 fix(backend): resolve JWT expiration not refreshing
 docs(readme): update local setup instructions
@@ -550,155 +542,155 @@ refactor(frontend): extract quiz component into separate file
 test(lms): add unit tests for enrollment service
 ```
 
-### Checklist Trước Khi Tạo Pull Request
+### Pull Request Checklist
 
-- [ ] Code chạy được ở local không có lỗi
-- [ ] Đã test tính năng vừa thêm/sửa thủ công
-- [ ] Không có `console.log` hay `fmt.Println` debug còn sót lại
-- [ ] Không commit file `.env` hoặc bất kỳ secret nào
-- [ ] Đã cập nhật tài liệu nếu thay đổi API hoặc cấu hình
-- [ ] Title PR rõ ràng, mô tả đủ những gì thay đổi và lý do
-- [ ] Code tuân theo coding conventions của project
+- [ ] Code runs locally without errors
+- [ ] Manually tested the feature or bug fix
+- [ ] No leftover `console.log` or `fmt.Println` debug statements
+- [ ] No `.env` file or secrets committed
+- [ ] Documentation updated if API or configuration changed
+- [ ] PR title is clear and the description explains what changed and why
+- [ ] Code follows project coding conventions
 
 ### Coding Conventions
 
 **Frontend (TypeScript/Next.js):**
-- TypeScript strict mode — tránh dùng `any`
-- Components dùng arrow function và named export
-- Tên file component: `PascalCase.tsx` · Tên hook/utility: `camelCase.ts`
-- Styling hoàn toàn bằng Tailwind CSS, tránh inline style
+- TypeScript strict mode — avoid using `any`
+- Components use arrow functions and named exports
+- File names: `PascalCase.tsx` for components, `camelCase.ts` for hooks/utilities
+- Styling exclusively with Tailwind CSS — avoid inline styles
 
 **Backend (Java/Spring Boot):**
-- Tuân theo Spring Boot conventions — Controller chỉ nhận/trả request, business logic trong Service
-- Dùng `@Slf4j` (Lombok) để logging, không dùng `System.out.println`
-- Viết Javadoc cho public methods
+- Follow Spring Boot conventions — Controllers handle HTTP, business logic lives in Services
+- Use `@Slf4j` (Lombok) for logging — never use `System.out.println`
+- Write Javadoc for all public methods
 
 **LMS (Go):**
-- Tuân theo [Effective Go](https://go.dev/doc/effective_go)
-- Error handling rõ ràng — không bỏ qua error với `_`
-- Chạy `go vet ./...` trước khi commit
+- Follow [Effective Go](https://go.dev/doc/effective_go)
+- Explicit error handling — never discard errors with `_`
+- Run `go vet ./...` before committing
 
 ---
 
-## 10. Quy Trình CI/CD
+## 10. CI/CD Pipeline
 
-### CI — Kích hoạt khi có Pull Request hoặc Push
+### CI — Triggered on Pull Requests and Pushes
 
 ```
-Code push / PR mở
+Code push / PR opened
         │
         ▼
 🔍 Detect Changes
-        │ (Chỉ build service nào có file thay đổi — tiết kiệm thời gian)
+        │ (Only build services with changed files — saves time)
         ▼
-🔨 Build & Test  (chạy song song)
+🔨 Build & Test  (run in parallel)
   ├── Backend : ./mvnw test
   ├── Frontend: npm run test:ci
   └── LMS     : go test ./...
         │
         ▼
-🔒 Security Scan (Trivy — quét lỗ hổng bảo mật trong Docker image)
+🔒 Security Scan (Trivy — scans Docker images for vulnerabilities)
         │
         ▼
 🐳 Push Docker Image
-        └── Chỉ thực hiện khi merge vào main hoặc develop
+        └── Only when merging into main or develop
 ```
 
-### CD — Deploy Production (khi merge vào main)
+### CD — Production Deploy (on merge to main)
 
-Workflow `cd-production.yml` tự động:
-1. Pull Docker image mới từ Docker Hub
-2. SSH vào server production
-3. Chạy `docker compose pull && docker compose up -d`
+`cd-production.yml` automatically:
+1. Pulls the new Docker image from Docker Hub
+2. SSHs into the production server
+3. Runs `docker compose pull && docker compose up -d`
 
-### GitHub Secrets cần thiết
+### Required GitHub Secrets
 
-Vào **Settings → Secrets and variables → Actions** của repo và thêm:
+Go to **Settings → Secrets and variables → Actions** and add:
 
-| Secret | Mô tả |
+| Secret | Description |
 |---|---|
-| `DOCKER_USERNAME` | Username Docker Hub |
-| `DOCKER_PASSWORD` | Password hoặc Access Token Docker Hub |
-| `SSH_HOST` | IP hoặc hostname server production |
-| `SSH_USER` | Username SSH |
-| `SSH_PRIVATE_KEY` | Nội dung private key SSH |
+| `DOCKER_USERNAME` | Docker Hub username |
+| `DOCKER_PASSWORD` | Docker Hub password or Access Token |
+| `SSH_HOST` | Production server IP or hostname |
+| `SSH_USER` | SSH username |
+| `SSH_PRIVATE_KEY` | SSH private key content |
 
 ---
 
-## 11. Xử Lý Sự Cố Thường Gặp
+## 11. Troubleshooting
 
-### ❌ Container không khởi động hoặc mãi ở trạng thái "starting"
+### ❌ Container won't start or stays in "starting" state
 
 ```bash
-# Xem log chi tiết để tìm nguyên nhân
+# View detailed logs to find the root cause
 docker compose logs backend
 docker compose logs lms-backend
 docker compose logs frontend
 
-# Kiểm tra trạng thái tất cả service
+# Check all service statuses
 docker compose ps
 ```
 
-### ❌ Backend báo lỗi kết nối database
+### ❌ Backend reports database connection error
 
 ```bash
-# Kiểm tra postgres có healthy không
+# Check if postgres is healthy
 docker compose ps postgres
 
-# Thử kết nối thủ công
+# Connect manually
 docker compose exec postgres psql -U postgres -d club_db
 
-# Nếu lần đầu chạy, đảm bảo init-scripts được chạy (chỉ chạy khi volume trống)
-# CẢNH BÁO: Lệnh dưới đây xoá toàn bộ data!
+# First-time setup: make sure init-scripts ran (they only run on empty volumes)
+# WARNING: This deletes all data!
 docker compose down -v && docker compose up -d
 ```
 
-### ❌ Frontend không gọi được API — lỗi CORS hoặc 502
+### ❌ Frontend can't reach the API — CORS error or 502
 
-1. Kiểm tra biến `BACKEND_URL` trong `.env` (phải là `http://backend:8080` khi dùng Docker)
-2. Xác nhận backend đang healthy: `docker compose ps backend`
-3. Test trực tiếp: `curl http://localhost:8080/actuator/health`
-4. Kiểm tra `CORS_ALLOWED_ORIGINS` phải chứa URL frontend của bạn
+1. Check `BACKEND_URL` in `.env` (should be `http://backend:8080` when using Docker)
+2. Confirm the backend is healthy: `docker compose ps backend`
+3. Test directly: `curl http://localhost:8080/actuator/health`
+4. Check that `CORS_ALLOWED_ORIGINS` includes your frontend URL
 
-Xem thêm chi tiết CORS tại [TECHNICAL_NOTES.md — Mục 3](./TECHNICAL_NOTES.md#3-cors--cấu-hình-ở-3-nơi-khác-nhau).
+See [TECHNICAL_NOTES.en.md — Section 3](./TECHNICAL_NOTES.en.md#3-cors--configured-in-three-places) for CORS details.
 
-### ❌ Lỗi "Port already in use"
+### ❌ "Port already in use" error
 
 ```bash
-# Tìm process đang chiếm port (ví dụ port 3000)
+# Find the process using the port (e.g., port 3000)
 lsof -i :3000           # macOS / Linux
 netstat -ano | findstr :3000  # Windows
 
-# Giải phóng port
+# Kill the process
 kill -9 <PID>           # macOS / Linux
 taskkill /PID <PID> /F  # Windows
 
-# Hoặc đổi port trong .env
+# Or change the port in .env
 FRONTEND_PORT=3001
 BACKEND_PORT=8082
 ```
 
-### ❌ LMS Service lỗi kết nối Redis
+### ❌ LMS Service can't connect to Redis
 
 ```bash
 docker compose ps redis-lms
 
-# Test kết nối Redis
+# Test Redis connection
 docker compose exec redis-lms redis-cli -a redis_password ping
-# Kết quả mong đợi: PONG
+# Expected output: PONG
 ```
 
-### ❌ LMS không thể upload file hoặc file mất sau restart
+### ❌ Files disappear after container restart
 
-Kiểm tra `docker-compose.yml` đã mount volume cho `/app/uploads` chưa, và xác nhận `STORAGE_TYPE` trong `.env` (local hoặc minio). Xem [TECHNICAL_NOTES.md — Mục 5](./TECHNICAL_NOTES.md#5-storage--local-vs-minio).
+Check that `docker-compose.yml` mounts a volume for `/app/uploads`, and verify `STORAGE_TYPE` in `.env` (`local` or `minio`). See [TECHNICAL_NOTES.en.md — Section 5](./TECHNICAL_NOTES.en.md#5-storage--local-vs-minio).
 
-### ❌ Docker build lỗi do hết memory
+### ❌ Docker build fails due to memory
 
 ```bash
-# Kiểm tra resource: Docker Desktop → Settings → Resources
-# Khuyến nghị: RAM >= 4GB, Swap >= 2GB
+# Check allocation: Docker Desktop → Settings → Resources
+# Recommended: RAM >= 4GB, Swap >= 2GB
 
-# Build từng service thay vì toàn bộ cùng lúc
+# Build services one at a time instead of all at once
 docker compose build backend
 docker compose build frontend
 docker compose build lms-backend
@@ -706,53 +698,53 @@ docker compose build lms-backend
 
 ---
 
-## 12. Câu Hỏi Thường Gặp
+## 12. FAQ
 
-**Q: Tôi chỉ cần dev Frontend, có cần chạy LMS Backend không?**
+**Q: I'm only working on the Frontend — do I need the LMS Backend?**
 
-Tuỳ vào tính năng bạn đang làm. Nếu chỉ làm UI không liên quan đến LMS, chạy `docker compose up -d postgres backend` là đủ. Nếu cần dữ liệu giả, có thể dùng mock data hoặc MSW (Mock Service Worker).
+It depends on what you're building. If you're working on UI unrelated to LMS features, `docker compose up -d postgres backend` is sufficient. For API mocking, consider using MSW (Mock Service Worker).
 
-**Q: JWT_SECRET có cần giống nhau giữa Backend và LMS không?**
+**Q: Does JWT_SECRET really need to be the same in both backends?**
 
-Có, **bắt buộc**. Cả hai service cùng verify JWT bằng một secret. Nếu khác nhau, LMS sẽ từ chối toàn bộ request có token từ Auth service với lỗi `401`. Xem [TECHNICAL_NOTES.md — Mục 1](./TECHNICAL_NOTES.md#1-jwt--chia-sẻ-secret-giữa-2-backend).
+Yes, **it's mandatory**. Both services verify JWTs with the same secret. If they differ, the LMS will reject all requests carrying Auth-issued tokens with `401 Unauthorized`. See [TECHNICAL_NOTES.en.md — Section 1](./TECHNICAL_NOTES.en.md#1-jwt--sharing-the-secret-between-two-backends).
 
-**Q: Tại sao có 2 database PostgreSQL riêng biệt?**
+**Q: Why are there two separate PostgreSQL databases?**
 
-Đây là thiết kế microservices — mỗi service sở hữu database riêng để độc lập và dễ scale. Auth service quản lý `users`, `events`, `announcements`. LMS service quản lý `courses`, `quizzes`, `enrollments`. User data được sync giữa 2 hệ thống qua API nội bộ.
+This is a microservices design principle — each service owns its data to remain independent and scalable. The Auth service manages `users`, `events`, `announcements`. The LMS manages `courses`, `quizzes`, `enrollments`. User data flows between the two systems via an internal sync API.
 
-**Q: Làm sao để xem database trực tiếp?**
+**Q: How do I view the database directly?**
 
-Dùng bất kỳ PostgreSQL client nào (DBeaver, TablePlus, pgAdmin...):
-- Auth DB: host `localhost`, port `5433`, user/pass từ `.env`
-- LMS DB: host `localhost`, port `5434`, user/pass từ `.env`
+Use any PostgreSQL client (DBeaver, TablePlus, pgAdmin...):
+- Auth DB: host `localhost`, port `5433`, credentials from `.env`
+- LMS DB: host `localhost`, port `5434`, credentials from `.env`
 
-**Q: Làm sao để thêm database migration?**
+**Q: How do I add a database migration?**
 
-Với **Backend (Spring Boot):** Hiện tại `JPA_DDL_AUTO=update` nên Hibernate tự tạo/sửa bảng theo Entity. Để migration có kiểm soát hơn, thêm Flyway vào `pom.xml`. Với **LMS (Go):** Thêm file `.sql` vào `lms-service/migrations/` và dùng `golang-migrate`.
+For **Backend (Spring Boot):** Currently `JPA_DDL_AUTO=update` so Hibernate auto-manages schema. For controlled migrations, add Flyway to `pom.xml`. For **LMS (Go):** Add `.sql` files to `lms-service/migrations/` and use `golang-migrate`.
 
-**Q: Làm sao debug Spring Boot trong IntelliJ IDEA?**
+**Q: How do I debug Spring Boot in IntelliJ IDEA?**
 
 ```bash
 ./mvnw spring-boot:run \
   -Dspring-boot.run.jvmArguments="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"
 ```
 
-Sau đó trong IntelliJ: Run → Attach to Process, chọn port 5005.
+Then in IntelliJ: Run → Attach to Process, select port 5005.
 
 ---
 
-## 📞 Liên Hệ & Hỗ Trợ
+## 📞 Contact & Support
 
-- **Issues:** Tạo issue trên GitHub với template tương ứng
-- **Discussions:** Dùng GitHub Discussions cho câu hỏi chung
+- **Issues:** Create a GitHub issue using the appropriate template
+- **Discussions:** Use GitHub Discussions for general questions
 - **Email:** bdc@hcmut.edu.vn
 
 ---
 
 <div align="center">
 
-[📖 README](../README.md) · [⚠️ Technical Notes](./TECHNICAL_NOTES.md) · [🇬🇧 English Version](./DEVELOPER_GUIDE.en.md)
+[📖 README](../README.en.md) · [⚠️ Technical Notes](./TECHNICAL_NOTES.en.md) · [🇻🇳 Vietnamese Version](./DEVELOPER_GUIDE.md)
 
-*Tài liệu này được cập nhật lần cuối: 02/2026. Nếu bạn phát hiện thông tin lỗi thời, vui lòng tạo PR để cập nhật!* 🙏
+*Last updated: 02/2026. If you find outdated information, please open a PR to fix it!* 🙏
 
 </div>

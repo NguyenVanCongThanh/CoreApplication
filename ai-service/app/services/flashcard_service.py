@@ -1,11 +1,14 @@
 import logging
 from datetime import date, timedelta
+from typing import Optional
 from app.core.database import get_ai_conn
 
 logger = logging.getLogger(__name__)
 
 class FlashcardService:
     MIN_EASINESS = 1.3
+
+    # ── Read ──────────────────────────────────────────────────────────────────
 
     async def list_due_flashcards(self, student_id: int, course_id: int) -> list[dict]:
         async with get_ai_conn() as conn:
@@ -41,10 +44,17 @@ class FlashcardService:
                 """,
                 student_id, course_id, node_id,
             )
-            # Ensure fr rows are not null by replacing them with defaults in the app logic or DB
         return [dict(r) for r in rows]
 
-    async def create_flashcards(self, flashcards_data: list[dict], student_id: int, course_id: int, node_id: int):
+    # ── Write ─────────────────────────────────────────────────────────────────
+
+    async def create_flashcards(
+        self,
+        flashcards_data: list[dict],
+        student_id: int,
+        course_id: int,
+        node_id: int,
+    ) -> list[dict]:
         results = []
         async with get_ai_conn() as conn:
             for item in flashcards_data:
@@ -54,39 +64,130 @@ class FlashcardService:
                     VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
                     RETURNING id, created_at
                     """,
-                    course_id, node_id, student_id, item.get("front_text", ""), item.get("back_text", "")
+                    course_id, node_id, student_id,
+                    item.get("front_text", ""), item.get("back_text", ""),
                 )
-                fc_id = row['id']
-                created_at = row['created_at']
-                
+                fc_id = row["id"]
                 await conn.execute(
                     """
                     INSERT INTO flashcard_repetitions (student_id, flashcard_id, course_id, next_review_date)
                     VALUES ($1, $2, $3, CURRENT_DATE)
                     """,
-                    student_id, fc_id, course_id
+                    student_id, fc_id, course_id,
                 )
                 results.append({
-                    "id": fc_id,
-                    "course_id": course_id,
-                    "node_id": node_id,
+                    "id":         fc_id,
+                    "course_id":  course_id,
+                    "node_id":    node_id,
                     "front_text": item.get("front_text", ""),
-                    "back_text": item.get("back_text", ""),
-                    "status": "ACTIVE",
-                    "created_at": created_at,
+                    "back_text":  item.get("back_text", ""),
+                    "status":     "ACTIVE",
+                    "created_at": row["created_at"],
                 })
         return results
 
-    def _update_sm2(self, ef, interval, reps, quality):
+    # ── LLM generation (used by HTTP endpoint AND Kafka worker) ───────────────
+
+    async def generate_flashcards_with_llm(
+        self,
+        student_id: int,
+        node_id: int,
+        course_id: int,
+        count: int = 3,
+        language: str = "vi",
+        existing_fronts: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """
+        Full pipeline: RAG retrieval → LLM generation → DB persist.
+        Called by both the HTTP endpoint and the Kafka worker (GENERATE_FLASHCARD command).
+        Returns the persisted flashcard dicts.
+        """
+        from app.core.config import get_settings
+        from app.core.database import get_ai_conn
+        from app.core.llm import chat_complete_json, build_flashcard_generation_prompt
+        from app.services.rag_service import rag_service
+
+        settings = get_settings()
+
+        # 1. Get node metadata from AI DB
+        async with get_ai_conn() as conn:
+            node = await conn.fetchrow(
+                "SELECT id, name, name_vi, name_en FROM knowledge_nodes WHERE id = $1",
+                node_id,
+            )
+        if not node:
+            raise ValueError(f"Knowledge node {node_id} not found")
+
+        node_name = node["name_vi"] if language == "vi" and node["name_vi"] else node["name"]
+
+        # 2. Get wrong answers context from AI DB
+        async with get_ai_conn() as conn:
+            mistakes = await conn.fetch(
+                """
+                SELECT explanation AS gap
+                FROM ai_diagnoses
+                WHERE student_id = $1 AND node_id = $2
+                  AND explanation IS NOT NULL AND explanation != ''
+                ORDER BY created_at DESC
+                LIMIT 3
+                """,
+                student_id, node_id,
+            )
+        wrong_answers_context = (
+            "\n".join(r["gap"] for r in mistakes if r["gap"])
+            if mistakes
+            else ("Không có thông tin lỗi sai cụ thể. Tập trung khái niệm nền tảng."
+                  if language == "vi"
+                  else "No specific error info available. Focus on foundational concepts.")
+        )
+
+        # 3. RAG context
+        chunks = await rag_service.search_multilingual(
+            query=node_name, course_id=course_id, node_id=node_id, top_k=3,
+        )
+        if not chunks:
+            chunks = await rag_service.search_multilingual(
+                query=node_name, course_id=course_id, top_k=2,
+            )
+        context_texts = [c.chunk_text for c in chunks] or [f"Chủ đề: {node_name}"]
+
+        # 4. LLM generation
+        messages = build_flashcard_generation_prompt(
+            context_chunks=context_texts,
+            node_name=node_name,
+            wrong_answers_context=wrong_answers_context,
+            count=count,
+            language=language,
+            existing_fronts=existing_fronts,
+        )
+        result = await chat_complete_json(
+            messages=messages,
+            model=settings.quiz_model,
+            temperature=0.7,
+        )
+        if "flashcards" not in result:
+            raise ValueError("Missing 'flashcards' key in LLM response")
+
+        # 5. Persist and return
+        return await self.create_flashcards(
+            result["flashcards"],
+            student_id=student_id,
+            course_id=course_id,
+            node_id=node_id,
+        )
+
+    # ── SM-2 review ───────────────────────────────────────────────────────────
+
+    def _update_sm2(self, ef: float, interval: int, reps: int, quality: int):
         new_ef = ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
         new_ef = max(self.MIN_EASINESS, new_ef)
         if quality < 3:
             new_interval, new_reps = 1, 0
         else:
             new_reps = reps + 1
-            if new_reps == 1: new_interval = 1
+            if new_reps == 1:   new_interval = 1
             elif new_reps == 2: new_interval = 6
-            else: new_interval = round(interval * new_ef)
+            else:               new_interval = round(interval * new_ef)
         return new_ef, new_interval, new_reps
 
     async def review_flashcard(self, student_id: int, flashcard_id: int, quality: int) -> dict:
@@ -102,35 +203,33 @@ class FlashcardService:
             if not row:
                 raise ValueError("Flashcard repetition not found")
 
-            ef = float(row["easiness_factor"])
-            interval = int(row["interval_days"])
-            reps = int(row["repetitions"])
-            course_id = row["course_id"]
-
-            new_ef, new_interval, new_reps = self._update_sm2(ef, interval, reps, quality)
+            new_ef, new_interval, new_reps = self._update_sm2(
+                float(row["easiness_factor"]),
+                int(row["interval_days"]),
+                int(row["repetitions"]),
+                quality,
+            )
             next_date = date.today() + timedelta(days=new_interval)
 
             await conn.execute(
                 """
                 UPDATE flashcard_repetitions
-                SET easiness_factor = $1,
-                    interval_days = $2,
-                    repetitions = $3,
-                    quality_last = $4,
-                    next_review_date = $5,
-                    last_reviewed_at = NOW(),
-                    updated_at = NOW()
+                SET easiness_factor = $1, interval_days = $2, repetitions = $3,
+                    quality_last = $4, next_review_date = $5,
+                    last_reviewed_at = NOW(), updated_at = NOW()
                 WHERE student_id = $6 AND flashcard_id = $7
                 """,
-                new_ef, new_interval, new_reps, quality, next_date, student_id, flashcard_id
+                new_ef, new_interval, new_reps, quality, next_date,
+                student_id, flashcard_id,
             )
 
         return {
-            "flashcard_id": flashcard_id,
+            "flashcard_id":    flashcard_id,
             "easiness_factor": round(new_ef, 2),
-            "interval_days": new_interval,
-            "repetitions": new_reps,
+            "interval_days":   new_interval,
+            "repetitions":     new_reps,
             "next_review_date": next_date.isoformat(),
         }
+
 
 flashcard_srv = FlashcardService()

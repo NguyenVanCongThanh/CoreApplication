@@ -7,35 +7,29 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
 
-    # ── AI PostgreSQL (sole database for AI service) ──────────────────────────
-    # Stores: ai_diagnoses, flashcards, spaced_repetitions, ai_quiz_generations,
-    #         student_knowledge_progress, embedding_reindex_jobs, document_chunks
-    #         (metadata only — vectors live in Qdrant when USE_QDRANT=true)
+    # ── AI PostgreSQL ──────────────────────────────────────────────────────────
     ai_db_host: str = "postgres-ai"
     ai_db_port: int = 5432
     ai_db_user: str = "ai_user"
     ai_db_password: str = "ai_password"
     ai_db_name: str = "ai_db"
-    ai_db_min_connections: int = 2
-    ai_db_max_connections: int = 15
+    ai_db_min_connections: int = 5
+    ai_db_max_connections: int = 20
 
     # ── Qdrant Vector Store ────────────────────────────────────────────────────
-    # Collections: document_chunks (1024d) + knowledge_nodes (1024d)
-    # Replaces pgvector for all semantic search when use_qdrant=true.
     qdrant_host: str = "qdrant"
-    qdrant_port: int = 6333          # HTTP/REST port
-    qdrant_grpc_port: int = 6334     # gRPC port (prefer for batch ops)
-    qdrant_prefer_grpc: bool = True  # gRPC is significantly faster for batches
-    qdrant_api_key: str = ""         # Set for Qdrant Cloud / auth-enabled deployments
+    qdrant_port: int = 6333
+    qdrant_grpc_port: int = 6334
+    qdrant_prefer_grpc: bool = True
+    qdrant_api_key: str = ""
 
     # ── Neo4j Knowledge Graph ──────────────────────────────────────────────────
-    neo4j_uri:      str = "bolt://neo4j:7687"
-    neo4j_user:     str = "neo4j"
+    neo4j_uri: str = "bolt://neo4j:7687"
+    neo4j_user: str = "neo4j"
     neo4j_password: str = "neo4j_password"
-    neo4j_enabled:  bool = True   # set False để dùng pgvector-only (rollback safe)
+    neo4j_enabled: bool = True
 
-    # Feature flag: enables Qdrant backend.
-    # Set to false to keep legacy pgvector behaviour for safe rollback.
+    # Feature flags
     use_qdrant: bool = True
 
     # Redis
@@ -74,8 +68,7 @@ class Settings(BaseSettings):
     top_k_chunks: int = 3
     use_native_multilingual: bool = True
 
-    # Celery
-    celery_task_time_limit: int = 3600
+    # Kafka worker tuning
     reindex_batch_size: int = 5
 
     # Internal

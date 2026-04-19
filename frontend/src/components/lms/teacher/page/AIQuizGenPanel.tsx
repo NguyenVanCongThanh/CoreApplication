@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Sparkles, RefreshCw, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, BookOpen, AlertCircle,
-  Layers, Zap, Clock
+  Layers, Zap, Clock, Search, Filter, ArrowUpDown
 } from "lucide-react";
 import aiService, { GeneratedQuestion, KnowledgeNode, KnowledgeGraphEdge } from "@/services/aiService";
 import { AINodeManager } from "@/components/lms/teacher/ai/AINodeManager";
@@ -177,6 +177,12 @@ export function AIQuizGenPanel({ courseId }: Props) {
   const [isQuizSelectorOpen, setIsQuizSelectorOpen] = useState(false);
   const [pendingQuestionId, setPendingQuestionId] = useState<number | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  
+  // Filtering & Sorting states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterBloom, setFilterBloom] = useState<string>("all");
+  const [filterNode, setFilterNode]   = useState<string>("all");
+  const [sortBy, setSortBy]           = useState<"newest" | "oldest" | "bloom" | "node">("newest");
 
   const loadNodes = useCallback(async () => {
     try {
@@ -291,6 +297,59 @@ export function AIQuizGenPanel({ courseId }: Props) {
     await aiService.rejectQuestion(id, "Câu hỏi không phù hợp");
     await loadDrafts();
   };
+
+  // Derived unique nodes for filter dropdown
+  const uniqueNodes = useMemo(() => {
+    const nodesInDrafts = drafts
+      .map(d => d.node_name)
+      .filter((name): name is string => !!name);
+    return Array.from(new Set(nodesInDrafts)).sort();
+  }, [drafts]);
+
+  // Main filtering & sorting logic
+  const filteredDrafts = useMemo(() => {
+    let result = [...drafts];
+
+    // 1. Filter by status (only show DRAFT in the main view)
+    result = result.filter(d => d.status === "DRAFT");
+
+    // 2. Filter by Bloom level
+    if (filterBloom !== "all") {
+      result = result.filter(d => d.bloom_level === filterBloom);
+    }
+
+    // 3. Filter by Knowledge Node
+    if (filterNode !== "all") {
+      result = result.filter(d => d.node_name === filterNode);
+    }
+
+    // 4. Search by text
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(d => 
+        d.question_text.toLowerCase().includes(q) || 
+        d.node_name?.toLowerCase().includes(q)
+      );
+    }
+
+    // 5. Sort
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case "oldest": return a.id - b.id;
+        case "bloom": {
+          const idxA = BLOOM_LEVELS.findIndex(bl => bl.id === a.bloom_level);
+          const idxB = BLOOM_LEVELS.findIndex(bl => bl.id === b.bloom_level);
+          return idxA - idxB;
+        }
+        case "node": return (a.node_name || "").localeCompare(b.node_name || "");
+        case "newest":
+        default:
+          return b.id - a.id;
+      }
+    });
+
+    return result;
+  }, [drafts, filterBloom, filterNode, searchQuery, sortBy]);
 
   const draftCount = drafts.filter((d) => d.status === "DRAFT").length;
 
@@ -454,7 +513,10 @@ export function AIQuizGenPanel({ courseId }: Props) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              {drafts.length} câu hỏi · {draftCount} chờ duyệt
+              {filteredDrafts.length === draftCount 
+                ? `${draftCount} chờ duyệt` 
+                : `${filteredDrafts.length} / ${draftCount} kết quả`
+              }
             </p>
             <button onClick={loadDrafts} disabled={loadingDrafts}
               className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors disabled:opacity-40">
@@ -463,20 +525,84 @@ export function AIQuizGenPanel({ courseId }: Props) {
             </button>
           </div>
 
+          {/* Filter Bar */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm nội dung câu hỏi..."
+                className="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-violet-500/30 transition-all placeholder:text-slate-400"
+              />
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-1 rounded-lg">
+                <Filter className="w-3 h-3" />
+                <span className="font-bold uppercase tracking-tighter">Bloom:</span>
+                <select
+                  value={filterBloom}
+                  onChange={e => setFilterBloom(e.target.value)}
+                  className="bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0"
+                >
+                  <option value="all">Tất cả</option>
+                  {BLOOM_LEVELS.map(b => (
+                    <option key={b.id} value={b.id}>{b.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {uniqueNodes.length > 0 && (
+                <div className="flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-1 rounded-lg">
+                  <Filter className="w-3 h-3" />
+                  <span className="font-bold uppercase tracking-tighter">Node:</span>
+                  <select
+                    value={filterNode}
+                    onChange={e => setFilterNode(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 max-w-[120px]"
+                  >
+                    <option value="all">Tất cả</option>
+                    {uniqueNodes.map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-1 rounded-lg ml-auto">
+                <ArrowUpDown className="w-3 h-3" />
+                <span className="font-bold uppercase tracking-tighter">Xếp:</span>
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as any)}
+                  className="bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0"
+                >
+                  <option value="newest">Mới</option>
+                  <option value="oldest">Cũ</option>
+                  <option value="bloom">Bloom</option>
+                  <option value="node">Node</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           {loadingDrafts ? (
             <div className="flex items-center justify-center py-8 gap-3">
               <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
               <p className="text-sm text-slate-500">Đang tải…</p>
             </div>
-          ) : drafts.length === 0 ? (
-            <div className="py-8 text-center">
-              <Layers className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Chưa có câu hỏi nào. Hãy tạo mới ở tab Tạo mới.
+          ) : filteredDrafts.length === 0 ? (
+            <div className="py-8 text-center bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800/50">
+              <Layers className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2 opacity-50" />
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                {searchQuery || filterBloom !== "all" || filterNode !== "all" 
+                  ? "Không tìm thấy câu hỏi phù hợp."
+                  : "Chưa có câu hỏi nào. Hãy tạo mới ở tab Tạo mới."}
               </p>
             </div>
           ) : (
-            drafts.map((q) => (
+            filteredDrafts.map((q) => (
               <div key={q.id} className={approvingId === q.id ? "opacity-50 pointer-events-none" : ""}>
                 <DraftCard
                   q={q}
