@@ -166,7 +166,7 @@ export const authOptions: NextAuthOptions = {
       try {
         const accessToken = (token as any).accessToken;
         if (accessToken) {
-          await fetch(`/apiv1/api/auth/logout`, {
+          await fetch(`${process.env.BACKEND_URL}/api/auth/logout`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
