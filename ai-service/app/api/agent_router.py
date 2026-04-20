@@ -1,0 +1,160 @@
+"""
+ai-service/app/api/agent_router.py
+
+FastAPI router for the Agent chat system.
+
+Endpoints:
+  POST /agents/chat       — SSE streaming chat response
+  GET  /agents/sessions    — List user sessions
+  GET  /agents/health      — Agent system health check
+
+The /agents/chat endpoint uses Server-Sent Events (SSE) to stream
+AgentEvents in real-time to the frontend. Each event is a JSON line
+in SSE format.
+
+Security: All endpoints validate the X-AI-Secret header (same as
+other ai-service endpoints) or accept proxied JWT from lms-service.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from app.agents.core.orchestrator import handle_chat_message
+from app.agents.memory.mtm import mtm
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+# ── Request/Response models ──────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=5000)
+    agent_type: str = Field(
+        default="mentor",
+        pattern="^(teacher|mentor)$",
+    )
+    course_id: Optional[int] = None
+    session_id: Optional[str] = None
+    user_id: int = Field(..., gt=0)
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[dict]
+
+
+# ── Auth helper ──────────────────────────────────────────────────────────────
+
+def _verify_secret(x_ai_secret: str | None):
+    """Verify the X-AI-Secret header."""
+    if not x_ai_secret or x_ai_secret != settings.ai_service_secret:
+        raise HTTPException(status_code=401, detail="Invalid AI service secret")
+
+
+# ── SSE Chat Endpoint ───────────────────────────────────────────────────────
+
+@router.post("/chat")
+async def chat_endpoint(
+    body: ChatRequest,
+    x_ai_secret: Optional[str] = Header(None, alias="X-AI-Secret"),
+):
+    """
+    SSE streaming chat endpoint.
+
+    The client sends a POST with the message and receives a stream
+    of Server-Sent Events. Each event is a JSON object with:
+      - type: event type (text_delta, tool_start, tool_result, etc.)
+      - data: event payload
+      - session_id: the active session
+      - turn_id: identifier for this turn
+
+    Example frontend usage:
+    ```javascript
+    const response = await fetch('/api/ai/agents/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-AI-Secret': '...'},
+        body: JSON.stringify({message: "Explain OOP", agent_type: "mentor", user_id: 1}),
+    });
+    const reader = response.body.getReader();
+    // Read SSE events...
+    ```
+    """
+    _verify_secret(x_ai_secret)
+
+    logger.info(
+        "Chat request: user=%d, agent=%s, msg='%s'",
+        body.user_id, body.agent_type, body.message[:60],
+    )
+
+    async def event_stream():
+        try:
+            async for event in handle_chat_message(
+                user_id=body.user_id,
+                agent_type=body.agent_type,
+                message=body.message,
+                course_id=body.course_id,
+                session_id=body.session_id,
+            ):
+                yield event.to_sse()
+        except Exception as exc:
+            logger.error("Chat stream error: %s", exc)
+            from app.agents.events import AgentEvent, AgentEventType
+            error_event = AgentEvent(
+                type=AgentEventType.ERROR,
+                data={"error": str(exc)},
+                session_id=body.session_id or "error",
+            )
+            yield error_event.to_sse()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+# ── Session history ──────────────────────────────────────────────────────────
+
+@router.get("/sessions")
+async def list_sessions(
+    user_id: int,
+    agent_type: Optional[str] = None,
+    limit: int = 10,
+    x_ai_secret: Optional[str] = Header(None, alias="X-AI-Secret"),
+):
+    """List recent chat sessions for a user."""
+    _verify_secret(x_ai_secret)
+
+    sessions = await mtm.list_sessions(
+        user_id=user_id,
+        agent_type=agent_type,
+        limit=limit,
+    )
+    return {"sessions": sessions}
+
+
+# ── Health check ─────────────────────────────────────────────────────────────
+
+@router.get("/health")
+async def agent_health():
+    """Agent system health check."""
+    from app.agents.tools.registry import list_all_tools
+
+    tools = list_all_tools()
+    return {
+        "status": "ok",
+        "agents": list(tools.keys()),
+        "tools": {k: len(v) for k, v in tools.items()},
+    }

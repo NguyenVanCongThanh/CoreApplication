@@ -1,0 +1,575 @@
+"""
+ai-service/app/agents/core/react_loop.py
+
+ReAct Loop — the central reasoning engine for both agents.
+
+This is the CORE of the entire multi-agent system. It orchestrates:
+  1. Intent classification (Router)
+  2. Memory assembly (ContextBuilder)
+  3. Clarification gating
+  4. Iterative Reason+Act loop with Groq streaming
+  5. Tool execution via the Registry
+  6. STM persistence and MTM compression triggers
+
+Flow diagram:
+
+  User message
+      │
+      ▼
+  ┌──────────────┐
+  │ classify_intent│ ← fast LLM (8b)
+  └──────┬───────┘
+         ▼
+  ┌──────────────────┐
+  │ context_builder   │ ← weighted memory fetch
+  │  .build(intent)   │
+  └──────┬───────────┘
+         ▼
+  ┌──────────────────┐
+  │ should_clarify?   │ ← fast LLM check
+  │  confidence < 0.7 │──yes──▶ yield CLARIFICATION → return
+  └──────┬───────────┘
+         │ no
+         ▼
+  ┌─────────────────────────────────────────┐
+  │ for iteration in range(MAX_ITERATIONS): │
+  │   1. Groq streaming (70b + tools)       │
+  │   2. If text only → yield deltas → DONE │
+  │   3. If tool_calls:                     │
+  │      a. yield TOOL_START                │
+  │      b. execute_tool()                  │
+  │      c. yield TOOL_RESULT / UI          │
+  │      d. append tool result to messages  │
+  │      e. loop back to step 1             │
+  └─────────────────────────────────────────┘
+         │
+         ▼
+  ┌──────────────────┐
+  │ Post-turn:        │
+  │  - Save to STM    │
+  │  - Check compress │
+  │  - Trigger MTM    │
+  └──────────────────┘
+
+Max iterations: 5 (prevents infinite tool-calling loops)
+Model: quiz_model (llama-3.3-70b-versatile) for reasoning quality
+Streaming: Groq native streaming with tool_calls collection
+"""
+from __future__ import annotations
+
+import json
+import logging
+import time
+import uuid
+from typing import AsyncIterator
+
+from app.agents.events import AgentEvent, AgentEventType
+from app.agents.memory.stm import stm
+from app.agents.memory.mtm import mtm
+from app.agents.memory.compressor import compress_conversation
+from app.agents.memory.context_builder import context_builder
+from app.agents.core.router import classify_intent
+from app.agents.core.clarification import should_clarify
+from app.agents.core.prompts import build_system_prompt
+from app.agents.tools.registry import (
+    get_tool_schemas, get_tool_by_name, execute_tool,
+)
+from app.core.config import get_settings
+from app.core.llm import get_groq_client
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+MAX_ITERATIONS = 5
+MAX_CLARIFICATIONS_PER_SESSION = 2
+COMPRESS_CHECK_INTERVAL = 6  # check compression every N turns
+
+
+async def run_react_loop(
+    session_id: str,
+    user_id: int,
+    agent_type: str,
+    user_message: str,
+    course_id: int | None = None,
+) -> AsyncIterator[AgentEvent]:
+    """
+    Execute the full ReAct loop for a single user turn.
+
+    This is an async generator that yields AgentEvents as they happen.
+    The caller (SSE endpoint) iterates over these events and streams
+    them to the frontend.
+
+    Args:
+        session_id: MTM session UUID.
+        user_id: Authenticated user ID.
+        agent_type: "teacher" or "mentor".
+        user_message: The user's raw message text.
+        course_id: Optional course context.
+
+    Yields:
+        AgentEvent objects in chronological order.
+    """
+    turn_id = uuid.uuid4().hex[:8]
+    start_time = time.monotonic()
+
+    logger.info(
+        "ReAct start: session=%s user=%d agent=%s msg='%s'",
+        session_id[:8], user_id, agent_type, user_message[:80],
+    )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 1: Classify intent (fast — ~100ms)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    intent_type = await classify_intent(user_message, agent_type)
+
+    yield AgentEvent(
+        type=AgentEventType.THINKING,
+        data={"step": "intent", "intent": intent_type},
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+
+    logger.debug("Intent classified: %s (%.0fms)",
+                 intent_type, (time.monotonic() - start_time) * 1000)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 2: Assemble weighted context from all memory tiers
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    memory_ctx = await context_builder.build(
+        user_id=user_id,
+        session_id=session_id,
+        agent_type=agent_type,
+        query=user_message,
+        course_id=course_id,
+        intent_type=intent_type,
+    )
+
+    yield AgentEvent(
+        type=AgentEventType.THINKING,
+        data={
+            "step": "memory",
+            "token_estimate": memory_ctx["token_estimate"],
+            "stm_messages": len(memory_ctx["stm_messages"]),
+        },
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+
+    logger.debug(
+        "Context assembled: tokens~%d, stm=%d msgs (%.0fms)",
+        memory_ctx["token_estimate"],
+        len(memory_ctx["stm_messages"]),
+        (time.monotonic() - start_time) * 1000,
+    )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 3: Clarification Gate
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Count how many clarifications have already happened this session
+    stm_history = memory_ctx["stm_messages"]
+    clarify_count = sum(
+        1 for m in stm_history if m.get("role") == "clarification"
+    )
+
+    if clarify_count < MAX_CLARIFICATIONS_PER_SESSION:
+        tool_schemas = get_tool_schemas(agent_type)
+        mtm_ctx = memory_ctx["raw"].get("mtm", {})
+
+        clarify_result = await should_clarify(
+            user_message=user_message,
+            tool_schemas=tool_schemas,
+            session_context=mtm_ctx,
+        )
+
+        if (clarify_result.get("needs_clarification")
+                and clarify_result.get("confidence", 1.0) < 0.7):
+            question = clarify_result.get(
+                "clarification_question",
+                "Bạn có thể nói rõ hơn không?",
+            )
+            options = clarify_result.get("clarification_options", [])
+
+            logger.info("Clarification triggered: '%s'", question[:60])
+
+            # Save to STM
+            await stm.append(session_id, "user", user_message)
+            await stm.append(session_id, "clarification", question)
+
+            yield AgentEvent(
+                type=AgentEventType.CLARIFICATION,
+                data={
+                    "question": question,
+                    "options": options,
+                    "missing": clarify_result.get("missing_fields", []),
+                },
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            yield AgentEvent(
+                type=AgentEventType.DONE,
+                data={"reason": "clarification_requested"},
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 4: Build messages array for the LLM
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    system_prompt = build_system_prompt(
+        agent_type=agent_type,
+        memory_context=memory_ctx["prompt_section"],
+    )
+
+    # Start with system prompt
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+    # Add STM history (filtered — only user/assistant/tool roles)
+    for m in stm_history:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+        elif role == "tool" and content:
+            messages.append({
+                "role": "tool",
+                "content": content,
+                "tool_call_id": m.get("tool_call_id", "unknown"),
+            })
+
+    # Add the current user message
+    messages.append({"role": "user", "content": user_message})
+
+    # Save user message to STM
+    await stm.append(session_id, "user", user_message)
+
+    # Get tool schemas for this agent
+    tool_schemas = get_tool_schemas(agent_type)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 5: ReAct Iterations
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final_text = ""
+
+    for iteration in range(MAX_ITERATIONS):
+        iter_start = time.monotonic()
+        iter_id = f"{turn_id}-{iteration}"
+
+        logger.debug("ReAct iteration %d/%d", iteration + 1, MAX_ITERATIONS)
+
+        # ── 5a. Call Groq with streaming ─────────────────────────────────────
+        client = get_groq_client()
+
+        try:
+            stream = await client.chat.completions.create(
+                model=settings.quiz_model,  # 70b for reasoning quality
+                messages=messages,
+                tools=tool_schemas if tool_schemas else None,
+                tool_choice="auto" if tool_schemas else None,
+                stream=True,
+                temperature=0.3,
+                max_tokens=2048,
+            )
+        except Exception as exc:
+            logger.error("Groq API call failed: %s", exc)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={"error": str(exc), "iteration": iteration},
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return
+
+        # ── 5b. Collect streaming response ───────────────────────────────────
+        collected_text = ""
+        collected_tool_calls: list[dict] = []
+
+        try:
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta
+                if delta is None:
+                    continue
+
+                # Stream text deltas to frontend
+                if delta.content:
+                    collected_text += delta.content
+                    yield AgentEvent(
+                        type=AgentEventType.TEXT_DELTA,
+                        data={"delta": delta.content},
+                        session_id=session_id,
+                        turn_id=iter_id,
+                    )
+
+                # Collect tool calls (streamed incrementally)
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        # Extend the list if needed
+                        while tc.index >= len(collected_tool_calls):
+                            collected_tool_calls.append({
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            })
+
+                        entry = collected_tool_calls[tc.index]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+
+        except Exception as exc:
+            logger.error("Stream reading failed: %s", exc)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={"error": f"Stream error: {exc}", "iteration": iteration},
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return
+
+        iter_ms = (time.monotonic() - iter_start) * 1000
+        logger.debug(
+            "Iteration %d: text=%d chars, tool_calls=%d (%.0fms)",
+            iteration + 1, len(collected_text),
+            len(collected_tool_calls), iter_ms,
+        )
+
+        # ── 5c. NO tool calls → text response → DONE ────────────────────────
+        if not collected_tool_calls:
+            final_text = collected_text
+
+            # Save assistant response to STM
+            await stm.append(session_id, "assistant", collected_text)
+
+            yield AgentEvent(
+                type=AgentEventType.DONE,
+                data={
+                    "text": collected_text,
+                    "iterations": iteration + 1,
+                    "intent": intent_type,
+                },
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+
+            # Post-turn: check if compression is needed
+            await _post_turn_maintenance(
+                session_id=session_id,
+                user_id=user_id,
+                agent_type=agent_type,
+            )
+            return
+
+        # ── 5d. TOOL CALLS → execute and loop ───────────────────────────────
+        # Add assistant message with tool_calls to the conversation
+        assistant_msg: dict = {
+            "role": "assistant",
+            "content": collected_text or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": tc["arguments"],
+                    },
+                }
+                for tc in collected_tool_calls
+                if tc["id"] and tc["name"]  # skip incomplete tool calls
+            ],
+        }
+        messages.append(assistant_msg)
+
+        # Execute each tool call
+        for tc in collected_tool_calls:
+            tool_name = tc["name"]
+            if not tool_name:
+                continue
+
+            # Parse arguments
+            try:
+                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Failed to parse tool args: name=%s, raw='%s'",
+                    tool_name, tc["arguments"][:200],
+                )
+                args = {}
+
+            # ── Yield TOOL_START ─────────────────────────────────────────
+            yield AgentEvent(
+                type=AgentEventType.TOOL_START,
+                data={"tool": tool_name, "args": args},
+                session_id=session_id,
+                turn_id=iter_id,
+            )
+
+            logger.info("Executing tool: %s(%s)", tool_name, list(args.keys()))
+
+            # ── Execute the tool ─────────────────────────────────────────
+            tool_result = await execute_tool(
+                name=tool_name,
+                arguments=args,
+                user_id=user_id,
+            )
+
+            # ── Yield UI component if present ────────────────────────────
+            if tool_result.ui_instruction:
+                yield AgentEvent(
+                    type=AgentEventType.UI_COMPONENT,
+                    data=tool_result.ui_instruction,
+                    session_id=session_id,
+                    turn_id=iter_id,
+                )
+
+            # ── Yield HITL if pending approval ───────────────────────────
+            if tool_result.status == "pending_human_approval":
+                yield AgentEvent(
+                    type=AgentEventType.HITL_REQUEST,
+                    data={
+                        "tool": tool_name,
+                        "message": tool_result.message,
+                        "data": tool_result.data,
+                        "ui_instruction": tool_result.ui_instruction,
+                    },
+                    session_id=session_id,
+                    turn_id=iter_id,
+                )
+
+            # ── Yield TOOL_RESULT ────────────────────────────────────────
+            # Build a compact summary for the LLM
+            result_summary = {
+                "status": tool_result.status,
+                "message": tool_result.message,
+                "data": tool_result.data,
+            }
+
+            yield AgentEvent(
+                type=AgentEventType.TOOL_RESULT,
+                data={
+                    "tool": tool_name,
+                    "status": tool_result.status,
+                    "message": tool_result.message,
+                },
+                session_id=session_id,
+                turn_id=iter_id,
+            )
+
+            # ── Add tool result to messages for next LLM iteration ───────
+            result_content = json.dumps(
+                result_summary,
+                ensure_ascii=False,
+                default=str,
+            )
+            # Truncate very large tool results to save tokens
+            if len(result_content) > 3000:
+                result_content = result_content[:3000] + '..."}'
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": result_content,
+            })
+
+            logger.info(
+                "Tool result: %s → %s (%d chars)",
+                tool_name, tool_result.status, len(result_content),
+            )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Max iterations reached — should rarely happen
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    logger.warning("ReAct max iterations reached: session=%s", session_id[:8])
+
+    fallback = (
+        "Tôi đã thực hiện nhiều bước nhưng chưa hoàn tất. "
+        "Bạn có thể thử lại với yêu cầu cụ thể hơn không?"
+    )
+    await stm.append(session_id, "assistant", fallback)
+
+    yield AgentEvent(
+        type=AgentEventType.TEXT_DELTA,
+        data={"delta": fallback},
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+    yield AgentEvent(
+        type=AgentEventType.DONE,
+        data={
+            "text": fallback,
+            "iterations": MAX_ITERATIONS,
+            "reason": "max_iterations",
+        },
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+
+    total_ms = (time.monotonic() - start_time) * 1000
+    logger.info("ReAct finished: session=%s, %.0fms", session_id[:8], total_ms)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Post-turn maintenance
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async def _post_turn_maintenance(
+    session_id: str,
+    user_id: int,
+    agent_type: str,
+) -> None:
+    """
+    Background maintenance after a turn completes.
+
+    Checks if STM needs compression to MTM. Runs non-blocking
+    so it doesn't delay the DONE event.
+    """
+    try:
+        # Increment turn count
+        turn_count = await mtm.increment_turn_count(session_id)
+
+        # Check compression every N turns
+        if turn_count % COMPRESS_CHECK_INTERVAL != 0:
+            return
+
+        if await stm.should_compress(session_id):
+            logger.info(
+                "Triggering MTM compression: session=%s, turn=%d",
+                session_id[:8], turn_count,
+            )
+
+            # Get all STM messages for compression
+            all_messages = await stm.get_all(session_id)
+
+            # Get existing MTM context for merging
+            existing_ctx = await mtm.get_context(session_id)
+
+            # Compress
+            compressed = await compress_conversation(
+                messages=all_messages,
+                agent_type=agent_type,
+                existing_ctx=existing_ctx,
+            )
+
+            # Save to MTM
+            await mtm.save_compressed(
+                session_id=session_id,
+                compressed_ctx=compressed,
+                turn_count=turn_count,
+            )
+
+            # Trim STM to keep only recent messages
+            await stm.trim_to_recent(session_id, keep_last=4)
+
+            logger.info(
+                "MTM compression done: session=%s, keys=%s",
+                session_id[:8], list(compressed.keys()),
+            )
+
+    except Exception as exc:
+        # Don't let maintenance failures break the chat
+        logger.error("Post-turn maintenance failed: %s", exc)

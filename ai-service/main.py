@@ -21,6 +21,7 @@ from app.api.endpoints.flashcards import router as flashcards_router
 from app.api.endpoints.auto_index import router as auto_index_router, graph_router
 from app.api.endpoints.admin      import router as admin_router
 from app.api.endpoints.health     import router as health_router
+from app.api.agent_router         import router as agent_router
 
 settings = get_settings()
 logger   = logging.getLogger(__name__)
@@ -123,3 +124,4 @@ app.include_router(flashcards_router, prefix="/ai")
 app.include_router(auto_index_router, prefix="/ai")
 app.include_router(graph_router,      prefix="/ai")
 app.include_router(admin_router,      prefix="/ai")
+app.include_router(agent_router,      prefix="/ai")
