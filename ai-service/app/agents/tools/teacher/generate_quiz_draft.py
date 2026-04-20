@@ -8,26 +8,27 @@ before they are published to the LMS.
 from __future__ import annotations
 
 import logging
-
+import httpx
 from app.agents.tools.base_tool import BaseTool, ToolResult
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class GenerateQuizDraftTool(BaseTool):
     name = "generate_quiz_draft"
     description = (
-        "Generate draft quiz questions for a knowledge node in a course. "
-        "Questions are saved as DRAFT status and require teacher approval "
-        "before being published. Use this when the teacher asks to create "
-        "quiz questions, test questions, or assessments for a topic."
+        "Generate a full quiz with questions, title, and configuration for a topic. "
+        "The tool suggests appropriate questions, a quiz title, and time limit. "
+        "The teacher then reviews and publishes it to a specific course section."
     )
     parameters = {
         "type": "object",
         "properties": {
             "course_id": {
                 "type": "integer",
-                "description": "The course ID to generate questions for.",
+                "description": "The course ID.",
             },
             "node_id": {
                 "type": "integer",
@@ -40,37 +41,40 @@ class GenerateQuizDraftTool(BaseTool):
                     "enum": ["remember", "understand", "apply",
                              "analyze", "evaluate", "create"],
                 },
-                "description": (
-                    "Bloom taxonomy levels for question difficulty. "
-                    "Defaults to all levels if not specified."
-                ),
+                "description": "Bloom taxonomy levels for question difficulty.",
             },
             "num_questions_per_level": {
                 "type": "integer",
-                "description": "Number of questions per Bloom level. Default: 1.",
-                "default": 1,
+                "description": "Number of questions per level. Default: 2.",
+                "default": 2,
             },
             "language": {
                 "type": "string",
                 "enum": ["vi", "en"],
-                "description": "Language for generated questions. Default: vi.",
                 "default": "vi",
             },
+            "preferred_title": {
+                "type": "string",
+                "description": "Optional specific title the user wants for the quiz.",
+            }
         },
         "required": ["course_id", "node_id"],
     }
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.services.quiz_service import quiz_gen_service
+        from app.core.llm import chat_complete_json
 
         course_id = kwargs["course_id"]
         node_id = kwargs["node_id"]
         bloom_levels = kwargs.get("bloom_levels")
-        num_per_level = kwargs.get("num_questions_per_level", 1)
+        num_per_level = kwargs.get("num_questions_per_level", 2)
         language = kwargs.get("language", "vi")
-        created_by = kwargs.get("_user_id", 0)  # injected by executor
+        created_by = kwargs.get("_user_id", 0)
+        preferred_title = kwargs.get("preferred_title")
 
         try:
+            # 1. Generate the questions via service
             gen_ids = await quiz_gen_service.generate_for_node(
                 node_id=node_id,
                 course_id=course_id,
@@ -80,12 +84,47 @@ class GenerateQuizDraftTool(BaseTool):
                 questions_per_level=num_per_level,
             )
 
-            # Fetch the generated drafts for preview
+            # Fetch the generated drafts
             drafts = await quiz_gen_service.list_drafts(
                 course_id=course_id, node_id=node_id,
             )
-            # Only return the newly created ones
             new_drafts = [d for d in drafts if d.get("id") in gen_ids]
+
+            # 2. Fetch existing sections for suggestion
+            sections = []
+            lms_base = settings.lms_service_url.rstrip("/")
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{lms_base}/api/v1/courses/{course_id}/sections",
+                    headers={"X-AI-Secret": settings.ai_service_secret},
+                )
+                if resp.status_code == 200:
+                    sections = resp.json().get("data") or []
+
+            # 3. Use LLM to suggest Title, Time, and Section
+            topic_name = new_drafts[0].get("node_name", "Chủ đề hiện tại") if new_drafts else "Quiz mới"
+            section_list_str = "\n".join([f"- ID {s['id']}: {s['title']}" for s in sections])
+            
+            lang_note = "Trả về bằng tiếng Việt." if language == "vi" else "Respond in English."
+            
+            prompt = (
+                f"Dựa trên các câu hỏi vừa tạo cho chủ đề '{topic_name}', hãy đề xuất cấu hình cho Quiz Activity này.\n"
+                f"{lang_note}\n\n"
+                f"Input:\n"
+                f"- Số lượng câu hỏi: {len(new_drafts)}\n"
+                f"- Độ khó: {', '.join(bloom_levels) if bloom_levels else 'Đa dạng'}\n"
+                f"- Các chương hiện có:\n{section_list_str if sections else '(Trống)'}\n\n"
+                f"Hãy trả về JSON với các key:\n"
+                f"- 'quiz_title': Tiêu đề phù hợp (Gợi ý: {preferred_title if preferred_title else topic_name})\n"
+                f"- 'time_limit_minutes': Thời gian làm bài hợp lý (10-60 phút)\n"
+                f"- 'suggested_section_id': ID của chương phù hợp nhất để đặt quiz này (hoặc null)\n"
+                f"- 'description': Một mô tả ngắn gọn (1-2 câu)"
+            )
+
+            suggestion = await chat_complete_json(
+                messages=[{"role": "system", "content": prompt}],
+                temperature=0.3,
+            )
 
             preview_data = []
             for d in new_drafts:
@@ -102,37 +141,26 @@ class GenerateQuizDraftTool(BaseTool):
             return ToolResult(
                 status="pending_human_approval",
                 data={
-                    "generated_count": len(gen_ids),
-                    "gen_ids": gen_ids,
+                    **suggestion,
                     "drafts": preview_data,
                 },
-                message=(
-                    f"Đã tạo {len(gen_ids)} câu hỏi nháp. "
-                    f"Vui lòng xem lại và phê duyệt."
-                    if language == "vi" else
-                    f"Generated {len(gen_ids)} draft questions. "
-                    f"Please review and approve."
-                ),
+                message=f"Đã tạo {len(gen_ids)} câu hỏi nháp về '{topic_name}'. Vui lòng cấu hình và xuất bản quiz.",
                 ui_instruction={
-                    "component": "QuizDraftPreview",
+                    "component": "QuizCreationWizard",
                     "props": {
                         "drafts": preview_data,
                         "course_id": course_id,
                         "node_id": node_id,
+                        "initial_config": suggestion
                     },
                 },
             )
 
-        except ValueError as e:
-            return ToolResult(
-                status="error",
-                data={"error": str(e)},
-                message=str(e),
-            )
         except Exception as e:
             logger.error("generate_quiz_draft failed: %s", e)
             return ToolResult(
                 status="error",
                 data={"error": str(e)},
-                message=f"Lỗi khi tạo câu hỏi: {e}",
+                message=f"Lỗi khi tạo quiz: {e}",
             )
+

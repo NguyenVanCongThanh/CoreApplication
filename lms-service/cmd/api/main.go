@@ -461,6 +461,7 @@ func main() {
 				aiCourses.GET("/knowledge-graph", aiHandler.GetCourseKnowledgeGraph)
 
 				aiCourses.GET("/nodes/:nodeId/chunks", aiHandler.GetNodeChunks)
+				aiCourses.DELETE("/nodes/:nodeId", aiHandler.DeleteKnowledgeNode)
 			}
 
 			// Quiz draft review (outside course context)

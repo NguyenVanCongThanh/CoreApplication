@@ -14,6 +14,15 @@ const WIDGET_MAP: Record<string, React.ComponentType<any>> = {
   QuizDraftPreview: dynamic(() =>
     import("./widgets/QuizDraftPreview").then((m) => m.QuizDraftPreview),
   ),
+  ContentDraftPreview: dynamic(() =>
+    import("./widgets/ContentDraftPreview").then((m) => m.ContentDraftPreview),
+  ),
+  QuizCreationWizard: dynamic(() =>
+    import("./widgets/QuizCreationWizard").then((m) => m.QuizCreationWizard),
+  ),
+  PerformanceChart: dynamic(() =>
+    import("./widgets/PerformanceChart").then((m) => m.PerformanceChart),
+  ),
   KnowledgeGapMap: dynamic(() =>
     import("./widgets/KnowledgeGapMap").then((m) => m.KnowledgeGapMap),
   ),

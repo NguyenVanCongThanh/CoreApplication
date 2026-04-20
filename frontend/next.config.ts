@@ -117,6 +117,10 @@ const nextConfig: NextConfig = {
         destination: `${aiUrl}/docs`, 
       },
       {
+        source: '/openapi.json',
+        destination: `${aiUrl}/openapi.json`, 
+      },
+      {
         source: '/ai/redoc',
         destination: `${aiUrl}/redoc`, 
       },

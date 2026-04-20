@@ -31,7 +31,9 @@ export async function postBulkRegister(
 ) {
   const res = await fetch(`/apiv1/api/auth/register/bulk`, {
     method: "POST",
-    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ users: payload }),
   });
   if (!res.ok) {
@@ -65,7 +67,9 @@ export async function updateUser(
 ): Promise<User> {
   const res = await fetch(`/apiv1/api/users/${id}`, {
     method: "PUT",
-    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -96,7 +100,9 @@ export async function updateUserStatus(id: number | string): Promise<User> {
 export async function updateUserRole(id: number | string, role: string): Promise<User> {
   const res = await fetch(`/apiv1/api/users/${id}/role`, {
     method: "PATCH",
-    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ role }),
   });
   if (!res.ok) {

@@ -304,6 +304,13 @@ class AIService {
     const res = await lmsApiClient.post(`/ai/knowledge-graph/link-global`);
     return res.data?.data ?? res.data;
   }
+
+  /**
+   * Deletes a knowledge node across all databases (PG, Qdrant, Neo4j).
+   */
+  async deleteKnowledgeNode(courseId: number, nodeId: number): Promise<void> {
+    await lmsApiClient.delete(`/courses/${courseId}/ai/nodes/${nodeId}`);
+  }
 }
 
 export const aiService = new AIService();
