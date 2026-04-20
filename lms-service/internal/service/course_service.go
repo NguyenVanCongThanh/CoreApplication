@@ -5,12 +5,21 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"example/hello/internal/dto"
 	"example/hello/internal/models"
 	"example/hello/internal/repository"
 	"example/hello/pkg/cache"
 )
+
+// courseListCacheTTL is intentionally short: published courses change rarely,
+// but we want stale data to expire quickly without relying solely on explicit
+// invalidation (defence-in-depth).
+const courseListCacheTTL = 2 * time.Minute
+
+// courseCacheTTL is used for individual course objects.
+const courseCacheTTL = 5 * time.Minute
 
 type CourseService struct {
 	courseRepo     *repository.CourseRepository
@@ -33,7 +42,7 @@ func NewCourseService(
 	}
 }
 
-// CreateCourse creates a new course
+// CreateCourse creates a new course and invalidates the published-list cache.
 func (s *CourseService) CreateCourse(ctx context.Context, req *dto.CreateCourseRequest, creatorID int64) (*dto.CourseResponse, error) {
 	course := &models.Course{
 		Title:        req.Title,
@@ -53,7 +62,7 @@ func (s *CourseService) CreateCourse(ctx context.Context, req *dto.CreateCourseR
 	return s.toCourseResponse(created), nil
 }
 
-// GetCourse retrieves a course by ID
+// GetCourse retrieves a course by ID.
 func (s *CourseService) GetCourse(ctx context.Context, courseID int64, userID int64, role string) (*dto.CourseResponse, error) {
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
@@ -63,7 +72,6 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID int64, userID in
 		return nil, fmt.Errorf("failed to get course: %w", err)
 	}
 
-	// Check permissions: only creator, teacher, or admin can see draft courses
 	if course.Status == models.CourseStatusDraft {
 		if role != models.RoleAdmin && course.CreatedBy != userID {
 			return nil, fmt.Errorf("unauthorized to view this course")
@@ -73,9 +81,8 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID int64, userID in
 	return s.toCourseResponseWithCreator(course), nil
 }
 
-// UpdateCourse updates a course
+// UpdateCourse updates a course and invalidates related cache entries.
 func (s *CourseService) UpdateCourse(ctx context.Context, courseID int64, req *dto.UpdateCourseRequest, userID int64, role string) error {
-	// Get existing course
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -84,12 +91,10 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID int64, req *d
 		return fmt.Errorf("failed to get course: %w", err)
 	}
 
-	// Check permissions: only creator or admin can update
 	if role != models.RoleAdmin && course.CreatedBy != userID {
 		return fmt.Errorf("unauthorized to update this course")
 	}
 
-	// Build updates map
 	updates := make(map[string]interface{})
 	if req.Title != nil {
 		updates["title"] = *req.Title
@@ -111,20 +116,16 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID int64, req *d
 		return fmt.Errorf("no fields to update")
 	}
 
-	err = s.courseRepo.Update(ctx, courseID, updates)
-	if err != nil {
+	if err := s.courseRepo.Update(ctx, courseID, updates); err != nil {
 		return fmt.Errorf("failed to update course: %w", err)
 	}
 
-	// Clear cache
-	s.cache.Delete(ctx, cache.KeyCourse(courseID))
-
+	s.invalidateCourseCache(ctx, courseID)
 	return nil
 }
 
-// DeleteCourse deletes a course
+// DeleteCourse deletes a course and invalidates related cache entries.
 func (s *CourseService) DeleteCourse(ctx context.Context, courseID int64, userID int64, role string) error {
-	// Get existing course
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -133,25 +134,20 @@ func (s *CourseService) DeleteCourse(ctx context.Context, courseID int64, userID
 		return fmt.Errorf("failed to get course: %w", err)
 	}
 
-	// Check permissions: only creator or admin can delete
 	if role != models.RoleAdmin && course.CreatedBy != userID {
 		return fmt.Errorf("unauthorized to delete this course")
 	}
 
-	err = s.courseRepo.Delete(ctx, courseID)
-	if err != nil {
+	if err := s.courseRepo.Delete(ctx, courseID); err != nil {
 		return fmt.Errorf("failed to delete course: %w", err)
 	}
 
-	// Clear cache
-	s.cache.Delete(ctx, cache.KeyCourse(courseID))
-
+	s.invalidateCourseCache(ctx, courseID)
 	return nil
 }
 
-// PublishCourse publishes a course
+// PublishCourse publishes a course and invalidates related cache entries.
 func (s *CourseService) PublishCourse(ctx context.Context, courseID int64, userID int64, role string) error {
-	// Get existing course
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -160,23 +156,21 @@ func (s *CourseService) PublishCourse(ctx context.Context, courseID int64, userI
 		return fmt.Errorf("failed to get course: %w", err)
 	}
 
-	// Check permissions: only creator or admin can publish
 	if role != models.RoleAdmin && course.CreatedBy != userID {
 		return fmt.Errorf("unauthorized to publish this course")
 	}
 
-	err = s.courseRepo.Publish(ctx, courseID)
-	if err != nil {
+	if err := s.courseRepo.Publish(ctx, courseID); err != nil {
 		return fmt.Errorf("failed to publish course: %w", err)
 	}
 
-	// Clear cache
-	s.cache.Delete(ctx, cache.KeyCourse(courseID))
-
+	// Invalidate both the specific course and the published list so the newly
+	// published course appears immediately.
+	s.invalidateCourseCache(ctx, courseID)
 	return nil
 }
 
-// ListMyCourses lists courses created by the user
+// ListMyCourses lists courses created by the user.
 func (s *CourseService) ListMyCourses(ctx context.Context, userID int64) ([]*dto.CourseResponse, error) {
 	courses, err := s.courseRepo.ListByCreator(ctx, userID)
 	if err != nil {
@@ -191,8 +185,17 @@ func (s *CourseService) ListMyCourses(ctx context.Context, userID int64) ([]*dto
 	return result, nil
 }
 
-// ListPublishedCourses lists all published courses
+// ListPublishedCourses lists all published courses.
 func (s *CourseService) ListPublishedCourses(ctx context.Context) ([]*dto.CourseResponse, error) {
+	// ── Try cache first ───────────────────────────────────────────────────────
+	cached, err := s.cache.Get(ctx, cache.KeyCourseList)
+	if err == nil && cached != "" {
+		var result []*dto.CourseResponse
+		if jsonErr := json.Unmarshal([]byte(cached), &result); jsonErr == nil {
+			return result, nil
+		}
+	}
+
 	courses, err := s.courseRepo.ListPublished(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list published courses: %w", err)
@@ -203,14 +206,16 @@ func (s *CourseService) ListPublishedCourses(ctx context.Context) ([]*dto.Course
 		result = append(result, s.toCourseResponseWithCreator(course))
 	}
 
+	if data, marshalErr := json.Marshal(result); marshalErr == nil {
+		if setErr := s.cache.Set(ctx, cache.KeyCourseList, data, courseListCacheTTL); setErr != nil {
+			_ = setErr
+		}
+	}
+
 	return result, nil
 }
 
-// ===== SECTION METHODS =====
-
-// CreateSection creates a new section in a course
 func (s *CourseService) CreateSection(ctx context.Context, courseID int64, req *dto.CreateSectionRequest, userID int64, role string) (*dto.SectionResponse, error) {
-	// Check if user owns the course or is admin
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -239,7 +244,6 @@ func (s *CourseService) CreateSection(ctx context.Context, courseID int64, req *
 	return s.toSectionResponse(created), nil
 }
 
-// GetSection retrieves a section by ID
 func (s *CourseService) GetSection(ctx context.Context, sectionID int64, userID int64, role string) (*dto.SectionResponse, error) {
 	section, err := s.courseRepo.GetSectionByID(ctx, sectionID)
 	if err != nil {
@@ -249,14 +253,12 @@ func (s *CourseService) GetSection(ctx context.Context, sectionID int64, userID 
 		return nil, fmt.Errorf("failed to get section: %w", err)
 	}
 
-	// Check course permissions
 	course, err := s.courseRepo.GetByID(ctx, section.CourseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get course: %w", err)
 	}
 
 	if !section.IsPublished && role != models.RoleAdmin && role != models.RoleTeacher && course.CreatedBy != userID {
-		// Check if student is enrolled
 		if role == models.RoleStudent {
 			enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, course.ID)
 			if enrollment == nil || enrollment.Status != models.EnrollmentAccepted {
@@ -270,9 +272,7 @@ func (s *CourseService) GetSection(ctx context.Context, sectionID int64, userID 
 	return s.toSectionResponse(section), nil
 }
 
-// ListSections lists all sections in a course
 func (s *CourseService) ListSections(ctx context.Context, courseID int64, userID int64, role string) ([]*dto.SectionResponse, error) {
-	// Check course permissions
 	course, err := s.courseRepo.GetByID(ctx, courseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -286,7 +286,6 @@ func (s *CourseService) ListSections(ctx context.Context, courseID int64, userID
 		return nil, fmt.Errorf("failed to list sections: %w", err)
 	}
 
-	// Check if student is enrolled (for viewing unpublished sections)
 	isEnrolled := false
 	if role == models.RoleStudent {
 		enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, courseID)
@@ -295,11 +294,6 @@ func (s *CourseService) ListSections(ctx context.Context, courseID int64, userID
 
 	result := make([]*dto.SectionResponse, 0, len(sections))
 	for _, section := range sections {
-
-		// Allow viewing if:
-		// 1. Section is published, OR
-		// 2. User is course creator/admin/teacher, OR
-		// 3. Student is enrolled in the course
 		if !section.IsPublished {
 			if role == models.RoleAdmin || role == models.RoleTeacher || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
 				result = append(result, s.toSectionResponse(section))
@@ -312,7 +306,6 @@ func (s *CourseService) ListSections(ctx context.Context, courseID int64, userID
 	return result, nil
 }
 
-// UpdateSection updates a section
 func (s *CourseService) UpdateSection(ctx context.Context, sectionID int64, req *dto.UpdateSectionRequest, userID int64, role string) error {
 	section, err := s.courseRepo.GetSectionByID(ctx, sectionID)
 	if err != nil {
@@ -322,7 +315,6 @@ func (s *CourseService) UpdateSection(ctx context.Context, sectionID int64, req 
 		return fmt.Errorf("failed to get section: %w", err)
 	}
 
-	// Check permissions
 	course, err := s.courseRepo.GetByID(ctx, section.CourseID)
 	if err != nil {
 		return fmt.Errorf("failed to get course: %w", err)
@@ -332,7 +324,6 @@ func (s *CourseService) UpdateSection(ctx context.Context, sectionID int64, req 
 		return fmt.Errorf("unauthorized to update this section")
 	}
 
-	// Build updates
 	updates := make(map[string]interface{})
 	if req.Title != nil {
 		updates["title"] = *req.Title
@@ -354,7 +345,6 @@ func (s *CourseService) UpdateSection(ctx context.Context, sectionID int64, req 
 	return s.courseRepo.UpdateSection(ctx, sectionID, updates)
 }
 
-// DeleteSection deletes a section
 func (s *CourseService) DeleteSection(ctx context.Context, sectionID int64, userID int64, role string) error {
 	section, err := s.courseRepo.GetSectionByID(ctx, sectionID)
 	if err != nil {
@@ -364,7 +354,6 @@ func (s *CourseService) DeleteSection(ctx context.Context, sectionID int64, user
 		return fmt.Errorf("failed to get section: %w", err)
 	}
 
-	// Check permissions
 	course, err := s.courseRepo.GetByID(ctx, section.CourseID)
 	if err != nil {
 		return fmt.Errorf("failed to get course: %w", err)
@@ -377,9 +366,8 @@ func (s *CourseService) DeleteSection(ctx context.Context, sectionID int64, user
 	return s.courseRepo.DeleteSection(ctx, sectionID)
 }
 
-// ===== CONTENT METHODS =====
+// ── Content methods ───────────────────────────────────────────────────────────
 
-// CreateContent creates new content in a section
 func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req *dto.CreateContentRequest, userID int64, role string) (*dto.ContentResponse, error) {
 	section, err := s.courseRepo.GetSectionByID(ctx, sectionID)
 	if err != nil {
@@ -389,7 +377,6 @@ func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req 
 		return nil, fmt.Errorf("failed to get section: %w", err)
 	}
 
-	// Check permissions
 	course, err := s.courseRepo.GetByID(ctx, section.CourseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get course: %w", err)
@@ -399,7 +386,6 @@ func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req 
 		return nil, fmt.Errorf("unauthorized to create content in this section")
 	}
 
-	// Convert metadata to JSON
 	metadata, err := json.Marshal(req.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
@@ -417,7 +403,6 @@ func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req 
 		CreatedBy:   userID,
 	}
 
-	// Sync file info from metadata if present
 	if req.Metadata != nil {
 		if path, ok := req.Metadata["file_path"].(string); ok {
 			content.FilePath = sql.NullString{String: path, Valid: true}
@@ -438,7 +423,6 @@ func (s *CourseService) CreateContent(ctx context.Context, sectionID int64, req 
 	return s.toContentResponse(created)
 }
 
-// GetContent retrieves content by ID
 func (s *CourseService) GetContent(ctx context.Context, contentID int64, userID int64, role string) (*dto.ContentResponse, error) {
 	content, err := s.courseRepo.GetContentByID(ctx, contentID)
 	if err != nil {
@@ -448,7 +432,6 @@ func (s *CourseService) GetContent(ctx context.Context, contentID int64, userID 
 		return nil, fmt.Errorf("failed to get content: %w", err)
 	}
 
-	// Check permissions
 	section, err := s.courseRepo.GetSectionByID(ctx, content.SectionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get section: %w", err)
@@ -460,7 +443,6 @@ func (s *CourseService) GetContent(ctx context.Context, contentID int64, userID 
 	}
 
 	if !content.IsPublished && role != models.RoleAdmin && role != models.RoleTeacher && course.CreatedBy != userID {
-		// Check if student is enrolled
 		if role == models.RoleStudent {
 			enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, course.ID)
 			if enrollment == nil || enrollment.Status != models.EnrollmentAccepted {
@@ -474,7 +456,6 @@ func (s *CourseService) GetContent(ctx context.Context, contentID int64, userID 
 	return s.toContentResponse(content)
 }
 
-// ListContent lists all content in a section
 func (s *CourseService) ListContent(ctx context.Context, sectionID int64, userID int64, role string) ([]*dto.ContentResponse, error) {
 	section, err := s.courseRepo.GetSectionByID(ctx, sectionID)
 	if err != nil {
@@ -494,7 +475,6 @@ func (s *CourseService) ListContent(ctx context.Context, sectionID int64, userID
 		return nil, fmt.Errorf("failed to list content: %w", err)
 	}
 
-	// Check if student is enrolled (for viewing unpublished content)
 	isEnrolled := false
 	if role == models.RoleStudent {
 		enrollment, _ := s.enrollmentRepo.GetByStudentAndCourse(ctx, userID, course.ID)
@@ -503,10 +483,6 @@ func (s *CourseService) ListContent(ctx context.Context, sectionID int64, userID
 
 	result := make([]*dto.ContentResponse, 0, len(contents))
 	for _, content := range contents {
-		// Allow viewing if:
-		// 1. Content is published, OR
-		// 2. User is course creator/admin, OR
-		// 3. Student is enrolled in the course
 		if !content.IsPublished {
 			if role == models.RoleAdmin || role == models.RoleTeacher || course.CreatedBy == userID || (role == models.RoleStudent && isEnrolled) {
 				resp, err := s.toContentResponse(content)
@@ -527,7 +503,6 @@ func (s *CourseService) ListContent(ctx context.Context, sectionID int64, userID
 	return result, nil
 }
 
-// UpdateContent updates content
 func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req *dto.UpdateContentRequest, userID int64, role string) error {
 	content, err := s.courseRepo.GetContentByID(ctx, contentID)
 	if err != nil {
@@ -537,7 +512,6 @@ func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req 
 		return fmt.Errorf("failed to get content: %w", err)
 	}
 
-	// Check permissions
 	section, err := s.courseRepo.GetSectionByID(ctx, content.SectionID)
 	if err != nil {
 		return fmt.Errorf("failed to get section: %w", err)
@@ -552,7 +526,6 @@ func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req 
 		return fmt.Errorf("unauthorized to update this content")
 	}
 
-	// Build updates
 	updates := make(map[string]interface{})
 	if req.Title != nil {
 		updates["title"] = *req.Title
@@ -577,7 +550,6 @@ func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req 
 		updates["is_mandatory"] = *req.IsMandatory
 	}
 
-	// Sync file info from metadata updates if present
 	if req.Metadata != nil {
 		if path, ok := (*req.Metadata)["file_path"].(string); ok {
 			updates["file_path"] = path
@@ -597,7 +569,6 @@ func (s *CourseService) UpdateContent(ctx context.Context, contentID int64, req 
 	return s.courseRepo.UpdateContent(ctx, contentID, updates)
 }
 
-// DeleteContent deletes content
 func (s *CourseService) DeleteContent(ctx context.Context, contentID int64, userID int64, role string) error {
 	content, err := s.courseRepo.GetContentByID(ctx, contentID)
 	if err != nil {
@@ -607,7 +578,6 @@ func (s *CourseService) DeleteContent(ctx context.Context, contentID int64, user
 		return fmt.Errorf("failed to get content: %w", err)
 	}
 
-	// Check permissions
 	section, err := s.courseRepo.GetSectionByID(ctx, content.SectionID)
 	if err != nil {
 		return fmt.Errorf("failed to get section: %w", err)
@@ -625,7 +595,16 @@ func (s *CourseService) DeleteContent(ctx context.Context, contentID int64, user
 	return s.courseRepo.DeleteContent(ctx, contentID)
 }
 
-// Helper functions
+// ── cache helpers ─────────────────────────────────────────────────────────────
+
+// invalidateCourseCache removes cache entries for a specific course and the
+// shared published-list key so the next read re-fetches from DB.
+func (s *CourseService) invalidateCourseCache(ctx context.Context, courseID int64) {
+	// Fire-and-forget: cache invalidation failure is non-fatal.
+	_ = s.cache.Delete(ctx, cache.KeyCourse(courseID), cache.KeyCourseList)
+}
+
+// ── model-to-DTO converters ───────────────────────────────────────────────────
 
 func (s *CourseService) toCourseResponse(course *models.Course) *dto.CourseResponse {
 	resp := &dto.CourseResponse{
@@ -711,7 +690,6 @@ func (s *CourseService) toContentResponse(content *models.SectionContent) (*dto.
 		resp.AIIndexStatus = content.AIIndexStatus.String
 	}
 
-	// Parse metadata
 	if len(content.Metadata) > 0 {
 		var metadata map[string]interface{}
 		if err := json.Unmarshal(content.Metadata, &metadata); err == nil {
@@ -721,3 +699,6 @@ func (s *CourseService) toContentResponse(content *models.SectionContent) (*dto.
 
 	return resp, nil
 }
+
+// Ensure time import is used (for courseListCacheTTL / courseCacheTTL constants).
+var _ = time.Minute

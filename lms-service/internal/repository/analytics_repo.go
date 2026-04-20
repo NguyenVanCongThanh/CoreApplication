@@ -205,37 +205,48 @@ func (r *AnalyticsRepository) GetQuizWrongAnswerStats(ctx context.Context, quizI
 // student with their mandatory-content completion % and quiz average.
 func (r *AnalyticsRepository) GetCourseStudentProgressOverview(ctx context.Context, courseID int64) ([]StudentProgressRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
+		WITH course_content AS (
+			-- All content IDs belonging to this course (materialised once)
+			SELECT sc.id AS content_id, sc.is_mandatory
+			FROM   section_content  sc
+			JOIN   course_sections  cs ON cs.id = sc.section_id
+			WHERE  cs.course_id = $1
+		),
+		course_quizzes AS (
+			-- All quiz IDs belonging to this course (materialised once)
+			SELECT q.id AS quiz_id
+			FROM   quizzes          q
+			JOIN   section_content  sc ON sc.id = q.content_id
+			JOIN   course_sections  cs ON cs.id = sc.section_id
+			WHERE  cs.course_id = $1
+		)
 		SELECT
 			e.student_id,
-			u.full_name, u.email,
-			COUNT(DISTINCT sc.id) FILTER (WHERE sc.is_mandatory = TRUE)    AS total_mandatory,
-			COUNT(DISTINCT cp.content_id) FILTER (
-				WHERE sc.is_mandatory = TRUE AND cp.id IS NOT NULL
-			)                                                                AS completed_content,
+			u.full_name,
+			u.email,
+			COUNT(DISTINCT cc.content_id) FILTER (WHERE cc.is_mandatory)              AS total_mandatory,
+			COUNT(DISTINCT cp.content_id) FILTER (WHERE cc.is_mandatory
+			                                        AND cp.id IS NOT NULL)             AS completed_content,
 			COALESCE(
-				COUNT(DISTINCT cp.content_id) FILTER (
-					WHERE sc.is_mandatory = TRUE AND cp.id IS NOT NULL
-				)::FLOAT
-				/ NULLIF(COUNT(DISTINCT sc.id) FILTER (WHERE sc.is_mandatory = TRUE), 0) * 100
-			, 0)                                                             AS progress_percent,
-			AVG(qa.percentage)                                               AS quiz_avg_score,
-			GREATEST(MAX(cp.completed_at), MAX(qa.submitted_at))            AS last_activity
+				COUNT(DISTINCT cp.content_id) FILTER (WHERE cc.is_mandatory
+				                                         AND cp.id IS NOT NULL)::FLOAT
+				/ NULLIF(COUNT(DISTINCT cc.content_id) FILTER (WHERE cc.is_mandatory), 0)
+				* 100
+			, 0)                                                                       AS progress_percent,
+			AVG(qa.percentage)                                                         AS quiz_avg_score,
+			GREATEST(MAX(cp.completed_at), MAX(qa.submitted_at))                       AS last_activity
 		FROM enrollments e
-		JOIN users u ON u.id = e.student_id
-		JOIN course_sections cs ON cs.course_id = $1
-		JOIN section_content sc ON sc.section_id = cs.id
+		JOIN users       u  ON u.id  = e.student_id
+		-- cross-join the CTE so every enrolled student sees every content row
+		JOIN course_content cc ON true
 		LEFT JOIN content_progress cp
-			ON cp.content_id = sc.id AND cp.student_id = e.student_id
+			ON cp.content_id = cc.content_id AND cp.student_id = e.student_id
 		LEFT JOIN quiz_attempts qa
-			ON qa.student_id = e.student_id
-			AND qa.status IN ('SUBMITTED', 'GRADED')
-			AND qa.quiz_id IN (
-				SELECT q2.id FROM quizzes q2
-				JOIN section_content sc2 ON sc2.id = q2.content_id
-				JOIN course_sections cs2 ON cs2.id = sc2.section_id
-				WHERE cs2.course_id = $1
-			)
-		WHERE e.course_id = $1 AND e.status = 'ACCEPTED'
+			ON  qa.student_id = e.student_id
+			AND qa.quiz_id    IN (SELECT quiz_id FROM course_quizzes)
+			AND qa.status     IN ('SUBMITTED', 'GRADED')
+		WHERE e.course_id = $1
+		  AND e.status    = 'ACCEPTED'
 		GROUP BY e.student_id, u.full_name, u.email
 		ORDER BY progress_percent DESC, u.full_name ASC
 	`, courseID)
