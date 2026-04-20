@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // ─── Result types ─────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ func (r *ProgressRepository) GetCourseProgress(ctx context.Context, courseID, st
 		result.ProgressPercent = float64(result.CompletedCount) / float64(result.TotalMandatory) * 100
 	}
 
-	// 2. Collect completed content IDs (mandatory only)
+	// 2. Collect completed content IDs
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT cp.content_id
 		FROM content_progress cp
@@ -110,6 +112,74 @@ func (r *ProgressRepository) GetCourseProgress(ctx context.Context, courseID, st
 	}
 
 	result.CompletedContentIDs = ids
+	return result, nil
+}
+
+// GetBatchCourseProgress returns progress summaries for a student across
+// multiple courses in a single query, eliminating the N+1 pattern that
+// existed when GetCourseProgress was called inside a loop.
+func (r *ProgressRepository) GetBatchCourseProgress(
+	ctx context.Context,
+	courseIDs []int64,
+	studentID int64,
+) (map[int64]*CourseProgressResult, error) {
+	result := make(map[int64]*CourseProgressResult, len(courseIDs))
+	if len(courseIDs) == 0 {
+		return result, nil
+	}
+
+	// Single query: aggregate mandatory counts + completion counts per course
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			cs.course_id,
+			COUNT(sc.id)        FILTER (WHERE sc.is_mandatory)              AS total_mandatory,
+			COUNT(cp.content_id) FILTER (WHERE sc.is_mandatory
+			                               AND cp.id IS NOT NULL)           AS completed_count
+		FROM course_sections  cs
+		JOIN section_content  sc ON sc.section_id = cs.id
+		LEFT JOIN content_progress cp
+			ON  cp.content_id = sc.id
+			AND cp.student_id = $1
+		WHERE cs.course_id = ANY($2)
+		GROUP BY cs.course_id
+	`, studentID, pq.Array(courseIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			courseID       int64
+			totalMandatory int
+			completedCount int
+		)
+		if err := rows.Scan(&courseID, &totalMandatory, &completedCount); err != nil {
+			return nil, err
+		}
+
+		pct := 0.0
+		if totalMandatory > 0 {
+			pct = float64(completedCount) / float64(totalMandatory) * 100
+		}
+		result[courseID] = &CourseProgressResult{
+			TotalMandatory:      totalMandatory,
+			CompletedCount:      completedCount,
+			ProgressPercent:     pct,
+			CompletedContentIDs: nil,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Ensure every requested courseID has an entry (avoids nil checks in caller)
+	for _, id := range courseIDs {
+		if _, ok := result[id]; !ok {
+			result[id] = &CourseProgressResult{}
+		}
+	}
+
 	return result, nil
 }
 

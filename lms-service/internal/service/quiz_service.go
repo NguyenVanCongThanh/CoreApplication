@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -1029,40 +1030,101 @@ func (s *QuizService) GradeAnswer(ctx context.Context, req *dto.GradeAnswerReque
 
 // BulkGrade grades multiple answers at once
 func (s *QuizService) BulkGrade(ctx context.Context, req *dto.BulkGradeRequest, graderID int64, userRole string) *dto.BulkGradeResponse {
-	response := &dto.BulkGradeResponse{
-		Succeeded: []int64{},
-		Failed:    []dto.GradeError{},
+	type groupedGrade struct {
+		grade     dto.GradeAnswerRequest
+		attemptID int64
 	}
-
-	type gradeResult struct {
-		AnswerID int64
-		Err      error
-	}
-
-	results := make([]gradeResult, len(req.Grades))
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(5)
-
+ 
+	grouped := make(map[int64][]dto.GradeAnswerRequest)
+	var lookupMu sync.Mutex
+ 
+	lookupG, lookupCtx := errgroup.WithContext(ctx)
+	lookupG.SetLimit(10)
+ 
 	for i := range req.Grades {
-		i := i
-		g.Go(func() error {
-			err := s.GradeAnswer(gCtx, &req.Grades[i], graderID, userRole)
-			results[i] = gradeResult{AnswerID: req.Grades[i].AnswerID, Err: err}
+		grade := req.Grades[i]
+		lookupG.Go(func() error {
+			ans, err := s.quizRepo.GetStudentAnswer(lookupCtx, grade.AnswerID)
+			if err != nil {
+				return nil
+			}
+			lookupMu.Lock()
+			grouped[ans.AttemptID] = append(grouped[ans.AttemptID], grade)
+			lookupMu.Unlock()
 			return nil
 		})
 	}
-	g.Wait()
-
-	for _, r := range results {
-		if r.Err != nil {
-			response.Failed = append(response.Failed, dto.GradeError{
-				AnswerID: r.AnswerID,
-				Error:    r.Err.Error(),
-			})
-		} else {
-			response.Succeeded = append(response.Succeeded, r.AnswerID)
+	lookupG.Wait()
+ 
+	response := &dto.BulkGradeResponse{
+		Succeeded: make([]int64, 0, len(req.Grades)),
+		Failed:    make([]dto.GradeError, 0),
+	}
+ 
+	resolvedSet := make(map[int64]struct{})
+	for _, grades := range grouped {
+		for _, g := range grades {
+			resolvedSet[g.AnswerID] = struct{}{}
 		}
 	}
+	for _, g := range req.Grades {
+		if _, ok := resolvedSet[g.AnswerID]; !ok {
+			response.Failed = append(response.Failed, dto.GradeError{
+				AnswerID: g.AnswerID,
+				Error:    "answer not found",
+			})
+		}
+	}
+ 
+	type perAttemptResult struct {
+		succeeded []int64
+		failed    []dto.GradeError
+	}
+ 
+	attemptIDs := make([]int64, 0, len(grouped))
+	for id := range grouped {
+		attemptIDs = append(attemptIDs, id)
+	}
+ 
+	results := make([]perAttemptResult, len(attemptIDs))
+ 
+	gradeG, gradeCtx := errgroup.WithContext(ctx)
+	gradeG.SetLimit(5)
+ 
+	for idx, aID := range attemptIDs {
+		idx, aID := idx, aID
+		grades := grouped[aID]
+ 
+		gradeG.Go(func() error {
+			var succeeded []int64
+			var failed []dto.GradeError
+ 
+			for i := range grades {
+				if err := s.GradeAnswer(gradeCtx, &grades[i], graderID, userRole); err != nil {
+					logger.Error(
+						fmt.Sprintf("BulkGrade: failed grading answer %d in attempt %d", grades[i].AnswerID, aID),
+						err,
+					)
+					failed = append(failed, dto.GradeError{
+						AnswerID: grades[i].AnswerID,
+						Error:    err.Error(),
+					})
+				} else {
+					succeeded = append(succeeded, grades[i].AnswerID)
+				}
+			}
+ 
+			results[idx] = perAttemptResult{succeeded: succeeded, failed: failed}
+			return nil
+		})
+	}
+	gradeG.Wait()
+ 
+	for _, r := range results {
+		response.Succeeded = append(response.Succeeded, r.succeeded...)
+		response.Failed = append(response.Failed, r.failed...)
+	}
+ 
 	return response
 }
 

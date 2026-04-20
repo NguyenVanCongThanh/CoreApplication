@@ -298,7 +298,7 @@ services:
       - app-network
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD-SHELL", "pg_isrfeady -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${LMS_POSTGRES_USER} -d $${LMS_POSTGRES_DB}"]
     logging: *common-logging
     deploy:
       resources:
