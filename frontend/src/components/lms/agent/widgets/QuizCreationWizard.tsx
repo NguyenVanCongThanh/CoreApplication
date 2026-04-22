@@ -46,6 +46,22 @@ const BLOOM_COLORS: Record<string, string> = {
 
 const NEW_SECTION_VALUE = -1;
 
+const getAnswerOptions = (options: any): any[] => {
+  if (Array.isArray(options)) return options;
+  if (typeof options === "string") {
+    try {
+      const parsed = JSON.parse(options);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  if (typeof options === "object" && options !== null) {
+    return Object.values(options);
+  }
+  return [];
+};
+
 export function QuizCreationWizard({ props }: QuizCreationWizardProps) {
   const { drafts, course_id, initial_config } = props;
 
@@ -89,6 +105,8 @@ export function QuizCreationWizard({ props }: QuizCreationWizardProps) {
             setSelectedSectionId(initial_config.suggested_section_id);
         } else if (sectionList.length > 0 && !selectedSectionId) {
             setSelectedSectionId(sectionList[0].id);
+        } else if (sectionList.length === 0) {
+            setSelectedSectionId(NEW_SECTION_VALUE);
         }
       } catch (err) {
         console.error("Failed to fetch sections:", err);
@@ -164,17 +182,18 @@ export function QuizCreationWizard({ props }: QuizCreationWizardProps) {
 
       // 4. Create Questions
       setSaveStep(`Đang tạo ${approvedDrafts.length} câu hỏi...`);
+      let questionOrder = 1;
       for (const draft of approvedDrafts) {
         await quizService.createQuestion(quizId, {
           question_text: draft.question_text,
-          question_type: draft.question_type,
-          bloom_level: draft.bloom_level,
-          explanation: draft.explanation,
+          question_type: draft.question_type || "SINGLE_CHOICE",
+          explanation: draft.explanation || "",
           points: 10,
-          answer_options: draft.answer_options.map(opt => ({
-            text: opt.text,
-            is_correct: opt.is_correct,
-            explanation: opt.explanation
+          order_index: questionOrder++,
+          answer_options: getAnswerOptions(draft.answer_options).map((opt: any, index: number) => ({
+            option_text: opt.text || opt.option_text || "",
+            is_correct: !!opt.is_correct,
+            order_index: index + 1
           }))
         });
       }
@@ -371,7 +390,7 @@ export function QuizCreationWizard({ props }: QuizCreationWizardProps) {
 
               {isExpanded && (
                 <div className="mt-4 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-4 animate-in slide-in-from-top-1">
-                  {d.answer_options.map((opt, i) => (
+                  {getAnswerOptions(d.answer_options).map((opt: any, i: number) => (
                     <div
                       key={i}
                       className={cn(

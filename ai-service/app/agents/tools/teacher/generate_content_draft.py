@@ -22,14 +22,15 @@ class GenerateContentDraftTool(BaseTool):
         "Generate a text-based content draft such as a lesson outline, "
         "summary, or slide structure for a topic. The draft is based on "
         "existing course materials retrieved via RAG. It also suggests "
-        "the best course section to save this content to."
+        "the best course section to save this content to. "
+        "IMPORTANT: If you don't know the course_id, you MUST call `list_my_courses` first."
     )
     parameters = {
         "type": "object",
         "properties": {
             "course_id": {
                 "type": "integer",
-                "description": "The course ID.",
+                "description": "Optional. The course ID. If not provided, AI will recommend one based on the topic.",
             },
             "topic": {
                 "type": "string",
@@ -48,35 +49,51 @@ class GenerateContentDraftTool(BaseTool):
                 "default": "vi",
             },
         },
-        "required": ["course_id", "topic"],
+        "required": ["topic"],
     }
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.core.llm import chat_complete_json
         from app.services.rag_service import rag_service
 
-        course_id = kwargs["course_id"]
+        user_id = kwargs.get("_user_id")
+        course_id = kwargs.get("_course_id") or kwargs.get("course_id")
         topic = kwargs["topic"]
         content_type = kwargs.get("content_type", "outline")
         language = kwargs.get("language", "vi")
 
         try:
-            # 1. RAG retrieve relevant materials
+            # 1. Fetch all courses and sections for the user
+            lms_base = settings.lms_service_url.rstrip("/")
+            courses_info = []
+            if user_id:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    headers = {"X-API-Secret": settings.ai_service_secret, "X-User-Id": str(user_id)}
+                    resp = await client.get(f"{lms_base}/api/v1/courses/my", headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        courses = data.get("data", []) if isinstance(data, dict) and "data" in data else data
+                        if isinstance(courses, list):
+                            for c in courses:
+                                c_id = c.get("id")
+                                sec_resp = await client.get(f"{lms_base}/api/v1/courses/{c_id}/sections", headers=headers)
+                                sections = sec_resp.json().get("data", []) if sec_resp.status_code == 200 else []
+                                courses_info.append({
+                                    "id": c_id,
+                                    "title": c.get("title"),
+                                    "sections": [{"id": s.get("id"), "title": s.get("title")} for s in sections]
+                                })
+
+            # Validate provided course_id or reset to None if hallucinated
+            valid_course_ids = [c["id"] for c in courses_info]
+            if course_id and course_id not in valid_course_ids:
+                course_id = None
+
+            # 2. RAG retrieve relevant materials
             chunks = await rag_service.search_multilingual(
                 query=topic, course_id=course_id, top_k=5,
             )
             context = "\n---\n".join(c.chunk_text for c in chunks) if chunks else ""
-
-            # 2. Fetch existing sections to provide as options
-            sections = []
-            lms_base = settings.lms_service_url.rstrip("/")
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{lms_base}/api/v1/courses/{course_id}/sections",
-                    headers={"X-AI-Secret": settings.ai_service_secret},
-                )
-                if resp.status_code == 200:
-                    sections = resp.json().get("data") or []
 
             # 3. Build prompt
             type_instructions = {
@@ -90,7 +107,11 @@ class GenerateContentDraftTool(BaseTool):
 
             lang_note = "Viết bằng tiếng Việt." if language == "vi" else "Write in English."
 
-            section_list_str = "\n".join([f"- ID {s['id']}: {s['title']}" for s in sections])
+            courses_str = ""
+            for c in courses_info:
+                courses_str += f"- Course ID {c['id']}: {c['title']}\n"
+                for s in c["sections"]:
+                    courses_str += f"  + Section ID {s['id']}: {s['title']}\n"
 
             system_prompt = (
                 f"You are an expert educational content creator. {lang_note}\n"
@@ -98,10 +119,11 @@ class GenerateContentDraftTool(BaseTool):
                 f"Topic: {topic}\n\n"
                 f"Base your content on the following course materials if available.\n"
                 f"COURSE MATERIALS:\n{context if context else '(No materials found)'}\n\n"
-                f"Also, look at these existing course sections and suggest which one is best to put this content in:\n"
-                f"{section_list_str if sections else '(No existing sections found)'}\n\n"
+                f"The teacher has the following courses and sections:\n"
+                f"{courses_str if courses_str else '(No courses found)'}\n\n"
                 f"Return your response as a JSON object with keys: "
-                f"'draft' (markdown string) and 'suggested_section_id' (integer or null)."
+                f"'draft' (markdown string), 'suggested_course_id' (integer or null), and 'suggested_section_id' (integer or null). "
+                f"Choose the most appropriate course and section for this topic from the teacher's list."
             )
 
             result = await chat_complete_json(
@@ -114,7 +136,10 @@ class GenerateContentDraftTool(BaseTool):
             )
 
             draft_text = result.get("draft", "")
+            suggested_cid = result.get("suggested_course_id")
             suggested_sid = result.get("suggested_section_id")
+            
+            final_course_id = course_id or suggested_cid
 
             return ToolResult(
                 status="success",
@@ -122,6 +147,7 @@ class GenerateContentDraftTool(BaseTool):
                     "content_type": content_type,
                     "topic": topic,
                     "draft": draft_text,
+                    "course_id": final_course_id,
                     "suggested_section_id": suggested_sid,
                 },
                 message=f"Đã tạo {content_type} cho chủ đề '{topic}'.",
@@ -131,7 +157,7 @@ class GenerateContentDraftTool(BaseTool):
                         "content_type": content_type,
                         "topic": topic,
                         "draft": draft_text,
-                        "course_id": course_id,
+                        "course_id": final_course_id,
                         "suggested_section_id": suggested_sid,
                     },
                 },

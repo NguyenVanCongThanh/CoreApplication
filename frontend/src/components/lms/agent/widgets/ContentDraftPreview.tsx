@@ -12,7 +12,7 @@ interface ContentDraftPreviewProps {
     content_type: string;
     topic: string;
     draft: string;
-    course_id: number;
+    course_id?: number | null;
     suggested_section_id?: number | null;
   };
 }
@@ -23,6 +23,8 @@ export function ContentDraftPreview({ props }: ContentDraftPreviewProps) {
   const { content_type, topic, draft: initialDraft, course_id, suggested_section_id } = props;
   const [draft, setDraft] = useState(initialDraft);
   const [isEditing, setIsEditing] = useState(false);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | "">(course_id || "");
   const [sections, setSections] = useState<any[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<number | "">("");
   const [newSectionTitle, setNewSectionTitle] = useState("");
@@ -30,26 +32,54 @@ export function ContentDraftPreview({ props }: ContentDraftPreviewProps) {
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    const fetchSections = async () => {
+    const fetchCourses = async () => {
       try {
-        const resp = await lmsService.listSections(course_id);
+        const resp = await lmsService.listMyCourses();
+        const courseList = resp.data || [];
+        setCourses(Array.isArray(courseList) ? courseList : []);
+        
+        if (!selectedCourseId && Array.isArray(courseList) && courseList.length > 0) {
+          setSelectedCourseId(courseList[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch courses:", err);
+      }
+    };
+    fetchCourses();
+  }, []);
+
+  useEffect(() => {
+    const fetchSections = async () => {
+      if (!selectedCourseId) {
+        setSections([]);
+        return;
+      }
+      try {
+        const resp = await lmsService.listSections(Number(selectedCourseId));
         const sectionList = resp.data || [];
         setSections(sectionList);
         
-        // Auto-select suggested section if provided and exists
-        if (suggested_section_id && sectionList.some((s: any) => s.id === suggested_section_id)) {
+        // Auto-select suggested section if provided and matches the suggested course
+        if (selectedCourseId === course_id && suggested_section_id && sectionList.some((s: any) => s.id === suggested_section_id)) {
           setSelectedSectionId(suggested_section_id);
         } else if (sectionList.length > 0) {
           setSelectedSectionId(sectionList[0].id);
+        } else {
+          setSelectedSectionId(NEW_SECTION_VALUE);
         }
       } catch (err) {
         console.error("Failed to fetch sections:", err);
       }
     };
     fetchSections();
-  }, [course_id, suggested_section_id]);
+  }, [selectedCourseId, course_id, suggested_section_id]);
 
   const handleSaveToLms = async () => {
+    if (!selectedCourseId) {
+      toast.error("Vui lòng chọn một khóa học.");
+      return;
+    }
+
     if (!selectedSectionId) {
       toast.error("Vui lòng chọn hoặc tạo một chương để lưu.");
       return;
@@ -66,7 +96,7 @@ export function ContentDraftPreview({ props }: ContentDraftPreviewProps) {
 
       // 1. Create section if needed
       if (selectedSectionId === NEW_SECTION_VALUE) {
-        const sectionResp = await lmsService.createSection(course_id, {
+        const sectionResp = await lmsService.createSection(Number(selectedCourseId), {
           title: newSectionTitle.trim(),
           order_index: sections.length + 1
         });
@@ -152,33 +182,54 @@ export function ContentDraftPreview({ props }: ContentDraftPreviewProps) {
       {/* Footer / Actions */}
       {!isSaved && (
         <div className="px-5 py-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20 space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="relative w-full sm:flex-1">
-              <select
-                value={selectedSectionId}
-                onChange={(e) => setSelectedSectionId(Number(e.target.value))}
-                className="w-full appearance-none pl-4 pr-10 py-2.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer transition-all"
-              >
-                <optgroup label="Chương hiện có">
-                  {sections.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.id === suggested_section_id ? "✨ " : ""} Chương: {s.title}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full">
+              <div className="relative w-full sm:w-1/2">
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(Number(e.target.value))}
+                  className="w-full appearance-none pl-4 pr-10 py-2.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer transition-all"
+                >
+                  <option value="" disabled>Chọn khóa học...</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.id === course_id ? "✨ " : ""} Khóa học: {c.title}
                     </option>
                   ))}
-                </optgroup>
-                <optgroup label="Tùy chọn khác">
-                  <option value={NEW_SECTION_VALUE}>+ Tạo chương mới...</option>
-                </optgroup>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                <ChevronDown size={14} />
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <ChevronDown size={14} />
+                </div>
+              </div>
+
+              <div className="relative w-full sm:w-1/2">
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId(Number(e.target.value))}
+                  disabled={!selectedCourseId}
+                  className="w-full appearance-none pl-4 pr-10 py-2.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <optgroup label="Chương hiện có">
+                    {sections.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.id === suggested_section_id && selectedCourseId === course_id ? "✨ " : ""} Chương: {s.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Tùy chọn khác">
+                    <option value={NEW_SECTION_VALUE}>+ Tạo chương mới...</option>
+                  </optgroup>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <ChevronDown size={14} />
+                </div>
               </div>
             </div>
 
-            {selectedSectionId !== NEW_SECTION_VALUE && suggested_section_id && (
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/10 rounded-full">
+            {selectedSectionId !== NEW_SECTION_VALUE && suggested_section_id && selectedCourseId === course_id && (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/10 rounded-full w-max">
                 <Sparkles size={12} className="text-blue-500" />
-                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">AI Suggested</span>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">AI Suggested Location</span>
               </div>
             )}
           </div>

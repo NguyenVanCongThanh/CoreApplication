@@ -55,7 +55,7 @@ class ExplainConceptTool(BaseTool):
         from app.services.rag_service import rag_service
 
         concept = kwargs["concept"]
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         depth = kwargs.get("depth")
         language = kwargs.get("language", "vi")
         student_id = kwargs.get("_user_id", 0)

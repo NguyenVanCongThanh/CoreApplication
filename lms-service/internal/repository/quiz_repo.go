@@ -337,11 +337,11 @@ func (r *QuizRepository) GetQuestion(ctx context.Context, questionID int64) (*mo
 		&q.OrderIndex,
 		&q.Settings,
 		&q.IsRequired,
-		&q.CreatedAt,
-		&q.UpdatedAt,
 		&q.NodeID,
 		&q.BloomLevel,
 		&q.ReferenceChunkID,
+		&q.CreatedAt,
+		&q.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -452,11 +452,11 @@ func (r *QuizRepository) ListQuestions(ctx context.Context, quizID int64) ([]mod
 			&q.OrderIndex,
 			&q.Settings,
 			&q.IsRequired,
-			&q.CreatedAt,
-			&q.UpdatedAt,
 			&q.NodeID,
 			&q.BloomLevel,
 			&q.ReferenceChunkID,
+			&q.CreatedAt,
+			&q.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -565,8 +565,8 @@ func (r *QuizRepository) ListAnswerOptions(ctx context.Context, questionID int64
 			&opt.IsCorrect,
 			&opt.OrderIndex,
 			&opt.BlankID,
-			&opt.CreatedAt,
 			&opt.Settings,
+			&opt.CreatedAt,
 		)
 		if err != nil {
 			return nil, err

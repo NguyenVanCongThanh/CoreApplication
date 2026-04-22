@@ -7,12 +7,13 @@
  * and maintains the message list with streaming text, tool activities,
  * clarifications, and dynamic UI widgets.
  */
-import { useState, useCallback, useRef } from "react";
-import { sendAgentMessage } from "@/services/agentService";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { agentService } from "@/services/agentService";
 import type {
   AgentMessage,
   AgentEvent,
   ToolActivity,
+  AgentHistoryMessage,
 } from "@/types";
 
 let _msgIdCounter = 0;
@@ -23,14 +24,70 @@ function nextId(): string {
 interface UseAgentChatOptions {
   agentType: "teacher" | "mentor";
   courseId?: number;
+  initialSessionId?: string;
+  userId?: number;
 }
 
-export function useAgentChat({ agentType, courseId }: UseAgentChatOptions) {
+export function useAgentChat({ agentType, courseId, initialSessionId, userId }: UseAgentChatOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load history when session changes externally
+  useEffect(() => {
+    if (initialSessionId && initialSessionId !== sessionId) {
+      switchSession(initialSessionId);
+    }
+  }, [initialSessionId]);
+
+  const loadHistory = async (sid: string) => {
+    setIsLoadingHistory(true);
+    try {
+      const history: AgentHistoryMessage[] = await agentService.getSessionMessages(sid);
+      const mappedMessages: AgentMessage[] = history.map((m) => ({
+        id: m.id,
+        role: m.role as any,
+        content: m.content || "",
+        timestamp: new Date(m.created_at).getTime(),
+        toolActivities: m.metadata?.toolActivities || [],
+        uiComponent: m.metadata?.uiComponent,
+        hitlRequest: m.metadata?.hitlRequest,
+      }));
+      setMessages(mappedMessages);
+    } catch (err) {
+      console.error("Failed to load session history:", err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const switchSession = useCallback(async (newSessionId: string) => {
+    stopStreaming();
+    setSessionId(newSessionId);
+    setMessages([]);
+    await loadHistory(newSessionId);
+  }, []);
+
+  const startNewChat = useCallback(async () => {
+    stopStreaming();
+    try {
+      if (!userId) return;
+      const res = await agentService.createNewSession({
+        agent_type: agentType,
+        course_id: courseId,
+      });
+      setSessionId(res.session_id);
+      setMessages([]);
+    } catch (err) {
+      console.error("Failed to start entirely new chat:", err);
+      // Fallback
+      setSessionId(null);
+      setMessages([]);
+    }
+  }, [agentType, courseId, userId]);
 
   /**
    * Send a message and process the SSE stream.
@@ -289,8 +346,11 @@ export function useAgentChat({ agentType, courseId }: UseAgentChatOptions) {
     sessionId,
     isStreaming,
     isThinking,
+    isLoadingHistory,
     sendMessage,
     stopStreaming,
     clearChat,
+    switchSession,
+    startNewChat,
   };
 }

@@ -89,9 +89,22 @@ export interface AgentChatRequest {
 
 export interface AgentSession {
   session_id: string;
+  title?: string;
   agent_type: "teacher" | "mentor";
   course_id?: number;
   turn_count: number;
   last_active_at?: string;
   created_at?: string;
+}
+
+export interface AgentHistoryMessage {
+  id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  metadata?: {
+    toolActivities?: ToolActivity[];
+    uiComponent?: UIComponentData;
+    hitlRequest?: HITLRequestData;
+  };
+  created_at: string;
 }

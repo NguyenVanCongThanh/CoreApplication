@@ -81,8 +81,29 @@ class MTMemory:
             # Create new session
             new_row = await conn.fetchrow(
                 """INSERT INTO agent_sessions
-                       (user_id, agent_type, course_id, compressed_ctx, turn_count)
-                   VALUES ($1, $2, $3, '{}'::jsonb, 0)
+                       (user_id, agent_type, course_id, compressed_ctx, turn_count, title)
+                   VALUES ($1, $2, $3, '{}'::jsonb, 0, NULL)
+                   RETURNING id""",
+                user_id, agent_type, course_id,
+            )
+            return {
+                "session_id": str(new_row["id"]),
+                "context": {},
+                "turn_count": 0,
+            }
+
+    async def create_new_session(
+        self,
+        user_id: int,
+        agent_type: str,
+        course_id: Optional[int] = None,
+    ) -> dict:
+        """Force create a completely new session."""
+        async with get_ai_conn() as conn:
+            new_row = await conn.fetchrow(
+                """INSERT INTO agent_sessions
+                       (user_id, agent_type, course_id, compressed_ctx, turn_count, title)
+                   VALUES ($1, $2, $3, '{}'::jsonb, 0, NULL)
                    RETURNING id""",
                 user_id, agent_type, course_id,
             )
@@ -147,6 +168,14 @@ class MTMemory:
             )
             return row["turn_count"] if row else 0
 
+    async def update_title(self, session_id: str, title: str) -> None:
+        """Set the AI-generated title for a session."""
+        async with get_ai_conn() as conn:
+            await conn.execute(
+                "UPDATE agent_sessions SET title = $1 WHERE id = $2",
+                title, session_id
+            )
+
     async def list_sessions(
         self,
         user_id: int,
@@ -158,7 +187,7 @@ class MTMemory:
             if agent_type:
                 rows = await conn.fetch(
                     """SELECT id, agent_type, course_id, turn_count,
-                              last_active_at, created_at
+                              last_active_at, created_at, title
                        FROM agent_sessions
                        WHERE user_id = $1 AND agent_type = $2
                        ORDER BY last_active_at DESC
@@ -168,7 +197,7 @@ class MTMemory:
             else:
                 rows = await conn.fetch(
                     """SELECT id, agent_type, course_id, turn_count,
-                              last_active_at, created_at
+                              last_active_at, created_at, title
                        FROM agent_sessions
                        WHERE user_id = $1
                        ORDER BY last_active_at DESC
@@ -178,6 +207,7 @@ class MTMemory:
             return [
                 {
                     "session_id": str(r["id"]),
+                    "title": r["title"],
                     "agent_type": r["agent_type"],
                     "course_id": r["course_id"],
                     "turn_count": r["turn_count"],

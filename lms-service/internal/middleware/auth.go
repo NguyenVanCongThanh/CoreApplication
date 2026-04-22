@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"example/hello/internal/dto"
@@ -123,9 +124,16 @@ func ServiceOrAuthMiddleware(jwtSecret string, serviceSecret string) gin.Handler
 
 		if apiSecret != "" && apiSecret == serviceSecret {
 			// Authorized as internal service
-			c.Set("user_id", int64(0)) // System/Internal user ID
+			userID := int64(0)
+			if userIDStr := c.GetHeader("X-User-Id"); userIDStr != "" {
+				if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
+					userID = id
+				}
+			}
+			
+			c.Set("user_id", userID) 
 			c.Set("user_email", "system@bdc.internal")
-			c.Set("user_roles", []string{"ADMIN"})
+			c.Set("user_roles", []string{"ADMIN", "TEACHER"})
 			c.Set("user_role", "ADMIN")
 			c.Next()
 			return

@@ -32,13 +32,24 @@ You have access to tools that allow you to:
 1. NEVER fabricate student data or scores. Always use tools to query real data.
 2. Quiz questions you generate are DRAFTS. Always remind the teacher to review \
    and approve before publishing.
-3. When the teacher references a topic by name, use `list_knowledge_nodes` \
-   FIRST to find the correct node_id before calling other tools.
-4. If the teacher's request is ambiguous (missing course_id, topic, etc.), \
-   ask for clarification instead of guessing.
+3. NEVER guess or fabricate a node_id, course_id, or any numeric ID. \
+   When the teacher references a topic by name, you MUST call \
+   `list_knowledge_nodes` FIRST to obtain the correct node_id. \
+   If no nodes are found, tell the teacher that course documents need \
+   to be indexed before quiz generation is possible. \
+   Do NOT call `generate_quiz_draft` without a verified node_id.
+4. If the teacher's request requires a course_id but none is provided in the session context, \
+   you MUST call `list_my_courses` FIRST. Then present the list of their courses and \
+   ask them which one they want to work on. Do NOT fabricate a course_id.
 5. Match the teacher's language. If they write in Vietnamese, respond in Vietnamese. \
    If in English, respond in English.
 6. Keep responses focused and actionable. Teachers are busy people.
+7. Tool-calling order for quiz generation: \
+   `list_my_courses` (if needed) → `list_knowledge_nodes` → verify node exists → `generate_quiz_draft`. \
+   Skipping validation is FORBIDDEN.
+
+# Current User
+{user_context}
 
 # Context Awareness
 {memory_context}
@@ -96,6 +107,9 @@ Instead of just giving answers:
 4. If they get it wrong, explain the error and try again
 5. If they get it right, suggest the next topic or deeper exploration
 
+# Current User
+{user_context}
+
 # Context Awareness
 {memory_context}
 
@@ -111,13 +125,15 @@ Instead of just giving answers:
 def build_system_prompt(
     agent_type: str,
     memory_context: str,
+    user_context: dict | None = None,
 ) -> str:
     """
-    Build the final system prompt with memory context injected.
+    Build the final system prompt with memory and user context injected.
 
     Args:
         agent_type: "teacher" or "mentor"
         memory_context: The formatted string from ContextBuilder.prompt_section
+        user_context: Optional dict with user identity {name, email, role}
     """
     template = (
         TEACHER_SYSTEM_PROMPT if agent_type == "teacher"
@@ -127,4 +143,38 @@ def build_system_prompt(
     if not memory_context:
         memory_context = "(No additional context available for this session)"
 
-    return template.format(memory_context=memory_context)
+    # Format user identity section
+    user_section = _format_user_context(user_context, agent_type)
+
+    return template.format(
+        memory_context=memory_context,
+        user_context=user_section,
+    )
+
+
+def _format_user_context(ctx: dict | None, agent_type: str) -> str:
+    """Format user identity for system prompt injection."""
+    if not ctx:
+        return "(User identity unknown)"
+
+    parts = []
+    name = ctx.get("name")
+    role = ctx.get("role")
+    email = ctx.get("email")
+
+    if name:
+        parts.append(f"Name: {name}")
+    if role:
+        role_label = {
+            "ADMIN": "Administrator",
+            "TEACHER": "Instructor / Teacher",
+            "STUDENT": "Student / Learner",
+        }.get(role.upper(), role)
+        parts.append(f"Role: {role_label}")
+    if email:
+        parts.append(f"Email: {email}")
+
+    if not parts:
+        return "(User identity unknown)"
+
+    return "\n".join(parts)

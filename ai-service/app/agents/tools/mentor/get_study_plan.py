@@ -37,7 +37,7 @@ class GetStudyPlanTool(BaseTool):
         from app.agents.memory.personalize_memory import personalize_memory
         from app.services.quiz_service import sr_service
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         student_id = kwargs.get("_user_id", 0)
 
         try:

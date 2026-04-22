@@ -36,7 +36,7 @@ class RecommendReviewTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         from app.core.database import get_ai_conn
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
 
         try:
             async with get_ai_conn() as conn:

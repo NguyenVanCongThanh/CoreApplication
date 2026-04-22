@@ -30,10 +30,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Inject user_id from JWT (prevent spoofing)
+  // Inject user identity from JWT (prevent spoofing)
   const userId =
     (session.user as any).id ?? (session.user as any).userId ?? 0;
   body.user_id = Number(userId);
+
+  // Inject user context so the agent knows who it's talking to
+  body.user_context = {
+    name: session.user.name || undefined,
+    email: session.user.email || undefined,
+    role: (session.user as any).role || undefined,
+  };
 
   if (!body.message || !body.agent_type) {
     return NextResponse.json(

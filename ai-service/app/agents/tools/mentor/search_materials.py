@@ -45,7 +45,7 @@ class SearchMaterialsTool(BaseTool):
         from app.services.rag_service import rag_service
 
         query = kwargs["query"]
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         top_k = kwargs.get("top_k", 3)
 
         try:

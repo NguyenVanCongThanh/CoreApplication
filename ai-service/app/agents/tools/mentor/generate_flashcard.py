@@ -52,7 +52,7 @@ class GenerateFlashcardTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         from app.services.flashcard_service import flashcard_srv
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         node_id = kwargs["node_id"]
         count = kwargs.get("count", 3)
         language = kwargs.get("language", "vi")

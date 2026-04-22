@@ -36,6 +36,13 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 # ── Request/Response models ──────────────────────────────────────────────────
 
+class UserContext(BaseModel):
+    """User identity context injected from the frontend JWT session."""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000)
     agent_type: str = Field(
@@ -45,6 +52,7 @@ class ChatRequest(BaseModel):
     course_id: Optional[int] = None
     session_id: Optional[str] = None
     user_id: int = Field(..., gt=0)
+    user_context: Optional[UserContext] = None
 
 
 class SessionListResponse(BaseModel):
@@ -102,6 +110,7 @@ async def chat_endpoint(
                 message=body.message,
                 course_id=body.course_id,
                 session_id=body.session_id,
+                user_context=body.user_context.model_dump() if body.user_context else None,
             ):
                 yield event.to_sse()
         except Exception as exc:
@@ -143,6 +152,37 @@ async def list_sessions(
         limit=limit,
     )
     return {"sessions": sessions}
+
+class NewSessionRequest(BaseModel):
+    user_id: int
+    agent_type: str = Field(pattern="^(teacher|mentor)$")
+    course_id: Optional[int] = None
+
+@router.post("/sessions/new")
+async def create_new_session(
+    body: NewSessionRequest,
+    x_ai_secret: Optional[str] = Header(None, alias="X-AI-Secret"),
+):
+    """Force create a completely new session (instead of reusing recent)."""
+    _verify_secret(x_ai_secret)
+    session_data = await mtm.create_new_session(
+        user_id=body.user_id,
+        agent_type=body.agent_type,
+        course_id=body.course_id,
+    )
+    return session_data
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: str,
+    limit: int = 100,
+    x_ai_secret: Optional[str] = Header(None, alias="X-AI-Secret"),
+):
+    """Get the persistent message history for a session."""
+    _verify_secret(x_ai_secret)
+    from app.agents.memory.message_store import message_store
+    messages = await message_store.get_messages(session_id=session_id, limit=limit)
+    return {"messages": messages}
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

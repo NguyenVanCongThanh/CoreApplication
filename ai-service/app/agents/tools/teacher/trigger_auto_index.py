@@ -53,7 +53,7 @@ class TriggerAutoIndexTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         content_id = kwargs["content_id"]
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
 
         try:
             # Check if content is already indexed

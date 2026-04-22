@@ -33,6 +33,7 @@ async def handle_chat_message(
     message: str,
     course_id: int | None = None,
     session_id: str | None = None,
+    user_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """
     Top-level entry point for processing a chat message.
@@ -45,6 +46,7 @@ async def handle_chat_message(
         message: The user's message text.
         course_id: Optional course context for scoped sessions.
         session_id: Optional existing session ID. If None, creates/finds one.
+        user_context: Optional user identity (name, email, role) from JWT.
 
     Yields:
         AgentEvent objects for SSE streaming.
@@ -96,5 +98,6 @@ async def handle_chat_message(
         agent_type=agent_type,
         user_message=message,
         course_id=course_id,
+        user_context=user_context,
     ):
         yield event

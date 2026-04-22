@@ -45,7 +45,7 @@ class CreateSectionTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> ToolResult:
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         title = kwargs["title"]
         desc = kwargs.get("description", "")
         order = kwargs.get("order_index")
@@ -58,7 +58,7 @@ class CreateSectionTool(BaseTool):
                 async with httpx.AsyncClient(timeout=10) as client:
                     resp = await client.get(
                         f"{lms_base}/api/v1/courses/{course_id}/sections",
-                        headers={"X-AI-Secret": settings.ai_service_secret},
+                        headers={"X-API-Secret": settings.ai_service_secret},
                     )
                     if resp.status_code == 200:
                         sections = resp.json().get("data") or []
@@ -77,7 +77,7 @@ class CreateSectionTool(BaseTool):
                 resp = await client.post(
                     f"{lms_base}/api/v1/courses/{course_id}/sections",
                     json=payload,
-                    headers={"X-AI-Secret": settings.ai_service_secret},
+                    headers={"X-API-Secret": settings.ai_service_secret},
                 )
 
             if resp.status_code in (200, 201):

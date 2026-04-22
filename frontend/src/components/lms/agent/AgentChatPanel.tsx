@@ -7,11 +7,13 @@
  * Works as a self-contained component that can be embedded in any page.
  */
 import { useRef, useEffect } from "react";
-import { MessageSquare, Sparkles } from "lucide-react";
+import { MessageSquare, Sparkles, Loader2 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useAgentChat } from "@/hooks/useAgentChat";
 import { AgentMessageBubble } from "./AgentMessageBubble";
 import { AgentInputBar } from "./AgentInputBar";
+import { ConversationSidebar } from "./ConversationSidebar";
 
 interface AgentChatPanelProps {
   agentType: "teacher" | "mentor";
@@ -47,13 +49,19 @@ export function AgentChatPanel({
   courseId,
   className,
 }: AgentChatPanelProps) {
+  const { data: session } = useSession();
+  const userId = session?.user ? Number((session.user as any).id || (session.user as any).userId) : undefined;
+
   const {
     messages,
+    sessionId,
     isStreaming,
-    isThinking,
+    isLoadingHistory,
     sendMessage,
     stopStreaming,
-  } = useAgentChat({ agentType, courseId });
+    startNewChat,
+    switchSession,
+  } = useAgentChat({ agentType, courseId, userId });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const welcome = WELCOME[agentType];
@@ -71,14 +79,28 @@ export function AgentChatPanel({
   return (
     <div
       className={cn(
-        "flex flex-col h-full",
+        "flex h-full w-full",
         "bg-slate-50 dark:bg-slate-950",
         "rounded-2xl border border-slate-200 dark:border-slate-800",
         "overflow-hidden",
         className,
       )}
     >
-      {/* Header */}
+      {/* Sidebar for chat history */}
+      {userId && (
+          <ConversationSidebar 
+              userId={userId} 
+              agentType={agentType} 
+              activeSessionId={sessionId}
+              onSelectSession={switchSession}
+              onNewSession={startNewChat}
+              className="w-1/4 min-w-[250px] max-w-[300px] border-r-0 lg:border-r"
+          />
+      )}
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full bg-white dark:bg-slate-950">
+        {/* Header */}
       <div
         className={cn(
           "flex items-center gap-3 px-5 py-4",
@@ -150,12 +172,19 @@ export function AgentChatPanel({
             />
           ))
         )}
+        
+        {isLoadingHistory && (
+          <div className="flex justify-center items-center py-4">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            <span className="ml-2 text-slate-500">Đang tải lịch sử...</span>
+          </div>
+        )}
       </div>
 
       {/* Input bar */}
       <AgentInputBar
         onSend={sendMessage}
-        isStreaming={isStreaming}
+        isStreaming={isStreaming || isLoadingHistory}
         onStop={stopStreaming}
         placeholder={
           agentType === "mentor"
@@ -163,6 +192,7 @@ export function AgentChatPanel({
             : "Nhờ TA hỗ trợ quản lý khóa học..."
         }
       />
+      </div>
     </div>
   );
 }

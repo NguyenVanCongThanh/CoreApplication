@@ -44,7 +44,7 @@ class DiagnoseKnowledgeGapTool(BaseTool):
         from app.agents.memory.personalize_memory import personalize_memory
         from app.core.config import get_settings
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         topic = kwargs.get("topic")
         student_id = kwargs.get("_user_id", 0)
         settings = get_settings()

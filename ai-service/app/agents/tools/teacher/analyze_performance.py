@@ -43,7 +43,7 @@ class AnalyzePerformanceTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         from app.services.diagnosis_service import diagnosis_service
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         student_id = kwargs.get("student_id")
 
         try:

@@ -66,6 +66,7 @@ from typing import AsyncIterator
 from app.agents.events import AgentEvent, AgentEventType
 from app.agents.memory.stm import stm
 from app.agents.memory.mtm import mtm
+from app.agents.memory.message_store import message_store
 from app.agents.memory.compressor import compress_conversation
 from app.agents.memory.context_builder import context_builder
 from app.agents.core.router import classify_intent
@@ -91,6 +92,7 @@ async def run_react_loop(
     agent_type: str,
     user_message: str,
     course_id: int | None = None,
+    user_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """
     Execute the full ReAct loop for a single user turn.
@@ -219,6 +221,7 @@ async def run_react_loop(
     system_prompt = build_system_prompt(
         agent_type=agent_type,
         memory_context=memory_ctx["prompt_section"],
+        user_context=user_context,
     )
 
     # Start with system prompt
@@ -240,11 +243,16 @@ async def run_react_loop(
     # Add the current user message
     messages.append({"role": "user", "content": user_message})
 
-    # Save user message to STM
+    # Save user message to STM and persistent store
     await stm.append(session_id, "user", user_message)
+    await message_store.save_message(session_id, "user", user_message)
 
     # Get tool schemas for this agent
     tool_schemas = get_tool_schemas(agent_type)
+
+    # Track assistant message across iterations for persistent storage
+    assistant_text = ""
+    assistant_metadata: dict = {"toolActivities": []}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 5: ReAct Iterations
@@ -296,6 +304,7 @@ async def run_react_loop(
                 # Stream text deltas to frontend
                 if delta.content:
                     collected_text += delta.content
+                    assistant_text += delta.content
                     yield AgentEvent(
                         type=AgentEventType.TEXT_DELTA,
                         data={"delta": delta.content},
@@ -357,11 +366,17 @@ async def run_react_loop(
                 turn_id=turn_id,
             )
 
+            # Save full assistant response to persistent store
+            await message_store.save_message(
+                session_id, "assistant", assistant_text, assistant_metadata
+            )
+
             # Post-turn: check if compression is needed
             await _post_turn_maintenance(
                 session_id=session_id,
                 user_id=user_id,
                 agent_type=agent_type,
+                user_message=user_message,
             )
             return
 
@@ -402,6 +417,11 @@ async def run_react_loop(
                 args = {}
 
             # ── Yield TOOL_START ─────────────────────────────────────────
+            assistant_metadata["toolActivities"].append({
+                "tool": tool_name,
+                "status": "running",
+                "args": args
+            })
             yield AgentEvent(
                 type=AgentEventType.TOOL_START,
                 data={"tool": tool_name, "args": args},
@@ -416,10 +436,12 @@ async def run_react_loop(
                 name=tool_name,
                 arguments=args,
                 user_id=user_id,
+                course_id=course_id,
             )
 
             # ── Yield UI component if present ────────────────────────────
             if tool_result.ui_instruction:
+                assistant_metadata["uiComponent"] = tool_result.ui_instruction
                 yield AgentEvent(
                     type=AgentEventType.UI_COMPONENT,
                     data=tool_result.ui_instruction,
@@ -429,6 +451,12 @@ async def run_react_loop(
 
             # ── Yield HITL if pending approval ───────────────────────────
             if tool_result.status == "pending_human_approval":
+                assistant_metadata["hitlRequest"] = {
+                    "tool": tool_name,
+                    "message": tool_result.message,
+                    "data": tool_result.data,
+                    "ui_instruction": tool_result.ui_instruction,
+                }
                 yield AgentEvent(
                     type=AgentEventType.HITL_REQUEST,
                     data={
@@ -442,12 +470,10 @@ async def run_react_loop(
                 )
 
             # ── Yield TOOL_RESULT ────────────────────────────────────────
-            # Build a compact summary for the LLM
-            result_summary = {
-                "status": tool_result.status,
-                "message": tool_result.message,
-                "data": tool_result.data,
-            }
+            for t in assistant_metadata["toolActivities"]:
+                if t["tool"] == tool_name and t["status"] == "running":
+                    t["status"] = "done" if tool_result.status != "error" else "error"
+                    t["message"] = tool_result.message
 
             yield AgentEvent(
                 type=AgentEventType.TOOL_RESULT,
@@ -460,7 +486,47 @@ async def run_react_loop(
                 turn_id=iter_id,
             )
 
+            # ── HITL early exit: stop the loop and let the widget
+            #    be the primary response. No further LLM iteration
+            #    needed — the teacher reviews via the widget. ─────────
+            if tool_result.status == "pending_human_approval":
+                logger.info(
+                    "HITL break: tool=%s, stopping ReAct loop",
+                    tool_name,
+                )
+                # Save a concise assistant summary to STM
+                await stm.append(
+                    session_id, "assistant", tool_result.message,
+                )
+                
+                # Save full assistant state to persistent store
+                await message_store.save_message(
+                    session_id, "assistant", assistant_text, assistant_metadata
+                )
+                yield AgentEvent(
+                    type=AgentEventType.DONE,
+                    data={
+                        "text": tool_result.message,
+                        "iterations": iteration + 1,
+                        "reason": "hitl_pending",
+                    },
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                await _post_turn_maintenance(
+                    session_id=session_id,
+                    user_id=user_id,
+                    agent_type=agent_type,
+                    user_message=user_message,
+                )
+                return
+
             # ── Add tool result to messages for next LLM iteration ───────
+            result_summary = {
+                "status": tool_result.status,
+                "message": tool_result.message,
+                "data": tool_result.data,
+            }
             result_content = json.dumps(
                 result_summary,
                 ensure_ascii=False,
@@ -491,6 +557,7 @@ async def run_react_loop(
         "Bạn có thể thử lại với yêu cầu cụ thể hơn không?"
     )
     await stm.append(session_id, "assistant", fallback)
+    await message_store.save_message(session_id, "assistant", fallback, assistant_metadata)
 
     yield AgentEvent(
         type=AgentEventType.TEXT_DELTA,
@@ -521,6 +588,7 @@ async def _post_turn_maintenance(
     session_id: str,
     user_id: int,
     agent_type: str,
+    user_message: str,
 ) -> None:
     """
     Background maintenance after a turn completes.
@@ -531,6 +599,10 @@ async def _post_turn_maintenance(
     try:
         # Increment turn count
         turn_count = await mtm.increment_turn_count(session_id)
+
+        # Generate title on first turn
+        if turn_count == 1:
+            await _generate_session_title(session_id, user_message)
 
         # Check compression every N turns
         if turn_count % COMPRESS_CHECK_INTERVAL != 0:
@@ -573,3 +645,26 @@ async def _post_turn_maintenance(
     except Exception as exc:
         # Don't let maintenance failures break the chat
         logger.error("Post-turn maintenance failed: %s", exc)
+
+async def _generate_session_title(session_id: str, first_message: str) -> None:
+    """Generate a short title for the session based on the first message."""
+    try:
+        from app.core.llm import get_groq_client
+        prompt = (
+            f"Tạo một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại "
+            f"này dựa trên tin nhắn sau. Không dùng ngoặc kép.\nTin nhắn: {first_message}"
+        )
+        client = get_groq_client()
+        res = await client.chat.completions.create(
+            model=settings.quiz_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+            temperature=0.3
+        )
+        if res.choices and res.choices[0].message and res.choices[0].message.content:
+            title = res.choices[0].message.content.strip(' "\'')
+            if title:
+                await mtm.update_title(session_id, title)
+                logger.info("Session %s title update to: %s", session_id[:8], title)
+    except Exception as e:
+        logger.error("Failed to generate session title: %s", e)

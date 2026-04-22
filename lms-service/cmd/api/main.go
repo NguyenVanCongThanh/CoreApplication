@@ -220,6 +220,17 @@ func main() {
 			}
 		}
 
+		// ── Section management (Internal Service Secret OR JWT) ──────────────
+		// AI service calls these endpoints using X-API-Secret header.
+		// Normal users continue to use JWT authentication.
+		flexCourses := v1.Group("/courses")
+		flexCourses.Use(middleware.ServiceOrAuthMiddleware(cfg.JWT.Secret, cfg.AIConf.Secret))
+		{
+			flexCourses.POST("/:courseId/sections", courseHandler.CreateSection)
+			flexCourses.GET("/:courseId/sections", courseHandler.ListSections)
+			flexCourses.GET("/my", courseHandler.ListMyCourses)
+		}
+
 		// Protected routes - require authentication
 		auth := v1.Group("")
 		auth.Use(middleware.AuthMiddleware(cfg.JWT.Secret))
@@ -232,7 +243,6 @@ func main() {
 			{
 				// Public course routes (anyone authenticated can view published courses)
 				courses.GET("", courseHandler.ListPublishedCourses)
-				courses.GET("/my", courseHandler.ListMyCourses)
 				courses.GET("/:courseId", courseHandler.GetCourse)
 
 				// Teacher/Admin only - Create course
@@ -242,10 +252,6 @@ func main() {
 				courses.PUT("/:courseId", courseHandler.UpdateCourse)
 				courses.DELETE("/:courseId", middleware.RequireRole("ADMIN"), courseHandler.DeleteCourse)
 				courses.POST("/:courseId/publish", courseHandler.PublishCourse)
-
-				// Section management (Owner/Admin only via service layer)
-				courses.POST("/:courseId/sections", courseHandler.CreateSection)
-				courses.GET("/:courseId/sections", courseHandler.ListSections)
 
 				// ── Analytics (Teacher / Admin only)
 				courses.GET("/:courseId/quiz-analytics", analyticsHandler.GetCourseQuizAnalytics)

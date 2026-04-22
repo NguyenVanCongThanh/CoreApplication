@@ -32,7 +32,11 @@ class GenerateQuizDraftTool(BaseTool):
             },
             "node_id": {
                 "type": "integer",
-                "description": "The knowledge node ID (topic) to generate questions about.",
+                "description": (
+                    "The knowledge node ID (topic) to generate questions about. "
+                    "MUST be a valid ID obtained from list_knowledge_nodes. "
+                    "Do NOT guess this value."
+                ),
             },
             "bloom_levels": {
                 "type": "array",
@@ -65,7 +69,7 @@ class GenerateQuizDraftTool(BaseTool):
         from app.services.quiz_service import quiz_gen_service
         from app.core.llm import chat_complete_json
 
-        course_id = kwargs["course_id"]
+        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         node_id = kwargs["node_id"]
         bloom_levels = kwargs.get("bloom_levels")
         num_per_level = kwargs.get("num_questions_per_level", 2)
@@ -74,6 +78,26 @@ class GenerateQuizDraftTool(BaseTool):
         preferred_title = kwargs.get("preferred_title")
 
         try:
+            # 0. Pre-validate node_id exists — catch hallucinated IDs early
+            from app.core.database import get_ai_conn
+
+            async with get_ai_conn() as conn:
+                node = await conn.fetchrow(
+                    "SELECT id, name FROM knowledge_nodes "
+                    "WHERE id = $1 AND course_id = $2",
+                    node_id, course_id,
+                )
+            if not node:
+                return ToolResult(
+                    status="error",
+                    data={"error": "invalid_node_id", "node_id": node_id},
+                    message=(
+                        f"node_id={node_id} không tồn tại trong khóa học {course_id}. "
+                        "Hãy gọi `list_knowledge_nodes` trước để lấy danh sách node_id hợp lệ. "
+                        "Nếu không có node nào, giáo viên cần index tài liệu khóa học trước."
+                    ),
+                )
+
             # 1. Generate the questions via service
             gen_ids = await quiz_gen_service.generate_for_node(
                 node_id=node_id,
@@ -96,7 +120,7 @@ class GenerateQuizDraftTool(BaseTool):
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
                     f"{lms_base}/api/v1/courses/{course_id}/sections",
-                    headers={"X-AI-Secret": settings.ai_service_secret},
+                    headers={"X-API-Secret": settings.ai_service_secret},
                 )
                 if resp.status_code == 200:
                     sections = resp.json().get("data") or []

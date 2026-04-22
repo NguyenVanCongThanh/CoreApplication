@@ -35,12 +35,15 @@ from app.agents.tools.mentor.explain_concept import ExplainConceptTool
 
 # ── Shared tools (available to both agents) ───────────────────────────────────
 
+from app.agents.tools.teacher.list_my_courses import ListMyCoursesTool
+
 _SHARED_TOOLS: list[BaseTool] = [
     ListKnowledgeNodesTool(),
     SearchMaterialsTool(),
 ]
 
 _TEACHER_ONLY_TOOLS: list[BaseTool] = [
+    ListMyCoursesTool(),
     GenerateQuizDraftTool(),
     AnalyzePerformanceTool(),
     TriggerAutoIndexTool(),
@@ -99,12 +102,14 @@ async def execute_tool(
     name: str,
     arguments: dict,
     user_id: int = 0,
+    course_id: int | None = None,
 ) -> ToolResult:
     """
     Execute a tool by name with the given arguments.
 
-    Injects _user_id into kwargs so tools can access the calling user's ID
-    without requiring it as an explicit LLM parameter.
+    Injects _user_id and _course_id into kwargs so tools can access
+    the calling user's ID and current course context without requiring
+    them as explicit LLM parameters.
     """
     tool = get_tool_by_name(name)
     if not tool:
@@ -114,8 +119,10 @@ async def execute_tool(
             message=f"Tool '{name}' not found in registry.",
         )
 
-    # Inject user context
+    # Inject user and course context
     arguments["_user_id"] = user_id
+    if course_id is not None:
+        arguments["_course_id"] = course_id
 
     try:
         return await tool.execute(**arguments)
