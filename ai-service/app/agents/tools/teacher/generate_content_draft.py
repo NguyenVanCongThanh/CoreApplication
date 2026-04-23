@@ -19,11 +19,16 @@ settings = get_settings()
 class GenerateContentDraftTool(BaseTool):
     name = "generate_content_draft"
     description = (
-        "Generate a text-based content draft such as a lesson outline, "
-        "summary, or slide structure for a topic. The draft is based on "
-        "existing course materials retrieved via RAG. It also suggests "
-        "the best course section to save this content to. "
-        "IMPORTANT: If you don't know the course_id, you MUST call `list_my_courses` first."
+        "Generate a TEXT-BASED content draft such as a lesson outline, "
+        "summary, slide structure, lesson plan, or explanation for a "
+        "topic, based on existing course materials (RAG). Outputs markdown "
+        "for the teacher to review.\n"
+        "DO NOT use this tool to create quizzes, questions, flashcards, or "
+        "exercises — use `generate_quiz_draft` for quizzes. "
+        "The `content_type` parameter MUST be one of: outline, summary, "
+        "slide_structure, lesson_plan, explanation. No other value is "
+        "accepted. "
+        "If you don't know the course_id, call `list_my_courses` first."
     )
     parameters = {
         "type": "object",

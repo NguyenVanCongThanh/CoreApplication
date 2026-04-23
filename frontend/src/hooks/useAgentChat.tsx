@@ -26,9 +26,14 @@ interface UseAgentChatOptions {
   courseId?: number;
   initialSessionId?: string;
   userId?: number;
+  onSessionUpdated?: (update: {
+    sessionId: string;
+    title?: string;
+    reason: "title" | "new" | "reused" | "activity";
+  }) => void;
 }
-
-export function useAgentChat({ agentType, courseId, initialSessionId, userId }: UseAgentChatOptions) {
+ 
+export function useAgentChat({ agentType, courseId, initialSessionId, userId, onSessionUpdated }: UseAgentChatOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -64,30 +69,53 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId }: 
     }
   };
 
+  /**
+   * Abort the current SSE stream.
+   */
+  const stopStreaming = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsStreaming(false);
+    setIsThinking(false);
+  }, []);
+
   const switchSession = useCallback(async (newSessionId: string) => {
     stopStreaming();
     setSessionId(newSessionId);
     setMessages([]);
     await loadHistory(newSessionId);
-  }, []);
+  }, [stopStreaming]);
 
   const startNewChat = useCallback(async () => {
     stopStreaming();
+    if (messages.length === 0) {
+      setMessages([]);
+      return;
+    }
+ 
+    if (!userId) {
+      setSessionId(null);
+      setMessages([]);
+      return;
+    }
+ 
     try {
-      if (!userId) return;
       const res = await agentService.createNewSession({
         agent_type: agentType,
         course_id: courseId,
       });
       setSessionId(res.session_id);
       setMessages([]);
+      onSessionUpdated?.({
+        sessionId: res.session_id,
+        reason: res.reused ? "reused" : "new",
+      });
     } catch (err) {
       console.error("Failed to start entirely new chat:", err);
-      // Fallback
       setSessionId(null);
       setMessages([]);
     }
-  }, [agentType, courseId, userId]);
+  }, [agentType, courseId, userId, messages.length, onSessionUpdated]);
 
   /**
    * Send a message and process the SSE stream.
@@ -211,6 +239,22 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId }: 
     switch (event.type) {
       case "session":
         setSessionId(event.data.session_id);
+        if (event.data.is_new) {
+          onSessionUpdated?.({
+            sessionId: event.data.session_id,
+            reason: "new",
+          });
+        }
+        break;
+
+      case "title_update":
+        if (event.data.title) {
+          onSessionUpdated?.({
+            sessionId: event.session_id,
+            title: event.data.title,
+            reason: "title",
+          });
+        }
         break;
 
       case "thinking":
@@ -297,6 +341,12 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId }: 
           ...msg,
           isStreaming: false,
         }));
+        if (event.session_id) {
+          onSessionUpdated?.({
+            sessionId: event.session_id,
+            reason: "activity",
+          });
+        }
         break;
 
       case "error":
@@ -311,9 +361,6 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId }: 
     }
   }
 
-  /**
-   * Update the assistant message by ID using an updater function.
-   */
   function updateAssistant(
     id: string,
     updater: (msg: AgentMessage) => AgentMessage,
@@ -323,19 +370,6 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId }: 
     );
   }
 
-  /**
-   * Abort the current SSE stream.
-   */
-  const stopStreaming = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setIsStreaming(false);
-    setIsThinking(false);
-  }, []);
-
-  /**
-   * Clear all messages and reset session.
-   */
   const clearChat = useCallback(() => {
     setMessages([]);
     setSessionId(null);

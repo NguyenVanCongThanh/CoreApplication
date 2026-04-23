@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { MessageSquare, Plus, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentService } from "@/services/agentService";
 import type { AgentSession } from "@/types";
-
+ 
 interface ConversationSidebarProps {
   userId: number;
   agentType: "teacher" | "mentor";
@@ -12,22 +18,45 @@ interface ConversationSidebarProps {
   onNewSession: () => void;
   className?: string;
 }
-
-export function ConversationSidebar({
-  userId,
-  agentType,
-  activeSessionId,
-  onSelectSession,
-  onNewSession,
-  className,
-}: ConversationSidebarProps) {
+ 
+export interface ConversationSidebarHandle {
+  refresh: () => Promise<void>;
+  patchSession: (sessionId: string, patch: Partial<AgentSession>) => void;
+  touchSession: (sessionId: string) => void;
+}
+ 
+export const ConversationSidebar = forwardRef<
+  ConversationSidebarHandle,
+  ConversationSidebarProps
+>(function ConversationSidebar(
+  {
+    userId,
+    agentType,
+    activeSessionId,
+    onSelectSession,
+    onNewSession,
+    className,
+  },
+  ref,
+) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Load sessions on mount and when agentType/userId changes
+ 
+  const fetchSessions = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await agentService.listSessions(userId, agentType);
+      setSessions(data);
+    } catch (err) {
+      console.error("Failed to fetch sessions:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId, agentType]);
+ 
   useEffect(() => {
     let unmounted = false;
-    const fetchSessions = async () => {
+    (async () => {
       setIsLoading(true);
       try {
         const data = await agentService.listSessions(userId, agentType);
@@ -37,23 +66,55 @@ export function ConversationSidebar({
       } finally {
         if (!unmounted) setIsLoading(false);
       }
-    };
-    fetchSessions();
-
+    })();
     return () => {
       unmounted = true;
     };
   }, [userId, agentType]);
-
-  // Optionally, we could poll or explicitly refresh sessions here.
-  // For now, it refreshes on mount.
-
+ 
+  useImperativeHandle(
+    ref,
+    () => ({
+      refresh: fetchSessions,
+      patchSession: (sessionId, patch) => {
+        setSessions((prev) => {
+          const idx = prev.findIndex((s) => s.session_id === sessionId);
+          if (idx === -1) {
+            // Unknown session — pull a fresh list asynchronously.
+            fetchSessions();
+            return prev;
+          }
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...patch };
+          return next;
+        });
+      },
+      touchSession: (sessionId) => {
+        setSessions((prev) => {
+          const idx = prev.findIndex((s) => s.session_id === sessionId);
+          if (idx === -1) {
+            fetchSessions();
+            return prev;
+          }
+          const updated = {
+            ...prev[idx],
+            last_active_at: new Date().toISOString(),
+            turn_count: (prev[idx].turn_count || 0) + 1,
+          };
+          const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+          return next;
+        });
+      },
+    }),
+    [fetchSessions],
+  );
+ 
   return (
     <div
       className={cn(
         "flex flex-col h-full bg-slate-50 dark:bg-slate-900",
         "border-r border-slate-200 dark:border-slate-800",
-        className
+        className,
       )}
     >
       <div className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -62,14 +123,14 @@ export function ConversationSidebar({
           className={cn(
             "w-full flex items-center justify-center gap-2",
             "bg-blue-600 hover:bg-blue-700 text-white font-medium",
-            "px-4 py-2.5 rounded-xl transition-all duration-200"
+            "px-4 py-2.5 rounded-xl transition-all duration-200",
           )}
         >
           <Plus className="w-4 h-4" />
           <span>Đoạn chat mới</span>
         </button>
       </div>
-
+ 
       <div className="flex-1 overflow-y-auto w-full p-2 space-y-1">
         {isLoading ? (
           <div className="flex justify-center items-center h-20 text-slate-400">
@@ -90,7 +151,7 @@ export function ConversationSidebar({
                   "w-full text-left px-3 py-3 rounded-xl transition-colors duration-200",
                   isActive
                     ? "bg-slate-200 dark:bg-slate-800"
-                    : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                    : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50",
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -103,7 +164,7 @@ export function ConversationSidebar({
                         "text-sm font-medium truncate",
                         isActive
                           ? "text-slate-900 dark:text-slate-100"
-                          : "text-slate-700 dark:text-slate-300"
+                          : "text-slate-700 dark:text-slate-300",
                       )}
                     >
                       {session.title || "Cuộc hội thoại chưa đặt tên"}
@@ -112,11 +173,14 @@ export function ConversationSidebar({
                       <Clock className="w-3 h-3" />
                       <span>
                         {session.last_active_at
-                          ? new Date(session.last_active_at).toLocaleDateString("vi-VN", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric"
-                            })
+                          ? new Date(session.last_active_at).toLocaleDateString(
+                              "vi-VN",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              },
+                            )
                           : ""}
                       </span>
                       <span className="mx-1">•</span>
@@ -131,4 +195,4 @@ export function ConversationSidebar({
       </div>
     </div>
   );
-}
+});

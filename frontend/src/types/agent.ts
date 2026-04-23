@@ -17,6 +17,7 @@ export type AgentEventType =
   | "clarification"
   | "hitl_request"
   | "session"
+  | "title_update"
   | "done"
   | "error";
 

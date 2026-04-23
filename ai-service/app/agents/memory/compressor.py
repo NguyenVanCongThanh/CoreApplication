@@ -24,16 +24,27 @@ settings = get_settings()
 
 COMPRESS_SYSTEM_PROMPT = """\
 You are a conversation compressor for an AI teaching/mentoring system.
-Your job is to extract ONLY valuable long-term information from a conversation.
+Your job is to extract ONLY valuable long-term information from a conversation
+so the agent can keep coherent context across many turns.
 
 RULES:
-1. KEEP: decisions made, content IDs created, knowledge gaps found, \
-   pending tasks, student progress data, key preferences.
-2. DISCARD: greetings, confirmations, repeated information, \
-   temporary debugging info, chitchat.
-3. Output MUST be valid JSON matching the schema below.
-4. Keep the output compact — under 300 tokens.
-5. If the conversation is in Vietnamese, keep the output in Vietnamese.
+1. KEEP:
+   - Decisions made and their reasoning in one sentence each
+   - Content IDs created (quiz_id, flashcard_set_id, plan_id, etc.)
+   - Knowledge gaps and concepts the student is weak at
+   - Pending tasks not yet completed
+   - Student progress signals (mastery, scores, error patterns)
+   - The CURRENT topic/thread the conversation is on (critical for continuity)
+   - Key preferences (language, difficulty level, learning style)
+2. DISCARD: greetings, confirmations, repeated information, filler chitchat,
+   raw tool JSON, debugging output.
+3. Output MUST be valid JSON matching the schema below — no extra fields,
+   no prose before or after.
+4. Keep the output compact — target under 300 tokens.
+5. Preserve the user's language. If conversation is in Vietnamese, write
+   the JSON values in Vietnamese.
+6. When merging with EXISTING CONTEXT, preserve still-relevant facts and
+   only append/refine based on the new conversation. Don't duplicate.
 
 Output JSON schema:
 {
@@ -46,10 +57,16 @@ Output JSON schema:
         "notes": "string"
     },
     "pending_actions": ["things not yet completed"],
-    "key_facts": {"key": "value — important preferences or context"}
+    "key_facts": {
+        "current_topic": "the topic actively being discussed, or empty",
+        "preferred_language": "vi | en | ...",
+        "level": "beginner | intermediate | advanced (if inferrable)"
+    }
 }
 
-If a field has no data, use an empty array [] or empty object {}.
+`key_facts` may contain other user-specific preferences observed in the
+conversation (e.g. "preferred_format": "markdown"). If a field has no data,
+use an empty array [], empty object {}, or omit optional key_facts entries.
 """
 
 

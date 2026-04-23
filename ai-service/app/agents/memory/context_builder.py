@@ -39,36 +39,36 @@ logger = logging.getLogger(__name__)
 WEIGHT_PROFILES: dict[str, dict[str, float]] = {
     "knowledge_question": {
         "stm": 0.9,
-        "mtm": 0.3,
-        "ltm": 0.2,
+        "mtm": 0.5,
+        "ltm": 0.5,
         "system": 1.0,
-        "personalize": 0.5,
+        "personalize": 0.6,
     },
     "progress_advice": {
-        "stm": 0.5,
-        "mtm": 0.7,
+        "stm": 0.6,
+        "mtm": 0.8,
         "ltm": 0.8,
-        "system": 0.2,
+        "system": 0.3,
         "personalize": 1.0,
     },
     "content_creation": {
         "stm": 0.9,
-        "mtm": 0.7,
-        "ltm": 0.3,
+        "mtm": 0.8,
+        "ltm": 0.4,
         "system": 1.0,
-        "personalize": 0.3,
+        "personalize": 0.4,
     },
     "general_chat": {
         "stm": 0.9,
-        "mtm": 0.3,
-        "ltm": 0.1,
-        "system": 0.1,
-        "personalize": 0.2,
+        "mtm": 0.5,
+        "ltm": 0.2,
+        "system": 0.2,
+        "personalize": 0.3,
     },
     "interactive_exercise": {
-        "stm": 0.7,
-        "mtm": 0.4,
-        "ltm": 0.3,
+        "stm": 0.8,
+        "mtm": 0.5,
+        "ltm": 0.4,
         "system": 0.8,
         "personalize": 0.9,
     },
@@ -145,7 +145,7 @@ class ContextBuilder:
         # ── 1. STM: Recent conversation history ──────────────────────────────
         stm_messages: list[dict] = []
         if weights["stm"] >= 0.3:
-            n_turns = 20 if weights["stm"] >= 0.7 else 6
+            n_turns = 30 if weights["stm"] >= 0.7 else 10
             stm_messages = await stm.get_window(session_id, n_turns=n_turns)
             raw["stm"] = {
                 "message_count": len(stm_messages),
@@ -257,11 +257,16 @@ class ContextBuilder:
         """Format MTM compressed context for prompt injection."""
         parts = []
 
+        key_facts = ctx.get("key_facts") or {}
+        if key_facts.get("current_topic"):
+            parts.append(f"CURRENT TOPIC: {key_facts['current_topic']}")
+
         if ctx.get("identified_gaps"):
             gaps = ctx["identified_gaps"]
             if weight >= 0.7:
                 parts.append(
-                    "KNOWLEDGE GAPS IDENTIFIED: " + ", ".join(str(g) for g in gaps)
+                    "KNOWLEDGE GAPS IDENTIFIED: "
+                    + ", ".join(str(g) for g in gaps[:8])
                 )
             else:
                 parts.append(f"Known gaps: {len(gaps)} concepts")
@@ -272,18 +277,35 @@ class ContextBuilder:
 
         if ctx.get("content_created"):
             created = ctx["content_created"]
-            parts.append("RECENTLY CREATED: " + ", ".join(str(c) for c in created[:3]))
+            parts.append(
+                "RECENTLY CREATED: " + ", ".join(str(c) for c in created[:5])
+            )
 
-        if ctx.get("key_facts"):
-            facts = ctx["key_facts"]
-            fact_str = ", ".join(f"{k}={v}" for k, v in facts.items())
-            parts.append(f"KEY FACTS: {fact_str}")
+        if key_facts:
+            remaining = {
+                k: v for k, v in key_facts.items() if k != "current_topic"
+            }
+            if remaining:
+                fact_str = ", ".join(f"{k}={v}" for k, v in remaining.items())
+                parts.append(f"KEY FACTS: {fact_str}")
 
-        if ctx.get("decisions_made") and weight >= 0.7:
+        if ctx.get("decisions_made") and weight >= 0.5:
             decisions = ctx["decisions_made"]
             parts.append(
                 "DECISIONS: " + "; ".join(str(d) for d in decisions[:3])
             )
+
+        if ctx.get("student_progress"):
+            sp = ctx["student_progress"]
+            if isinstance(sp, dict) and sp:
+                bits = []
+                if sp.get("avg_mastery") is not None:
+                    bits.append(f"mastery={sp['avg_mastery']}")
+                if sp.get("notes"):
+                    bits.append(str(sp["notes"])[:120])
+                if bits:
+                    parts.append("PROGRESS: " + ", ".join(bits))
+ 
 
         return "\n".join(parts) if parts else ""
 

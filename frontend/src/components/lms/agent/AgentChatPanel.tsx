@@ -6,14 +6,17 @@
  * Layout: full-height flex column with scrollable message area + input bar.
  * Works as a self-contained component that can be embedded in any page.
  */
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { MessageSquare, Sparkles, Loader2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useAgentChat } from "@/hooks/useAgentChat";
 import { AgentMessageBubble } from "./AgentMessageBubble";
 import { AgentInputBar } from "./AgentInputBar";
-import { ConversationSidebar } from "./ConversationSidebar";
+import {
+  ConversationSidebar,
+  type ConversationSidebarHandle,
+} from "./ConversationSidebar";
 
 interface AgentChatPanelProps {
   agentType: "teacher" | "mentor";
@@ -52,6 +55,23 @@ export function AgentChatPanel({
   const { data: session } = useSession();
   const userId = session?.user ? Number((session.user as any).id || (session.user as any).userId) : undefined;
 
+  const sidebarRef = useRef<ConversationSidebarHandle>(null);
+ 
+  const handleSessionUpdated = useCallback(
+    (update: { sessionId: string; title?: string; reason: string }) => {
+      const sidebar = sidebarRef.current;
+      if (!sidebar) return;
+      if (update.reason === "title" && update.title) {
+        sidebar.patchSession(update.sessionId, { title: update.title });
+      } else if (update.reason === "new" || update.reason === "reused") {
+        sidebar.refresh();
+      } else if (update.reason === "activity") {
+        sidebar.touchSession(update.sessionId);
+      }
+    },
+    [],
+  );
+ 
   const {
     messages,
     sessionId,
@@ -61,7 +81,12 @@ export function AgentChatPanel({
     stopStreaming,
     startNewChat,
     switchSession,
-  } = useAgentChat({ agentType, courseId, userId });
+  } = useAgentChat({
+    agentType,
+    courseId,
+    userId,
+    onSessionUpdated: handleSessionUpdated,
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const welcome = WELCOME[agentType];
@@ -89,6 +114,7 @@ export function AgentChatPanel({
       {/* Sidebar for chat history */}
       {userId && (
           <ConversationSidebar 
+              ref={sidebarRef}
               userId={userId} 
               agentType={agentType} 
               activeSessionId={sessionId}

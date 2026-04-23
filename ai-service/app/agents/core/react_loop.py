@@ -173,7 +173,14 @@ async def run_react_loop(
         1 for m in stm_history if m.get("role") == "clarification"
     )
 
-    if clarify_count < MAX_CLARIFICATIONS_PER_SESSION:
+    skip_clarify_for_intent = intent_type in (
+        "content_creation",
+        "interactive_exercise",
+        "progress_advice",
+    )
+ 
+    if (clarify_count < MAX_CLARIFICATIONS_PER_SESSION
+            and not skip_clarify_for_intent):
         tool_schemas = get_tool_schemas(agent_type)
         mtm_ctx = memory_ctx["raw"].get("mtm", {})
 
@@ -184,7 +191,7 @@ async def run_react_loop(
         )
 
         if (clarify_result.get("needs_clarification")
-                and clarify_result.get("confidence", 1.0) < 0.7):
+                and clarify_result.get("confidence", 1.0) < 0.6):
             question = clarify_result.get(
                 "clarification_question",
                 "Bạn có thể nói rõ hơn không?",
@@ -332,14 +339,52 @@ async def run_react_loop(
                             entry["arguments"] += tc.function.arguments
 
         except Exception as exc:
-            logger.error("Stream reading failed: %s", exc)
-            yield AgentEvent(
-                type=AgentEventType.ERROR,
-                data={"error": f"Stream error: {exc}", "iteration": iteration},
-                session_id=session_id,
-                turn_id=turn_id,
+            err_str = str(exc)
+            is_tool_validation = (
+                "tool call validation failed" in err_str
+                or "did not match schema" in err_str
             )
-            return
+            if is_tool_validation and iteration < MAX_ITERATIONS - 1:
+                logger.warning(
+                    "Tool-call validation failed on iter %d; asking LLM to "
+                    "retry with a valid schema. err=%s",
+                    iteration + 1, err_str[:200],
+                )
+                yield AgentEvent(
+                    type=AgentEventType.THINKING,
+                    data={
+                        "step": "tool_retry",
+                        "detail": "adjusting tool arguments",
+                    },
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                # Append a system-style nudge so the next streaming call
+                # steers the model toward a valid call (or a text answer).
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Your previous tool call was REJECTED by schema "
+                        "validation with this error:\n"
+                        f"  {err_str}\n"
+                        "Fix your tool call:\n"
+                        "- Use ONLY the enum values listed in the tool "
+                        "schema.\n"
+                        "- If you wanted to create a quiz/test/questions, "
+                        "call `generate_quiz_draft` (NOT "
+                        "`generate_content_draft`).\n"
+                        "- `generate_content_draft.content_type` MUST be "
+                        "one of: outline, summary, slide_structure, "
+                        "lesson_plan, explanation.\n"
+                        "- If you are missing a required ID (course_id, "
+                        "node_id), call the corresponding `list_*` tool "
+                        "first.\n"
+                        "Retry now with a corrected call, or reply in "
+                        "natural language if no tool fits."
+                    ),
+                })
+                # Drop any partial collected state and retry the iteration.
+                continue
 
         iter_ms = (time.monotonic() - iter_start) * 1000
         logger.debug(
@@ -355,6 +400,21 @@ async def run_react_loop(
             # Save assistant response to STM
             await stm.append(session_id, "assistant", collected_text)
 
+            # Save full assistant response to persistent store BEFORE title gen
+            # so the first-turn check sees consistent state.
+            await message_store.save_message(
+                session_id, "assistant", assistant_text, assistant_metadata
+            )
+ 
+            # Title generation runs inline on the first completed turn so we
+            # can stream a `title_update` event to the frontend before DONE.
+            async for evt in _maybe_emit_title_update(
+                session_id=session_id,
+                user_message=user_message,
+                turn_id=turn_id,
+            ):
+                yield evt
+ 
             yield AgentEvent(
                 type=AgentEventType.DONE,
                 data={
@@ -365,18 +425,12 @@ async def run_react_loop(
                 session_id=session_id,
                 turn_id=turn_id,
             )
-
-            # Save full assistant response to persistent store
-            await message_store.save_message(
-                session_id, "assistant", assistant_text, assistant_metadata
-            )
-
-            # Post-turn: check if compression is needed
+ 
+            # Post-turn: compression check (non-blocking for user)
             await _post_turn_maintenance(
                 session_id=session_id,
                 user_id=user_id,
                 agent_type=agent_type,
-                user_message=user_message,
             )
             return
 
@@ -498,11 +552,18 @@ async def run_react_loop(
                 await stm.append(
                     session_id, "assistant", tool_result.message,
                 )
-                
                 # Save full assistant state to persistent store
                 await message_store.save_message(
                     session_id, "assistant", assistant_text, assistant_metadata
                 )
+ 
+                async for evt in _maybe_emit_title_update(
+                    session_id=session_id,
+                    user_message=user_message,
+                    turn_id=turn_id,
+                ):
+                    yield evt
+ 
                 yield AgentEvent(
                     type=AgentEventType.DONE,
                     data={
@@ -517,7 +578,6 @@ async def run_react_loop(
                     session_id=session_id,
                     user_id=user_id,
                     agent_type=agent_type,
-                    user_message=user_message,
                 )
                 return
 
@@ -588,83 +648,120 @@ async def _post_turn_maintenance(
     session_id: str,
     user_id: int,
     agent_type: str,
-    user_message: str,
 ) -> None:
     """
     Background maintenance after a turn completes.
-
-    Checks if STM needs compression to MTM. Runs non-blocking
-    so it doesn't delay the DONE event.
+ 
+    Handles STM → MTM compression. Title generation is handled inline
+    in the ReAct loop via `_maybe_emit_title_update` so the frontend
+    receives the title as a streaming SSE event.
     """
     try:
-        # Increment turn count
         turn_count = await mtm.increment_turn_count(session_id)
-
-        # Generate title on first turn
-        if turn_count == 1:
-            await _generate_session_title(session_id, user_message)
-
-        # Check compression every N turns
+ 
         if turn_count % COMPRESS_CHECK_INTERVAL != 0:
             return
-
+ 
         if await stm.should_compress(session_id):
             logger.info(
                 "Triggering MTM compression: session=%s, turn=%d",
                 session_id[:8], turn_count,
             )
-
-            # Get all STM messages for compression
+ 
             all_messages = await stm.get_all(session_id)
-
-            # Get existing MTM context for merging
             existing_ctx = await mtm.get_context(session_id)
-
-            # Compress
+ 
             compressed = await compress_conversation(
                 messages=all_messages,
                 agent_type=agent_type,
                 existing_ctx=existing_ctx,
             )
-
-            # Save to MTM
+ 
             await mtm.save_compressed(
                 session_id=session_id,
                 compressed_ctx=compressed,
                 turn_count=turn_count,
             )
-
-            # Trim STM to keep only recent messages
+ 
             await stm.trim_to_recent(session_id, keep_last=4)
-
+ 
             logger.info(
                 "MTM compression done: session=%s, keys=%s",
                 session_id[:8], list(compressed.keys()),
             )
-
+ 
     except Exception as exc:
-        # Don't let maintenance failures break the chat
         logger.error("Post-turn maintenance failed: %s", exc)
-
-async def _generate_session_title(session_id: str, first_message: str) -> None:
-    """Generate a short title for the session based on the first message."""
+ 
+ 
+async def _maybe_emit_title_update(
+    session_id: str,
+    user_message: str,
+    turn_id: str,
+) -> AsyncIterator[AgentEvent]:
+    """
+    If the session has no title yet, generate one and yield a TITLE_UPDATE
+    event so the sidebar can refresh in realtime. Silent on failure — the
+    session just stays untitled.
+    """
     try:
-        from app.core.llm import get_groq_client
-        prompt = (
-            f"Tạo một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại "
-            f"này dựa trên tin nhắn sau. Không dùng ngoặc kép.\nTin nhắn: {first_message}"
+        existing_title = await mtm.get_title(session_id)
+        if existing_title:
+            return
+ 
+        title = await _generate_session_title(user_message)
+        if not title:
+            return
+ 
+        await mtm.update_title(session_id, title)
+        logger.info("Session %s titled: %s", session_id[:8], title)
+ 
+        yield AgentEvent(
+            type=AgentEventType.TITLE_UPDATE,
+            data={"title": title},
+            session_id=session_id,
+            turn_id=turn_id,
         )
-        client = get_groq_client()
-        res = await client.chat.completions.create(
-            model=settings.quiz_model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=20,
-            temperature=0.3
-        )
-        if res.choices and res.choices[0].message and res.choices[0].message.content:
-            title = res.choices[0].message.content.strip(' "\'')
-            if title:
-                await mtm.update_title(session_id, title)
-                logger.info("Session %s title update to: %s", session_id[:8], title)
-    except Exception as e:
-        logger.error("Failed to generate session title: %s", e)
+    except Exception as exc:
+        logger.warning("Title generation failed (non-fatal): %s", exc)
+ 
+ 
+async def _generate_session_title(first_message: str) -> str | None:
+    """
+    Ask the fast chat model for a short, human-readable chat title.
+ 
+    Returns the cleaned title string, or None on failure.
+    """
+    from app.core.llm import get_groq_client
+ 
+    prompt = (
+        "Tạo một tiêu đề ngắn gọn (3-6 từ, tối đa 50 ký tự) tóm tắt cuộc hội "
+        "thoại dựa trên tin nhắn đầu tiên. "
+        "Giữ nguyên ngôn ngữ của tin nhắn. "
+        "Không dùng ngoặc kép, không thêm dấu chấm, không thêm tiền tố như "
+        "\"Tiêu đề:\". Chỉ trả về tiêu đề.\n\n"
+        f"Tin nhắn: {first_message[:500]}"
+    )
+ 
+    client = get_groq_client()
+    res = await client.chat.completions.create(
+        model=settings.chat_model,  # fast 8b model is plenty for a title
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=24,
+        temperature=0.3,
+    )
+    if not (res.choices and res.choices[0].message
+            and res.choices[0].message.content):
+        return None
+ 
+    title = res.choices[0].message.content.strip()
+    # Strip common junk: quotes, trailing punctuation, label prefixes
+    for prefix in ("Tiêu đề:", "Title:", "tiêu đề:", "title:"):
+        if title.lower().startswith(prefix.lower()):
+            title = title[len(prefix):].strip()
+    title = title.strip(" \"'`.:\n\r\t")
+ 
+    if len(title) > 60:
+        title = title[:57].rstrip() + "..."
+ 
+    return title or None

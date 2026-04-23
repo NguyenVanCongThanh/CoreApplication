@@ -98,8 +98,40 @@ class MTMemory:
         agent_type: str,
         course_id: Optional[int] = None,
     ) -> dict:
-        """Force create a completely new session."""
+        """
+        Create a new session, or reuse an existing empty one.
+ 
+        If the user already has a session (same agent_type + course_id) with
+        turn_count == 0, we return it instead of creating a new row. This
+        prevents empty-session spam when users repeatedly click "New Chat".
+        """
         async with get_ai_conn() as conn:
+            existing = await conn.fetchrow(
+                """SELECT id, compressed_ctx, turn_count
+                   FROM agent_sessions
+                   WHERE user_id = $1
+                     AND agent_type = $2
+                     AND ($3::BIGINT IS NULL OR course_id = $3)
+                     AND turn_count = 0
+                   ORDER BY last_active_at DESC
+                   LIMIT 1""",
+                user_id, agent_type, course_id,
+            )
+            if existing:
+                await conn.execute(
+                    "UPDATE agent_sessions SET last_active_at = NOW() WHERE id = $1",
+                    existing["id"],
+                )
+                ctx = existing["compressed_ctx"]
+                if isinstance(ctx, str):
+                    ctx = json.loads(ctx)
+                return {
+                    "session_id": str(existing["id"]),
+                    "context": ctx or {},
+                    "turn_count": 0,
+                    "reused": True,
+                }
+ 
             new_row = await conn.fetchrow(
                 """INSERT INTO agent_sessions
                        (user_id, agent_type, course_id, compressed_ctx, turn_count, title)
@@ -111,7 +143,17 @@ class MTMemory:
                 "session_id": str(new_row["id"]),
                 "context": {},
                 "turn_count": 0,
+                "reused": False,
             }
+ 
+    async def get_title(self, session_id: str) -> Optional[str]:
+        """Return the current title for a session, if any."""
+        async with get_ai_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT title FROM agent_sessions WHERE id = $1",
+                session_id,
+            )
+            return row["title"] if row else None
 
     async def get_context(self, session_id: str) -> dict:
         """Get the compressed context for a session."""

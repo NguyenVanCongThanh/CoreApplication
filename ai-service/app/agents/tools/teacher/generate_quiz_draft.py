@@ -19,9 +19,15 @@ settings = get_settings()
 class GenerateQuizDraftTool(BaseTool):
     name = "generate_quiz_draft"
     description = (
-        "Generate a full quiz with questions, title, and configuration for a topic. "
-        "The tool suggests appropriate questions, a quiz title, and time limit. "
-        "The teacher then reviews and publishes it to a specific course section."
+        "Generate a QUIZ draft (multiple-choice questions, title, time "
+        "limit, suggested section). Use this tool for ANY request that "
+        "involves creating quizzes, tests, questions, or assessments — "
+        "e.g. 'tạo quiz', 'tạo thêm quiz', 'tạo bài kiểm tra', "
+        "'ra đề trắc nghiệm', 'làm câu hỏi cho chương này'.\n"
+        "Requires a valid course_id AND node_id. If you don't have them, "
+        "call `list_my_courses` and `list_knowledge_nodes` FIRST — never "
+        "fabricate these IDs. The teacher reviews and publishes the draft "
+        "via the HITL widget."
     )
     parameters = {
         "type": "object",

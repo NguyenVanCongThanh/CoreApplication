@@ -33,6 +33,7 @@ class AgentEventType(str, Enum):
     CLARIFICATION  = "clarification"
     HITL_REQUEST   = "hitl_request"
     SESSION        = "session"
+    TITLE_UPDATE   = "title_update"
     DONE           = "done"
     ERROR          = "error"
 
