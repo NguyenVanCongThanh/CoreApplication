@@ -52,6 +52,7 @@ class ExplainConceptTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.core.llm import chat_complete
+        from app.core.llm_gateway import TASK_CHAT
         from app.services.rag_service import rag_service
 
         concept = kwargs["concept"]
@@ -115,6 +116,7 @@ class ExplainConceptTool(BaseTool):
                 ],
                 temperature=0.4,
                 max_tokens=1500,
+                task=TASK_CHAT,
             )
 
             return ToolResult(

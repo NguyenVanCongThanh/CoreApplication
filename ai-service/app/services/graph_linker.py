@@ -27,6 +27,7 @@ import numpy as np
 
 from app.core.config import get_settings
 from app.core.llm import chat_complete_json
+from app.core.llm_gateway import TASK_GRAPH_LINK
 from app.services.neo4j_service import (
     neo4j_service,
     INTRA_COURSE_THRESHOLD,
@@ -334,6 +335,7 @@ async def _fetch_other_course_nodes(course_id: int) -> list[NodeInfo]:
             name=r.payload.get("name", ""),
             description=r.payload.get("description", ""),
             embedding=r.vector,
+            task=TASK_GRAPH_LINK,
         )
         for r in records if r.vector
     ]

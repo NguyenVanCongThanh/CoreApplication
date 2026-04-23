@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.core.config import get_settings
 from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_flashcard_generation_prompt
+from app.core.llm_gateway import TASK_FLASHCARD_GEN
 from app.services.rag_service import rag_service
 from app.services.flashcard_service import flashcard_srv
 
@@ -138,6 +139,7 @@ async def generate_flashcards(body: GenerateFlashcardsRequest, request: Request)
             messages=messages,
             model=settings.quiz_model,
             temperature=0.7,
+            task=TASK_FLASHCARD_GEN,
         )
 
         if "flashcards" not in result:

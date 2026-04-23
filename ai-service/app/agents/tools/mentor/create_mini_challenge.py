@@ -58,6 +58,7 @@ class CreateMiniChallengeTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.core.llm import chat_complete_json
+        from app.core.llm_gateway import TASK_QUIZ_GEN
 
         concept = kwargs["concept"]
         q_type = kwargs.get("question_type", "multiple_choice")
@@ -118,6 +119,7 @@ class CreateMiniChallengeTool(BaseTool):
                 ],
                 temperature=0.7,
                 max_tokens=512,
+                task=TASK_QUIZ_GEN,
             )
 
             return ToolResult(

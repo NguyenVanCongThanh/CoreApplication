@@ -11,6 +11,7 @@ redis==5.2.1
 
 groq==0.13.0
 instructor==1.7.0
+cryptography==44.0.0
 
 aiokafka==0.12.0
 

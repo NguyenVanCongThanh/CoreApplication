@@ -74,6 +74,7 @@ class GenerateQuizDraftTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         from app.services.quiz_service import quiz_gen_service
         from app.core.llm import chat_complete_json
+        from app.core.llm_gateway import TASK_CHAT
 
         course_id = kwargs.get("_course_id") or kwargs["course_id"]
         node_id = kwargs["node_id"]
@@ -154,6 +155,7 @@ class GenerateQuizDraftTool(BaseTool):
             suggestion = await chat_complete_json(
                 messages=[{"role": "system", "content": prompt}],
                 temperature=0.3,
+                task=TASK_CHAT,
             )
 
             preview_data = []
