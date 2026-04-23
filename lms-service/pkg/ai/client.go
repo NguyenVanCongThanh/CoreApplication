@@ -489,7 +489,23 @@ func (c *Client) LinkGlobalGraph(ctx context.Context) (map[string]interface{}, e
 // DeleteKnowledgeNode removes an auto-generated node.
 func (c *Client) DeleteKnowledgeNode(ctx context.Context, nodeID int64) error {
 	var resp map[string]interface{}
-	return c.post(ctx, fmt.Sprintf("/ai/knowledge-graph/node/%d", nodeID), nil, &resp)
+	return c.delete(ctx, fmt.Sprintf("/ai/knowledge-graph/node/%d", nodeID), &resp)
+}
+
+func (c *Client) delete(ctx context.Context, path string, result interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-AI-Secret", c.secret)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("ai-service DELETE %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	return c.decodeResponse(resp, path, result)
 }
 
 // GetStudentWeaknesses calls the AI service heatmap endpoint and transforms

@@ -5,8 +5,9 @@ import dynamic from "next/dynamic";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, ExternalLink, Link2, BookOpen, BrainCircuit } from "lucide-react";
+import { X, ExternalLink, Link2, BookOpen, BrainCircuit, Trash2 } from "lucide-react";
 import aiService from "@/services/aiService";
+import toast from "react-hot-toast";
 
 // Canvas-based — phải dynamic import vì không hỗ trợ SSR
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -140,6 +141,36 @@ function KnowledgeGraph({ courseId, initialData }: KnowledgeGraphProps) {
     setSelectedNode(null);
     if (graphRef.current) {
       graphRef.current.zoomToFit(800, 50);
+    }
+  };
+
+  const handleDeleteNode = async () => {
+    if (!selectedNode) return;
+
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn xóa node "${selectedNode.name}"? \nHành động này sẽ xóa vĩnh viễn node khỏi cơ sở dữ liệu, biểu đồ kiến thức và các câu hỏi nháp liên quan.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await aiService.deleteKnowledgeNode(courseId, selectedNode.id);
+      toast.success("Đã xóa node kiến thức thành công");
+
+      // Update local state to remove the node and its links instantly
+      setGraphData(prev => ({
+        nodes: prev.nodes.filter(n => n.id !== selectedNode.id),
+        links: prev.links.filter(l => {
+          const srcId = l.source?.id ?? l.source;
+          const tgtId = l.target?.id ?? l.target;
+          return srcId !== selectedNode.id && tgtId !== selectedNode.id;
+        })
+      }));
+
+      setSelectedNode(null);
+    } catch (error: any) {
+      console.error("Lỗi khi xóa node:", error);
+      toast.error(error.response?.data?.message || "Không thể xóa node. Vui lòng thử lại sau.");
     }
   };
 
@@ -351,12 +382,21 @@ function KnowledgeGraph({ courseId, initialData }: KnowledgeGraphProps) {
               </Badge>
               <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{selectedNode.name}</h3>
             </div>
-            <button
-              onClick={handleClosePanel}
-              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
-            >
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleDeleteNode}
+                title="Xóa node này"
+                className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                <Trash2 size={18} />
+              </button>
+              <button
+                onClick={handleClosePanel}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1">

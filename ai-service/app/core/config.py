@@ -13,10 +13,12 @@ class Settings(BaseSettings):
     ai_db_user: str = "ai_user"
     ai_db_password: str = "ai_password"
     ai_db_name: str = "ai_db"
+    ai_db_ssl: str = "require"  # None | disable | require | verify-ca | verify-full
     ai_db_min_connections: int = 5
     ai_db_max_connections: int = 20
 
     # ── Qdrant Vector Store ────────────────────────────────────────────────────
+    qdrant_url: str | None = None  # Full URL: https://...:6333
     qdrant_host: str = "qdrant"
     qdrant_port: int = 6333
     qdrant_grpc_port: int = 6334
@@ -43,7 +45,7 @@ class Settings(BaseSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin123"
     minio_bucket: str = "lms-files"
-    minio_use_ssl: bool = False
+    minio_use_ssl: bool = True
 
     # Groq LLM
     groq_api_key: str = ""
@@ -82,10 +84,13 @@ class Settings(BaseSettings):
 
     @property
     def ai_database_url(self) -> str:
-        return (
+        url = (
             f"postgresql+asyncpg://{self.ai_db_user}:{self.ai_db_password}"
             f"@{self.ai_db_host}:{self.ai_db_port}/{self.ai_db_name}"
         )
+        if self.ai_db_ssl and self.ai_db_ssl != "disable":
+            url += f"?ssl={self.ai_db_ssl}"
+        return url
 
     @property
     def redis_url(self) -> str:

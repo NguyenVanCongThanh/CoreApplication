@@ -64,14 +64,25 @@ class QdrantService:
 
     def _get_client(self) -> AsyncQdrantClient:
         if self._client is None:
-            self._client = AsyncQdrantClient(
-                host=settings.qdrant_host,
-                port=settings.qdrant_grpc_port if settings.qdrant_prefer_grpc else settings.qdrant_port,
-                grpc_port=settings.qdrant_grpc_port,
-                prefer_grpc=settings.qdrant_prefer_grpc,
-                api_key=settings.qdrant_api_key or None,
-                timeout=30,
-            )
+            if settings.qdrant_url:
+                # Cloud/Serverless mode
+                self._client = AsyncQdrantClient(
+                    url=settings.qdrant_url,
+                    api_key=settings.qdrant_api_key or None,
+                    timeout=30,
+                )
+                logger.info("Qdrant connected via URL (Serverless mode)")
+            else:
+                # Local/Docker mode
+                self._client = AsyncQdrantClient(
+                    host=settings.qdrant_host,
+                    port=settings.qdrant_grpc_port if settings.qdrant_prefer_grpc else settings.qdrant_port,
+                    grpc_port=settings.qdrant_grpc_port,
+                    prefer_grpc=settings.qdrant_prefer_grpc,
+                    api_key=settings.qdrant_api_key or None,
+                    timeout=30,
+                )
+                logger.info("Qdrant connected via host:port (Local mode)")
         return self._client
 
     async def init_collections(self) -> None:

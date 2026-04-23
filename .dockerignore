@@ -27,6 +27,8 @@ out/
 *.war
 *.ear
 
+__pycache__/
+
 # Logs
 logs/
 *.log

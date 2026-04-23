@@ -118,3 +118,5 @@ temp/
 *.apps.googleusercontent.com.json
 
 server/
+
+__pycache__/

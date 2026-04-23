@@ -1,0 +1,103 @@
+"""
+ai-service/app/agents/core/orchestrator.py
+
+Session Orchestrator — top-level entry point for agent chat.
+
+This is the single function that the API endpoint calls.
+It manages the full session lifecycle:
+  1. Session resolution (get or create MTM session)
+  2. LTM collection initialization
+  3. Delegating to the ReAct loop
+  4. Session event emission
+
+Separating this from react_loop.py keeps concerns clean:
+  - orchestrator = session management + lifecycle
+  - react_loop   = reasoning + tool execution
+"""
+from __future__ import annotations
+
+import logging
+from typing import AsyncIterator
+
+from app.agents.events import AgentEvent, AgentEventType
+from app.agents.memory.mtm import mtm
+from app.agents.memory.ltm import ltm
+from app.agents.core.react_loop import run_react_loop
+
+logger = logging.getLogger(__name__)
+
+
+async def handle_chat_message(
+    user_id: int,
+    agent_type: str,
+    message: str,
+    course_id: int | None = None,
+    session_id: str | None = None,
+    user_context: dict | None = None,
+) -> AsyncIterator[AgentEvent]:
+    """
+    Top-level entry point for processing a chat message.
+
+    This async generator yields all events needed by the SSE endpoint.
+
+    Args:
+        user_id: Authenticated user ID (from JWT via lms-service proxy).
+        agent_type: "teacher" or "mentor".
+        message: The user's message text.
+        course_id: Optional course context for scoped sessions.
+        session_id: Optional existing session ID. If None, creates/finds one.
+        user_context: Optional user identity (name, email, role) from JWT.
+
+    Yields:
+        AgentEvent objects for SSE streaming.
+    """
+    # ── 1. Resolve session ────────────────────────────────────────────────────
+    if session_id:
+        # Use existing session — just verify it exists
+        ctx = await mtm.get_context(session_id)
+        session_data = {
+            "session_id": session_id,
+            "context": ctx,
+            "turn_count": 0,
+        }
+    else:
+        # Get or create session
+        session_data = await mtm.get_or_create_session(
+            user_id=user_id,
+            agent_type=agent_type,
+            course_id=course_id,
+        )
+        session_id = session_data["session_id"]
+
+    logger.info(
+        "Chat session: id=%s, user=%d, agent=%s, turn=%d",
+        session_id[:8], user_id, agent_type, session_data.get("turn_count", 0),
+    )
+
+    # ── 2. Emit session event (tells frontend the session ID) ────────────────
+    yield AgentEvent(
+        type=AgentEventType.SESSION,
+        data={
+            "session_id": session_id,
+            "agent_type": agent_type,
+            "is_new": session_data.get("turn_count", 0) == 0,
+        },
+        session_id=session_id,
+    )
+
+    # ── 3. Ensure LTM collection exists (idempotent, first call only) ────────
+    try:
+        await ltm.ensure_collection()
+    except Exception as exc:
+        logger.warning("LTM collection init failed (non-fatal): %s", exc)
+
+    # ── 4. Delegate to ReAct loop ────────────────────────────────────────────
+    async for event in run_react_loop(
+        session_id=session_id,
+        user_id=user_id,
+        agent_type=agent_type,
+        user_message=message,
+        course_id=course_id,
+        user_context=user_context,
+    ):
+        yield event

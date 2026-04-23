@@ -940,4 +940,33 @@ func (h *AIHandler) GetNodeChunks(c *gin.Context) {
         return
     }
     c.JSON(200, dto.NewDataResponse(chunks))
+
+}
+
+func (h *AIHandler) DeleteKnowledgeNode(c *gin.Context) {
+	nodeID, _ := strconv.ParseInt(c.Param("nodeId"), 10, 64)
+	courseID, _ := strconv.ParseInt(c.Param("courseId"), 10, 64)
+	userID := c.MustGet("user_id").(int64)
+	userRole := c.GetString("user_role")
+
+	// 1. Verify Ownership
+	if userRole != "ADMIN" {
+		course, err := h.courseRepo.GetByID(c.Request.Context(), courseID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, dto.NewErrorResponse("not_found", "Course not found"))
+			return
+		}
+		if course.CreatedBy != userID {
+			c.JSON(http.StatusForbidden, dto.NewErrorResponse("forbidden", "Only course owner can delete nodes"))
+			return
+		}
+	}
+
+	// 2. Call AI Client (Cascaded Deletion)
+	if err := h.aiClient.DeleteKnowledgeNode(c.Request.Context(), nodeID); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("ai_error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.NewMessageResponse("Node deleted successfully"))
 }

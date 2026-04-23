@@ -78,15 +78,14 @@ class ExtractedRelation:
 # ── LLM prompts ───────────────────────────────────────────────────────────────
 
 NODE_EXTRACTION_SYSTEM = """\
-Bạn là chuyên gia phân tích giáo trình đại học và thiết kế chương trình học.
-Nhiệm vụ: đọc tài liệu học thuật và xác định cấu trúc kiến thức của nó.
-Nguyên tắc:
-- Mỗi node là MỘT khái niệm/kỹ năng có thể dạy và kiểm tra độc lập.
-- Không quá chung (ví dụ: "Lập trình") mà cũng không quá chi tiết.
-- Description phải đủ để viết được 3-5 câu hỏi trắc nghiệm.
-- Quan hệ prerequisite chỉ khi thực sự CẦN THIẾT để học node kia.
-- Quan hệ extends khi node B mở rộng/đào sâu kiến thức của node A.
-CHỈ trả về JSON hợp lệ, không thêm bất kỳ text nào khác ngoài JSON.\
+Bạn là chuyên gia phân tích giáo trình và thiết kế chương trình học.
+Nhiệm vụ: xác định các khái niệm kiến thức (nodes) cốt lõi xuất hiện TRỰC TIẾP trong tài liệu.
+Nguyên tắc quan trọng:
+- CHỈ trích xuất các chủ đề có nội dung cụ thể, không trích xuất các phần chung chung (ví dụ: "Giới thiệu", "Kết luận", "Tài liệu tham khảo").
+- Một node phải đủ quan trọng để có thể đặt được ít nhất 3-5 câu hỏi kiểm tra dựa trên nội dung tệp.
+- Ưu tiên chất lượng hơn số lượng: Nếu tài liệu ngắn, chỉ cần trích xuất 2-3 node chất lượng thay vì cố lấy cho đủ số lượng.
+- Nếu một phần văn bản không chứa kiến thức học thuật rõ ràng, ĐỪNG tạo node cho nó.
+CHỈ trả về JSON hợp lệ.\
 """
 
 
@@ -371,6 +370,15 @@ class AutoIndexService:
             _progress("build_graph", 90)
             await self._build_graph_edges(all_node_ids, all_node_embeddings, course_id)
 
+            # ── GROUNDING GUARD: Cleanup orphaned nodes ─────────────────────
+            # Only cleanup nodes created in this specific run (newly created)
+            if new_node_ids:
+                orphaned_ids = await self._cleanup_orphaned_nodes(new_node_ids, course_id)
+                if orphaned_ids:
+                    # Filter them out from the list to be synced to Neo4j
+                    orphaned_set = set(orphaned_ids)
+                    all_node_ids = [nid for nid in all_node_ids if nid not in orphaned_set]
+            
             if settings.neo4j_enabled:
                 await self._sync_to_neo4j(
                     node_ids=all_node_ids,
@@ -485,6 +493,13 @@ class AutoIndexService:
             _progress("build_graph", 90)
             await self._build_graph_edges(all_node_ids, all_node_embeddings, course_id)
 
+            # ── GROUNDING GUARD: Cleanup orphaned nodes ─────────────────────
+            if new_node_ids:
+                orphaned_ids = await self._cleanup_orphaned_nodes(new_node_ids, course_id)
+                if orphaned_ids:
+                    orphaned_set = set(orphaned_ids)
+                    all_node_ids = [nid for nid in all_node_ids if nid not in orphaned_set]
+
             if settings.neo4j_enabled:
                 await self._sync_to_neo4j(
                     node_ids=all_node_ids,
@@ -520,13 +535,16 @@ class AutoIndexService:
         def _sync_download() -> bytes:
             try:
                 from minio import Minio
+                # R2/S3 endpoints should not have https:// prefix for the Minio client
+                endpoint = settings.minio_endpoint.replace("https://", "").replace("http://", "")
+                
                 client = Minio(
-                    os.getenv("MINIO_ENDPOINT", ""),
-                    access_key=os.getenv("MINIO_ACCESS_KEY", ""),
-                    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
-                    secure=False,
+                    endpoint,
+                    access_key=settings.minio_access_key,
+                    secret_key=settings.minio_secret_key,
+                    secure=settings.minio_use_ssl,
                 )
-                bucket = os.getenv("MINIO_BUCKET", "lms-files")
+                bucket = settings.minio_bucket
                 response = client.get_object(bucket, file_url)
                 try:
                     buf = io.BytesIO()
@@ -1402,6 +1420,74 @@ class AutoIndexService:
 
     # ─ Utility ────────────────────────────────────────────────────────────────
 
+    async def _cleanup_orphaned_nodes(self, node_ids: list[int], course_id: int) -> list[int]:
+        """
+        Identify and delete nodes that have 0 chunks assigned to them.
+        Optimized to use batch queries.
+        """
+        if not node_ids:
+            return []
+
+        async with get_ai_conn() as conn:
+            # Count chunks for these nodes
+            rows = await conn.fetch(
+                """
+                SELECT kn.id, COUNT(dc.id) as chunk_count
+                FROM knowledge_nodes kn
+                LEFT JOIN document_chunks dc ON dc.node_id = kn.id
+                WHERE kn.id = ANY($1)
+                GROUP BY kn.id
+                """,
+                node_ids
+            )
+            
+            orphaned_ids = [r["id"] for r in rows if r["chunk_count"] == 0]
+            
+            if orphaned_ids:
+                logger.info(f"Grounding Guard: Deleting {len(orphaned_ids)} orphaned nodes in course {course_id}")
+                await self.delete_nodes_bulk(orphaned_ids)
+            
+            return orphaned_ids
+
+    async def delete_nodes_bulk(self, node_ids: list[int]) -> None:
+        """
+        Delete nodes from PG, Qdrant, and Neo4j in bulk.
+        """
+        if not node_ids:
+            return
+
+        # 1. PostgreSQL deletion (Cascades to relations, progress, etc.)
+        async with get_ai_conn() as conn:
+            await conn.execute("DELETE FROM knowledge_nodes WHERE id = ANY($1)", node_ids)
+            
+        # 2. Qdrant deletion
+        if settings.use_qdrant:
+            try:
+                from app.services.qdrant_service import qdrant_service
+                from qdrant_client.http.models import PointIdsList
+                client = qdrant_service._get_client()
+                await client.delete(
+                    collection_name="knowledge_nodes",
+                    points_selector=PointIdsList(points=node_ids),
+                    wait=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to delete nodes from Qdrant: {e}")
+
+        # 3. Neo4j deletion
+        if settings.neo4j_enabled:
+            try:
+                from app.services.neo4j_service import neo4j_service
+                driver = neo4j_service._get_driver()
+                async with driver.session() as s:
+                    await s.run(
+                        "UNWIND $ids AS id MATCH (n:KnowledgeNode {id: id}) DETACH DELETE n",
+                        ids=node_ids
+                    )
+            except Exception as e:
+                logger.error(f"Failed to delete nodes from Neo4j: {e}")
+
+    # ─ Utility ────────────────────────────────────────────────────────────────
     async def _update_content_status(
         self, content_id: int, status: str, error_msg: Optional[str] = None,
     ) -> None:

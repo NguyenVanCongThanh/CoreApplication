@@ -358,17 +358,8 @@ async def get_knowledge_graph(course_id: int, request: Request):
 async def delete_knowledge_node(node_id: int, request: Request):
     _verify(request)
 
-    async with get_ai_conn() as conn:
-        node = await conn.fetchrow(
-            "SELECT id, course_id, auto_generated FROM knowledge_nodes WHERE id=$1", node_id,
-        )
-        if not node:
-            raise HTTPException(status_code=404, detail="Node not found")
-        await conn.execute("DELETE FROM knowledge_nodes WHERE id=$1", node_id)
-
-    if settings.neo4j_enabled:
-        from app.services.neo4j_service import neo4j_service
-        await neo4j_service.delete_node(node_id)
+    from app.services.auto_index_service import auto_index_service
+    await auto_index_service.delete_nodes_bulk([node_id])
 
     return {"ok": True, "deleted_node_id": node_id}
 

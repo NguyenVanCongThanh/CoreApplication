@@ -7,3 +7,4 @@ export * from "./fill-blank";
 export * from "./calendar"
 export * from "./account"
 export * from "./contentform"
+export * from "./agent"
