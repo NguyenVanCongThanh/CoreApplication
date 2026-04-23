@@ -16,19 +16,19 @@ Flow diagram:
   User message
       │
       ▼
-  ┌──────────────┐
+  ┌────────────────┐
   │ classify_intent│ ← fast LLM (8b)
-  └──────┬───────┘
+  └──────┬─────────┘
          ▼
-  ┌──────────────────┐
+  ┌───────────────────┐
   │ context_builder   │ ← weighted memory fetch
   │  .build(intent)   │
-  └──────┬───────────┘
+  └──────┬────────────┘
          ▼
-  ┌──────────────────┐
+  ┌───────────────────┐
   │ should_clarify?   │ ← fast LLM check
   │  confidence < 0.7 │──yes──▶ yield CLARIFICATION → return
-  └──────┬───────────┘
+  └──────┬────────────┘
          │ no
          ▼
   ┌─────────────────────────────────────────┐
@@ -44,12 +44,12 @@ Flow diagram:
   └─────────────────────────────────────────┘
          │
          ▼
-  ┌──────────────────┐
+  ┌───────────────────┐
   │ Post-turn:        │
   │  - Save to STM    │
   │  - Check compress │
   │  - Trigger MTM    │
-  └──────────────────┘
+  └───────────────────┘
 
 Max iterations: 5 (prevents infinite tool-calling loops)
 Model: quiz_model (llama-3.3-70b-versatile) for reasoning quality
@@ -69,6 +69,11 @@ from app.agents.memory.mtm import mtm
 from app.agents.memory.message_store import message_store
 from app.agents.memory.compressor import compress_conversation
 from app.agents.memory.context_builder import context_builder
+from app.agents.memory.teacher_anchor import (
+    load_teacher_anchor,
+    format_teacher_anchor_for_prompt,
+    invalidate_teacher_anchor,
+)
 from app.agents.core.router import classify_intent
 from app.agents.core.clarification import should_clarify
 from app.agents.core.prompts import build_system_prompt
@@ -77,6 +82,7 @@ from app.agents.tools.registry import (
 )
 from app.core.config import get_settings
 from app.core.llm import get_groq_client
+from app.agents.tools.base_tool import ToolResult
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -225,10 +231,18 @@ async def run_react_loop(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 4: Build messages array for the LLM
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Ground-truth anchor for teacher sessions: inject the real list of
+    # (course_id, node_id) so the LLM has nothing to fabricate.
+    teacher_anchor_section = ""
+    if agent_type == "teacher":
+        anchor = await load_teacher_anchor(user_id)
+        teacher_anchor_section = format_teacher_anchor_for_prompt(anchor)
+ 
     system_prompt = build_system_prompt(
         agent_type=agent_type,
         memory_context=memory_ctx["prompt_section"],
         user_context=user_context,
+        teacher_anchor_section=teacher_anchor_section,
     )
 
     # Start with system prompt
@@ -463,11 +477,17 @@ async def run_react_loop(
             # Parse arguments
             try:
                 args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                if args is None:
+                    args = {}
             except json.JSONDecodeError:
                 logger.warning(
                     "Failed to parse tool args: name=%s, raw='%s'",
                     tool_name, tc["arguments"][:200],
                 )
+                args = {}
+            # Models sometimes emit "null" (or a bare value) for a no-arg tool;
+            # json.loads then returns None / a non-dict, and .keys() explodes.
+            if not isinstance(args, dict):
                 args = {}
 
             # ── Yield TOOL_START ─────────────────────────────────────────
@@ -539,6 +559,16 @@ async def run_react_loop(
                 session_id=session_id,
                 turn_id=iter_id,
             )
+
+            # ── Pin working-memory anchor from this tool result ──────
+            if agent_type == "teacher":
+                await _update_anchor_from_tool(
+                    session_id=session_id,
+                    user_id=user_id,
+                    tool_name=tool_name,
+                    args=args,
+                    tool_result=tool_result,
+                )
 
             # ── HITL early exit: stop the loop and let the widget
             #    be the primary response. No further LLM iteration
@@ -638,6 +668,88 @@ async def run_react_loop(
 
     total_ms = (time.monotonic() - start_time) * 1000
     logger.info("ReAct finished: session=%s, %.0fms", session_id[:8], total_ms)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Working-memory anchor helpers
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 
+# Tools whose successful output pins mutation of the teacher anchor cache.
+_ANCHOR_INVALIDATING_TOOLS = {
+    "create_section",
+    "trigger_auto_index",
+}
+ 
+ 
+async def _update_anchor_from_tool(
+    session_id: str,
+    user_id: int,
+    tool_name: str,
+    args: dict,
+    tool_result: "ToolResult",  # noqa: F821 — runtime type
+) -> None:
+    """
+    Pin concrete (course_id, node_id, topic) values surfaced by a tool
+    into MTM key_facts so the NEXT turn's system prompt shows a
+    CURRENT ANCHOR. This is what lets "cái này / vấn đề này" resolve
+    without the LLM having to guess.
+ 
+    Also invalidates the teacher_anchor cache when a tool mutates the
+    course structure so the fresh data appears on the next turn.
+    """
+    status = getattr(tool_result, "status", None)
+    if status not in ("success", "pending_human_approval"):
+        return
+ 
+    data = getattr(tool_result, "data", None)
+    if not isinstance(data, dict):
+        data = {}
+ 
+    updates: dict = {}
+ 
+    if tool_name == "list_my_courses":
+        courses = data.get("courses") or []
+        if len(courses) == 1 and courses[0].get("id") is not None:
+            updates["current_course_id"] = courses[0]["id"]
+ 
+    elif tool_name == "list_knowledge_nodes":
+        nodes = data.get("nodes") or []
+        cid = args.get("course_id")
+        if cid:
+            updates["current_course_id"] = cid
+        # Pin the node only when the result is unambiguous
+        # (exact-match search → single node).
+        if len(nodes) == 1:
+            n = nodes[0]
+            if n.get("id") is not None:
+                updates["current_node_id"] = n["id"]
+            topic = n.get("name_vi") or n.get("name")
+            if topic:
+                updates["current_topic"] = topic
+ 
+    elif tool_name in ("generate_quiz_draft", "generate_content_draft"):
+        cid = data.get("course_id") or args.get("course_id")
+        nid = data.get("node_id") or args.get("node_id")
+        topic = data.get("topic") or args.get("topic")
+        if cid is not None:
+            updates["current_course_id"] = cid
+        if nid is not None:
+            updates["current_node_id"] = nid
+        if topic:
+            updates["current_topic"] = topic
+ 
+    if tool_name in _ANCHOR_INVALIDATING_TOOLS:
+        invalidate_teacher_anchor(user_id)
+ 
+    if not updates:
+        return
+ 
+    try:
+        await mtm.update_key_facts(session_id, updates)
+    except Exception as exc:  # noqa: BLE001 — anchor update must never break the turn
+        logger.warning(
+            "anchor update failed: session=%s, tool=%s, err=%s",
+            session_id[:8], tool_name, exc,
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -197,6 +197,37 @@ class MTMemory:
             session_id, turn_count, list(compressed_ctx.keys()),
         )
 
+    async def update_key_facts(
+        self,
+        session_id: str,
+        updates: dict,
+    ) -> None:
+        """
+        Merge a small dict into the session's compressed_ctx.key_facts.
+ 
+        Used by the ReAct loop to pin anchors (current_course_id,
+        current_node_id, current_topic, ...) immediately after a tool
+        surfaces a concrete value — without waiting for the full
+        compressor to run. Missing key_facts object is created on demand.
+        """
+        if not updates:
+            return
+        async with get_ai_conn() as conn:
+            await conn.execute(
+                """UPDATE agent_sessions
+                   SET compressed_ctx = jsonb_set(
+                           COALESCE(compressed_ctx, '{}'::jsonb),
+                           '{key_facts}',
+                           COALESCE(compressed_ctx->'key_facts', '{}'::jsonb)
+                               || $1::jsonb,
+                           true
+                       ),
+                       last_active_at = NOW()
+                   WHERE id = $2""",
+                json.dumps(updates, ensure_ascii=False),
+                session_id,
+            )
+
     async def increment_turn_count(self, session_id: str) -> int:
         """Increment and return the new turn count."""
         async with get_ai_conn() as conn:

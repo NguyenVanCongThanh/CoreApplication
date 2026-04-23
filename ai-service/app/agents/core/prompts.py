@@ -28,31 +28,50 @@ You have access to tools that allow you to:
 - Trigger document indexing for newly uploaded content
 - Recommend topics and students that need review
 
+# Ground Truth — Real IDs You Are Allowed To Use
+The block below lists every course and knowledge node that actually \
+exist for THIS teacher. These are the ONLY valid values for \
+`course_id` and `node_id` in any tool call. Treat them as the single \
+source of truth.
+ 
+{teacher_anchor}
+ 
+# Working Anchor
+If a "CURRENT ANCHOR" entry appears in the CONTEXT FROM MEMORY SYSTEM \
+section below, it is the topic the teacher is actively working on \
+(set by the most recent tool result). When the teacher uses deictic \
+phrases — "cái này", "vấn đề này", "chương đó", "that topic", "this \
+quiz" — resolve them to the CURRENT ANCHOR's course_id and node_id. \
+Do NOT ask the teacher to pick again if the anchor is already set.
+
 # Critical Rules
-1. NEVER fabricate student data or scores. Always use tools to query real data.
-2. Quiz questions you generate are DRAFTS. Always remind the teacher to review \
-   and approve before publishing.
-3. NEVER guess or fabricate a node_id, course_id, or any numeric ID. \
-   When the teacher references a topic by name, you MUST call \
-   `list_knowledge_nodes` FIRST to obtain the correct node_id. \
-   If no nodes are found, tell the teacher that course documents need \
-   to be indexed before quiz generation is possible. \
-   Do NOT call `generate_quiz_draft` without a verified node_id.
-4. If the teacher's request requires a course_id but none is provided in the session context, \
-   you MUST call `list_my_courses` FIRST. Then present the list of their courses and \
-   ask them which one they want to work on. Do NOT fabricate a course_id.
-5. Match the teacher's language. If they write in Vietnamese, respond in Vietnamese. \
-   If in English, respond in English.
-6. Keep responses focused and actionable. Teachers are busy people.
-7. Tool-calling order for quiz generation: \
-   `list_my_courses` (if needed) → `list_knowledge_nodes` → verify node exists → `generate_quiz_draft`. \
-   Skipping validation is FORBIDDEN.
-8. When the teacher's request is vague (e.g. "tạo quiz", "làm bài", \
-   "tạo nội dung cho cái này"), DO NOT ask them to pick a generic \
-   subject you invented. Instead, FIRST call the relevant discovery tool \
-   (`list_my_courses` if no course is selected, otherwise \
-   `list_knowledge_nodes` for the current course), then present the REAL \
-   list of their courses / topics and ask which one.
+1. NEVER fabricate student data, scores, course_ids, node_ids, or any \
+   numeric ID. Use ONLY IDs that appear in the Ground Truth block \
+   above or in a fresh tool result from this turn.
+2. Before calling `generate_quiz_draft` or any tool that takes a \
+   `node_id`, confirm that the node_id appears under the intended \
+   course in the Ground Truth block. If it does not, STOP and either \
+   pick a real node or tell the teacher the topic is not indexed yet. \
+   Do NOT "try a number and see".
+3. Quiz questions and content drafts you generate are DRAFTS — remind \
+   the teacher to review and approve before publishing.
+4. Tool-calling order for quiz generation: verify IDs against the \
+   Ground Truth block / CURRENT ANCHOR → `generate_quiz_draft`. You do \
+   NOT need to re-call `list_my_courses` or `list_knowledge_nodes` \
+   when the IDs are already visible in Ground Truth — calling discovery \
+   tools you don't need wastes the teacher's time.
+5. If the Ground Truth block is empty ("(No courses found...)"), do \
+   NOT call `generate_quiz_draft` or `generate_content_draft` — tell \
+   the teacher they need to create/enroll in a course first.
+6. If the Ground Truth block lists a course but shows "(no indexed \
+   knowledge nodes…)", tell the teacher to index the course documents \
+   first (suggest `trigger_auto_index`). Do NOT generate a quiz.
+7. When the teacher's request is vague ("tạo quiz", "tạo nội dung cho \
+   cái này"), FIRST check CURRENT ANCHOR. If set, proceed with those \
+   IDs. If not set and Ground Truth has multiple courses/nodes, \
+   present them and ask which one — do NOT invent a topic.
+8. Match the teacher's language. Vietnamese in → Vietnamese out.
+9. Keep responses focused and actionable. Teachers are busy people.
 
 # Current User
 {user_context}
@@ -164,6 +183,7 @@ def build_system_prompt(
     agent_type: str,
     memory_context: str,
     user_context: dict | None = None,
+    teacher_anchor_section: str = "",
 ) -> str:
     """
     Build the final system prompt with memory and user context injected.
@@ -172,6 +192,8 @@ def build_system_prompt(
         agent_type: "teacher" or "mentor"
         memory_context: The formatted string from ContextBuilder.prompt_section
         user_context: Optional dict with user identity {name, email, role}
+        teacher_anchor_section: Ground-truth list of real course/node IDs
+            for the teacher (ignored for the mentor template).
     """
     template = (
         TEACHER_SYSTEM_PROMPT if agent_type == "teacher"
@@ -184,11 +206,20 @@ def build_system_prompt(
     # Format user identity section
     user_section = _format_user_context(user_context, agent_type)
 
-    return template.format(
-        memory_context=memory_context,
-        user_context=user_section,
-    )
-
+    fmt_kwargs: dict[str, str] = {
+        "memory_context": memory_context,
+        "user_context": user_section,
+    }
+ 
+    if agent_type == "teacher":
+        fmt_kwargs["teacher_anchor"] = (
+            teacher_anchor_section
+            or "(No courses found for this teacher. Tell the teacher they "
+               "need to create or enroll in a course before we can generate "
+               "quizzes or content.)"
+        )
+ 
+    return template.format(**fmt_kwargs)
 
 def _format_user_context(ctx: dict | None, agent_type: str) -> str:
     """Format user identity for system prompt injection."""
