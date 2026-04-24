@@ -19,6 +19,7 @@ import logging
 from app.core.config import get_settings
 from app.core.llm_gateway.registry import get_registry
 from app.core.llm_gateway.types import (
+    ALL_TASK_CODES,
     TASK_AGENT_REACT,
     TASK_AGENT_ROUTER,
     TASK_CHAT,
@@ -153,7 +154,18 @@ async def bootstrap_llm_registry() -> None:
         )
  
     registry.invalidate()
+    warmed: list[str] = []
+    for task_code in ALL_TASK_CODES:
+        try:
+            chain = await registry.get_binding_chain(task_code)
+            if chain:
+                warmed.append(task_code)
+        except Exception as exc:
+            logger.warning("Could not warm binding cache for task=%s: %s", task_code, exc)
+
     logger.info(
-        "LLM registry bootstrapped: provider=%s models=%d keys=%d",
-        provider.code, len(models_by_name), len(existing_keys) + (1 if settings.groq_api_key and not existing_keys else 0),
+        "LLM registry bootstrapped: provider=%s models=%d keys=%d warmed=%s",
+        provider.code, len(models_by_name),
+        len(existing_keys) + (1 if settings.groq_api_key and not existing_keys else 0),
+        warmed,
     )

@@ -1,8 +1,11 @@
 """
+ai-service/app/agents/tools/mentor/get_study_plan.py
+
 Mentor Tool: get_study_plan
 
-Builds a personalized study plan based on the student's
-spaced repetition schedule, knowledge gaps, and course structure.
+Builds a personalized study plan based on the student's spaced repetition
+schedule, knowledge gaps, and course structure — across ALL enrolled courses,
+since the Mentor agent operates at the global level, not per-course.
 """
 from __future__ import annotations
 
@@ -16,55 +19,66 @@ logger = logging.getLogger(__name__)
 class GetStudyPlanTool(BaseTool):
     name = "get_study_plan"
     description = (
-        "Get a personalized study plan for the student. Combines spaced "
-        "repetition due items, knowledge gaps, and course structure to "
-        "recommend what to study next. Use when the student asks 'what "
-        "should I study?', 'what do I need to review?', or wants a "
-        "learning roadmap."
+        "Get a personalized study plan for the student across ALL their courses. "
+        "Combines spaced repetition due items, knowledge gaps, and strengths to "
+        "recommend what to study next. Use when the student asks 'what should I "
+        "study?', 'what do I need to review?', 'giúp tôi ôn tập', or wants a "
+        "learning roadmap. Do NOT require a course_id — this tool fetches data "
+        "globally across all the student's enrolled courses."
     )
     parameters = {
         "type": "object",
         "properties": {
             "course_id": {
                 "type": "integer",
-                "description": "The course ID.",
+                "description": (
+                    "Optional: filter results to a specific course. "
+                    "Leave omitted to get a global plan across all courses."
+                ),
             },
         },
-        "required": ["course_id"],
+        "required": [],  # course_id is OPTIONAL — Mentor is cross-course
     }
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.agents.memory.personalize_memory import personalize_memory
-        from app.services.quiz_service import sr_service
 
-        course_id = kwargs.get("_course_id") or kwargs["course_id"]
         student_id = kwargs.get("_user_id", 0)
+        # course_id is optional — if not supplied by the LLM or context, use None
+        course_id: int | None = (
+            kwargs.get("_course_id")
+            or kwargs.get("course_id")
+        )
 
         try:
-            # 1. Due reviews (highest priority)
-            due_reviews = await sr_service.get_due_reviews(
-                student_id=student_id,
+            # 1. Due reviews across all courses (or filtered if course_id given)
+            due_reviews = await personalize_memory.get_due_reviews(
+                user_id=student_id,
                 course_id=course_id,
                 limit=10,
             )
 
-            # 2. Review stats
-            review_stats = await sr_service.get_review_stats(
-                student_id=student_id,
-                course_id=course_id,
-            )
-
-            # 3. Weak areas
+            # 2. Weak areas
             weaknesses = await personalize_memory.get_weaknesses(
-                user_id=student_id, course_id=course_id, limit=5,
+                user_id=student_id,
+                course_id=course_id,
+                limit=5,
             )
 
-            # 4. Strengths (for positive reinforcement)
+            # 3. Strengths (for positive reinforcement)
             strengths = await personalize_memory.get_strengths(
-                user_id=student_id, course_id=course_id, limit=3,
+                user_id=student_id,
+                course_id=course_id,
+                limit=3,
             )
 
-            # 5. Build study plan
+            # 4. Recent errors (cross-course, always)
+            recent_errors = await personalize_memory.get_recent_errors(
+                user_id=student_id,
+                limit=5,
+            )
+
+            # 5. Build study plan items
             plan_items = []
 
             # Priority 1: Overdue reviews
@@ -78,7 +92,7 @@ class GetStudyPlanTool(BaseTool):
                         {
                             "question_id": r.get("question_id"),
                             "node_name": r.get("node_name", ""),
-                            "overdue_days": str(r.get("next_review_date", "")),
+                            "next_review_date": r.get("next_review_date", ""),
                         }
                         for r in due_reviews[:5]
                     ],
@@ -93,7 +107,7 @@ class GetStudyPlanTool(BaseTool):
                     "description": f"{len(weaknesses)} chủ đề cần ôn tập thêm",
                     "items": [
                         {
-                            "node_name": w["name"],
+                            "node_name": w.get("name_vi") or w["name"],
                             "mastery": w["mastery_level"],
                             "suggestion": (
                                 "Cần ôn kỹ" if w["mastery_level"] < 0.3
@@ -104,22 +118,55 @@ class GetStudyPlanTool(BaseTool):
                     ],
                 })
 
-            # Priority 3: Positive feedback
-            if strengths:
+            # Priority 3: Recent error patterns
+            if recent_errors:
                 plan_items.append({
                     "priority": 3,
+                    "type": "error_pattern",
+                    "title": "Lỗi thường gặp gần đây",
+                    "description": f"{len(recent_errors)} lỗi cần chú ý",
+                    "items": [
+                        {
+                            "node_name": e.get("node_name", ""),
+                            "knowledge_gap": e.get("knowledge_gap", ""),
+                            "suggestion": e.get("study_suggestion", ""),
+                        }
+                        for e in recent_errors[:3]
+                    ],
+                })
+
+            # Priority 4: Strengths (positive reinforcement)
+            if strengths:
+                plan_items.append({
+                    "priority": 4,
                     "type": "strength",
                     "title": "Điểm mạnh của bạn",
                     "description": "Giữ vững phong độ!",
                     "items": [
-                        {"node_name": s["name"], "mastery": s["mastery_level"]}
+                        {
+                            "node_name": s.get("name_vi") or s["name"],
+                            "mastery": s["mastery_level"],
+                        }
                         for s in strengths
                     ],
                 })
 
-            # Summary
-            due_today = int(review_stats.get("due_today", 0)) if review_stats else 0
-            total_tracked = int(review_stats.get("total_tracked", 0)) if review_stats else 0
+            due_today = len(due_reviews)
+            scope_label = f"khóa học {course_id}" if course_id else "tất cả khóa học"
+
+            if not plan_items:
+                return ToolResult(
+                    status="success",
+                    data={"plan": [], "review_stats": {"due_today": 0, "total_tracked": 0}},
+                    message=(
+                        f"Bạn chưa có dữ liệu học tập nào được ghi nhận cho {scope_label}. "
+                        "Hãy bắt đầu làm bài kiểm tra để hệ thống theo dõi tiến độ của bạn!"
+                    ),
+                    ui_instruction={
+                        "component": "StudyPlanWidget",
+                        "props": {"plan": [], "due_today": 0},
+                    },
+                )
 
             return ToolResult(
                 status="success",
@@ -127,11 +174,12 @@ class GetStudyPlanTool(BaseTool):
                     "plan": plan_items,
                     "review_stats": {
                         "due_today": due_today,
-                        "total_tracked": total_tracked,
+                        "total_tracked": len(due_reviews) + len(weaknesses),
                     },
+                    "scope": scope_label,
                 },
                 message=(
-                    f"Kế hoạch hôm nay: {due_today} bài ôn tập, "
+                    f"Kế hoạch hôm nay ({scope_label}): {due_today} bài ôn tập, "
                     f"{len(weaknesses)} chủ đề cần cải thiện."
                 ),
                 ui_instruction={
