@@ -63,6 +63,7 @@ class KeyPool:
           4. least-used today (tokens ASC, then requests ASC)
         """
         now = datetime.now(timezone.utc)
+        window_cutoff = now - timedelta(hours=24)
         async with get_ai_conn() as conn:
             # Roll over daily counters first.
             await conn.execute(
@@ -71,9 +72,9 @@ class KeyPool:
                 SET used_today_requests = 0,
                     used_today_tokens   = 0,
                     used_window_start   = $1
-                WHERE provider_id = $2 AND used_window_start < $1 - INTERVAL '24 hours'
+                WHERE provider_id = $2 AND used_window_start < $3
                 """,
-                now, provider_id,
+                now, provider_id, window_cutoff,
             )
             # Auto-clear expired cooldowns.
             await conn.execute(

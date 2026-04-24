@@ -85,6 +85,11 @@ lms:
     url: ${LMS_API_URL}
     secret: ${LMS_API_SECRET}
 
+ai-service:
+  api:
+    url: ${AI_SERVICE_URL}
+    secret: ${AI_SERVICE_SECRET}
+
 springdoc:
   swagger-ui:
     config-url: /apiv1/v3/api-docs/swagger-config

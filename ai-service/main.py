@@ -20,7 +20,9 @@ from app.api.endpoints.quiz_gen   import router as quiz_router, sr_router
 from app.api.endpoints.flashcards import router as flashcards_router
 from app.api.endpoints.auto_index import router as auto_index_router, graph_router
 from app.api.endpoints.admin      import router as admin_router
+from app.api.endpoints.admin_llm  import router as admin_llm_router
 from app.api.endpoints.health     import router as health_router
+from app.core.llm_gateway.bootstrap import bootstrap_llm_registry
 from app.api.agent_router         import router as agent_router
 
 settings = get_settings()
@@ -56,6 +58,12 @@ async def startup():
     logger.info("AI PostgreSQL pool ready",
                 extra={"min_conn": settings.ai_db_min_connections,
                        "max_conn": settings.ai_db_max_connections})
+
+    try:
+        await bootstrap_llm_registry()
+        logger.info("LLM registry bootstrapped successfully")
+    except Exception as exc:
+        logger.error("LLM registry bootstrap failed (non-fatal): %s", exc)
 
     if settings.use_qdrant:
         try:
@@ -124,4 +132,5 @@ app.include_router(flashcards_router, prefix="/ai")
 app.include_router(auto_index_router, prefix="/ai")
 app.include_router(graph_router,      prefix="/ai")
 app.include_router(admin_router,      prefix="/ai")
+app.include_router(admin_llm_router,  prefix="/ai")
 app.include_router(agent_router,      prefix="/ai")
