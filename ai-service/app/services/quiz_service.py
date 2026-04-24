@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_quiz_generation_prompt
+from app.core.llm_gateway import TASK_QUIZ_GEN
 from app.services.rag_service import rag_service
 from app.core.config import get_settings
 
@@ -105,6 +106,7 @@ class QuizGenerationService:
         )
         result = await chat_complete_json(
             messages=messages, model=settings.quiz_model, temperature=0.5,
+            task=TASK_QUIZ_GEN,
         )
 
         if "question_text" not in result or "answer_options" not in result:

@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     lms_service_url: str = "http://lms-service:8081"
     ai_service_secret: str = "ai-service-secret-change-me"
 
+    ai_key_encryption_secret: str = ""
+    llm_bootstrap_on_startup: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

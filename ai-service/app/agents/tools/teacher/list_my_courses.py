@@ -65,7 +65,10 @@ class ListMyCoursesTool(BaseTool):
                 for c in courses:
                     c_id = c.get("id")
                     sec_resp = await client.get(f"{settings.lms_service_url}/api/v1/courses/{c_id}/sections", headers=headers)
-                    sections = sec_resp.json().get("data", []) if sec_resp.status_code == 200 else []
+                    sec_json = sec_resp.json() if sec_resp.status_code == 200 else None
+                    sections = sec_json.get("data", []) if isinstance(sec_json, dict) else []
+                    if not isinstance(sections, list):
+                        sections = []
                     course_list.append({
                         "id": c_id,
                         "title": c.get("title"),

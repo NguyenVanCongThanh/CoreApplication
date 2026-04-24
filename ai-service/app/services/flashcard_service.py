@@ -106,6 +106,7 @@ class FlashcardService:
         from app.core.database import get_ai_conn
         from app.core.llm import chat_complete_json, build_flashcard_generation_prompt
         from app.services.rag_service import rag_service
+        from app.core.llm_gateway import TASK_FLASHCARD_GEN
 
         settings = get_settings()
 
@@ -164,6 +165,7 @@ class FlashcardService:
             messages=messages,
             model=settings.quiz_model,
             temperature=0.7,
+            task=TASK_FLASHCARD_GEN,
         )
         if "flashcards" not in result:
             raise ValueError("Missing 'flashcards' key in LLM response")

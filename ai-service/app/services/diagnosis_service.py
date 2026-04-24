@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, build_diagnosis_prompt
+from app.core.llm_gateway import TASK_DIAGNOSIS
 from app.core.cache import diagnosis_cache
 from app.services.rag_service import rag_service, RetrievedChunk
 from app.core.config import get_settings
@@ -92,7 +93,7 @@ class DiagnosisService:
         )
 
         try:
-            llm_result = await chat_complete_json(messages=messages)
+            llm_result = await chat_complete_json(messages=messages, task=TASK_DIAGNOSIS)
         except Exception as exc:
             logger.error("LLM diagnosis failed: %s", exc)
             llm_result = {

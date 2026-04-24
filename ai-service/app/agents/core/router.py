@@ -22,6 +22,7 @@ import logging
 
 from app.core.config import get_settings
 from app.core.llm import chat_complete
+from app.core.llm_gateway import TASK_AGENT_ROUTER
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -85,6 +86,7 @@ async def classify_intent(
             model=settings.chat_model,  # fast model
             temperature=0.0,
             max_tokens=20,
+            task=TASK_AGENT_ROUTER,
         )
 
         intent = result.strip().lower().replace(" ", "_")

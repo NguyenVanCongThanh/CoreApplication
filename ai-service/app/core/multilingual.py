@@ -62,11 +62,13 @@ async def translate_query(text: str, target_lang: str) -> str:
 
     try:
         from app.core.llm import chat_complete
+        from app.core.llm_gateway import TASK_LANGUAGE_DETECT
         result = (await chat_complete(
             messages=[{"role": "user", "content": prompt}],
             model=settings.chat_model,
             temperature=0.05,
             max_tokens=300,
+            task=TASK_LANGUAGE_DETECT,
         )).strip()
 
         if result and result.lower() != text.lower():

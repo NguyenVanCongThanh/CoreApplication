@@ -258,8 +258,16 @@ class ContextBuilder:
         parts = []
 
         key_facts = ctx.get("key_facts") or {}
+
+        anchor_bits: list[str] = []
+        if key_facts.get("current_course_id") is not None:
+            anchor_bits.append(f"course_id={key_facts['current_course_id']}")
+        if key_facts.get("current_node_id") is not None:
+            anchor_bits.append(f"node_id={key_facts['current_node_id']}")
         if key_facts.get("current_topic"):
-            parts.append(f"CURRENT TOPIC: {key_facts['current_topic']}")
+            anchor_bits.append(f"topic=\"{key_facts['current_topic']}\"")
+        if anchor_bits:
+            parts.append("CURRENT ANCHOR: " + ", ".join(anchor_bits))
 
         if ctx.get("identified_gaps"):
             gaps = ctx["identified_gaps"]

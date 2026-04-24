@@ -20,6 +20,7 @@ import logging
 
 from app.core.config import get_settings
 from app.core.llm import chat_complete_json
+from app.core.llm_gateway import TASK_CLARIFICATION
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -143,6 +144,7 @@ async def should_clarify(
             model=settings.chat_model,  # fast model
             temperature=0.1,
             max_tokens=256,
+            task=TASK_CLARIFICATION,
         )
 
         if not isinstance(result, dict):

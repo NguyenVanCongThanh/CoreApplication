@@ -26,6 +26,7 @@ import numpy as np
 from app.core.config import get_settings
 from app.core.database import get_ai_conn
 from app.core.llm import chat_complete_json, create_embeddings_batch
+from app.core.llm_gateway import TASK_NODE_EXTRACT
 from app.services.chunker import (
     PDFChunker,
     DocxChunker,
@@ -680,6 +681,7 @@ class AutoIndexService:
             result = await chat_complete_json(
                 messages=messages, model=settings.quiz_model,
                 temperature=0.15, max_tokens=2048,
+                task=TASK_NODE_EXTRACT,
             )
         except Exception as exc:
             logger.error("LLM node extraction failed: %s", exc, exc_info=True)

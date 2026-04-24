@@ -30,7 +30,7 @@ class SearchMaterialsTool(BaseTool):
             },
             "course_id": {
                 "type": "integer",
-                "description": "The course ID to search within.",
+                "description": "Optional: filter search to a specific course ID. Omit to search across all courses.",
             },
             "top_k": {
                 "type": "integer",
@@ -38,14 +38,15 @@ class SearchMaterialsTool(BaseTool):
                 "default": 3,
             },
         },
-        "required": ["query", "course_id"],
+        "required": ["query"],  # course_id is OPTIONAL — Mentor agent is cross-course
     }
 
     async def execute(self, **kwargs) -> ToolResult:
         from app.services.rag_service import rag_service
 
         query = kwargs["query"]
-        course_id = kwargs.get("_course_id") or kwargs["course_id"]
+        # course_id is optional — use injected context or LLM-provided value
+        course_id: int | None = kwargs.get("_course_id") or kwargs.get("course_id")
         top_k = kwargs.get("top_k", 3)
 
         try:
