@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input }  from "@/components/ui/input";
+import { Label }  from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
-  DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Plus, Trash2 } from "lucide-react";
 import type { LlmBinding, LlmCatalogue, LlmModel } from "@/services/llmConfigService";
 import { llmConfigService } from "@/services/llmConfigService";
 
@@ -54,32 +56,40 @@ export function BindingsPanel({ bindings, models, catalogue, onChanged }: Props)
       <div className="space-y-3">
         {allTasks.map((task) => {
           const chain = byTask.get(task) ?? [];
+          const hasBindings = chain.length > 0;
           return (
-            <div key={task} className="rounded-lg border border-slate-200 dark:border-slate-800">
-              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 px-4 py-2">
-                <div>
-                  <code className="text-sm font-mono font-semibold">{task}</code>
-                  <span className="ml-2 text-xs text-slate-500">{chain.length} binding(s)</span>
+            <div key={task} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              {/* Task header */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <code className="text-sm font-mono font-semibold text-slate-800 dark:text-slate-200">{task}</code>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    hasBindings
+                      ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
+                      : "bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                  }`}>
+                    {chain.length} binding{chain.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
                 <BindingAddInline task={task} models={models} onSaved={onChanged} />
               </div>
 
               {chain.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-slate-400">Chưa có binding nào.</p>
+                <p className="px-4 py-4 text-sm text-slate-400 dark:text-slate-500 italic">Chưa có binding. Nhấn + Model để thêm.</p>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="text-slate-500 text-xs uppercase">
+                  <thead className="text-slate-400 dark:text-slate-500 text-xs uppercase tracking-wide bg-white dark:bg-slate-950">
                     <tr>
-                      <th className="px-4 py-2 text-left">Priority</th>
+                      <th className="px-4 py-2 text-left w-28">Priority</th>
                       <th className="px-4 py-2 text-left">Model</th>
-                      <th className="px-4 py-2 text-center">JSON</th>
-                      <th className="px-4 py-2 text-right">Temp / Max</th>
-                      <th className="px-4 py-2 text-center">Pin</th>
-                      <th className="px-4 py-2 text-center">Bật</th>
-                      <th className="px-4 py-2" />
+                      <th className="px-4 py-2 text-center w-20">JSON</th>
+                      <th className="px-4 py-2 text-right w-32">Temp / Max</th>
+                      <th className="px-4 py-2 text-center w-20">Pin</th>
+                      <th className="px-4 py-2 text-center w-20">Bật</th>
+                      <th className="px-4 py-2 w-16" />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {chain.map((b) => (
                       <BindingRow key={b.id} binding={b} onChanged={onChanged} />
                     ))}
@@ -90,7 +100,9 @@ export function BindingsPanel({ bindings, models, catalogue, onChanged }: Props)
           );
         })}
         {allTasks.length === 0 && (
-          <p className="text-center py-12 text-slate-400">Chưa có binding nào.</p>
+          <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">
+            Chưa có binding nào. Nhấn <span className="font-medium text-blue-600">+ Thêm binding</span> để bắt đầu.
+          </p>
         )}
       </div>
     </div>
@@ -98,76 +110,81 @@ export function BindingsPanel({ bindings, models, catalogue, onChanged }: Props)
 }
 
 function BindingRow({ binding, onChanged }: { binding: LlmBinding; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
+  const [busy,     setBusy]     = useState(false);
+  const [priority, setPriority] = useState(String(binding.priority));
 
-  const patch = async (patch: Parameters<typeof llmConfigService.updateBinding>[1]) => {
+  const patch = async (data: Parameters<typeof llmConfigService.updateBinding>[1]) => {
     setBusy(true);
-    try {
-      await llmConfigService.updateBinding(binding.id, patch);
-      onChanged();
-    } finally {
-      setBusy(false);
-    }
+    try { await llmConfigService.updateBinding(binding.id, data); onChanged(); }
+    finally { setBusy(false); }
+  };
+
+  const commitPriority = () => {
+    const n = Number(priority);
+    if (!isNaN(n) && n !== binding.priority) patch({ priority: n });
   };
 
   const remove = async () => {
     if (!confirm(`Xoá binding ${binding.task_code} → ${binding.model.model_name}?`)) return;
     setBusy(true);
-    try {
-      await llmConfigService.deleteBinding(binding.id);
-      onChanged();
-    } finally {
-      setBusy(false);
-    }
+    try { await llmConfigService.deleteBinding(binding.id); onChanged(); }
+    finally { setBusy(false); }
   };
 
   return (
-    <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
-      <td className="px-4 py-3 tabular-nums">
+    <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+      <td className="px-4 py-3">
         <Input
           type="number"
-          className="h-7 w-20"
-          value={binding.priority}
-          onChange={(e) => patch({ priority: Number(e.target.value) })}
+          className="h-7 w-20 rounded-lg text-center tabular-nums border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          onBlur={commitPriority}
+          onKeyDown={(e) => e.key === "Enter" && commitPriority()}
           disabled={busy}
         />
       </td>
       <td className="px-4 py-3">
-        <div className="font-mono text-xs">
-          {binding.model.provider_code}
-          <span className="text-slate-400"> / </span>
-          {binding.model.model_name}
+        <div className="flex items-center gap-1.5">
+          <code className="text-xs font-mono text-slate-500 dark:text-slate-400">{binding.model.provider_code}</code>
+          <span className="text-slate-300 dark:text-slate-600">/</span>
+          <code className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300">{binding.model.model_name}</code>
         </div>
       </td>
       <td className="px-4 py-3 text-center">
-        <input
-          type="checkbox"
+        <Switch
           checked={binding.json_mode}
-          onChange={(e) => patch({ json_mode: e.target.checked })}
+          onCheckedChange={(v) => patch({ json_mode: v })}
           disabled={busy}
         />
       </td>
-      <td className="px-4 py-3 text-right text-xs text-slate-500">
+      <td className="px-4 py-3 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
         {binding.temperature ?? binding.model.default_temperature} / {binding.max_tokens ?? binding.model.default_max_tokens}
       </td>
       <td className="px-4 py-3 text-center">
-        <input
-          type="checkbox"
+        <Switch
           checked={binding.pinned}
-          onChange={(e) => patch({ pinned: e.target.checked })}
+          onCheckedChange={(v) => patch({ pinned: v })}
           disabled={busy}
+          className="data-[state=checked]:bg-amber-500"
         />
       </td>
       <td className="px-4 py-3 text-center">
-        <input
-          type="checkbox"
+        <Switch
           checked={binding.enabled}
-          onChange={(e) => patch({ enabled: e.target.checked })}
+          onCheckedChange={(v) => patch({ enabled: v })}
           disabled={busy}
         />
       </td>
       <td className="px-4 py-3 text-right">
-        <Button variant="destructive" size="sm" onClick={remove} disabled={busy}>Xoá</Button>
+        <Button
+          variant="ghost" size="sm"
+          className="h-7 w-7 p-0 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-95 transition-all duration-200"
+          onClick={remove} disabled={busy}
+          title="Xoá binding"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </td>
     </tr>
   );
@@ -180,10 +197,10 @@ function BindingAddInline({
   models: LlmModel[];
   onSaved: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open,    setOpen]    = useState(false);
   const [modelId, setModelId] = useState<string>("");
   const [priority, setPriority] = useState("100");
-  const [saving, setSaving] = useState(false);
+  const [saving,  setSaving]  = useState(false);
 
   const add = async () => {
     if (!modelId) return;
@@ -196,44 +213,61 @@ function BindingAddInline({
       });
       setOpen(false);
       onSaved();
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">+ Model</Button>
+        <Button size="sm" variant="outline"
+          className="gap-1.5 h-7 text-xs active:scale-95 transition-all duration-200"
+        >
+          <Plus className="h-3 w-3" /> Model
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Thêm model vào chain</DialogTitle>
+          <DialogTitle className="text-base font-semibold">Thêm model vào chain</DialogTitle>
           <DialogDescription>
-            Task: <code className="font-mono">{task}</code>
+            Task: <code className="font-mono text-sm bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{task}</code>
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Model</Label>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Model <span className="text-rose-500">*</span>
+            </Label>
             <Select value={modelId} onValueChange={setModelId}>
-              <SelectTrigger><SelectValue placeholder="Chọn model" /></SelectTrigger>
+              <SelectTrigger className="rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20">
+                <SelectValue placeholder="Chọn model" />
+              </SelectTrigger>
               <SelectContent>
                 {models.map((m) => (
                   <SelectItem key={m.id} value={String(m.id)}>
-                    {m.provider_code} / {m.model_name}
+                    <code className="font-mono text-xs">{m.provider_code}</code>
+                    <span className="text-slate-400 mx-1">/</span>
+                    {m.model_name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Priority (thấp hơn = thử trước)</Label>
-            <Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="add-priority" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Priority <span className="text-slate-400 font-normal text-xs">(thấp hơn = thử trước)</span>
+            </Label>
+            <Input
+              id="add-priority" type="number" value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20"
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={add} disabled={saving || !modelId}>
+          <Button
+            onClick={add} disabled={saving || !modelId}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-5 shadow-sm active:scale-95 transition-all duration-200 disabled:opacity-50"
+          >
             {saving ? "Đang thêm…" : "Thêm"}
           </Button>
         </DialogFooter>
@@ -249,12 +283,12 @@ function BindingDialog({
   catalogue: LlmCatalogue | null;
   onSaved: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [taskCode, setTaskCode] = useState<string>(catalogue?.task_codes?.[0] ?? "chat");
+  const [open,       setOpen]       = useState(false);
+  const [taskCode,   setTaskCode]   = useState<string>(catalogue?.task_codes?.[0] ?? "chat");
   const [customTask, setCustomTask] = useState("");
-  const [modelId, setModelId] = useState<string>("");
-  const [priority, setPriority] = useState("100");
-  const [saving, setSaving] = useState(false);
+  const [modelId,    setModelId]    = useState<string>("");
+  const [priority,   setPriority]   = useState("100");
+  const [saving,     setSaving]     = useState(false);
 
   const effectiveTask = taskCode === "__custom" ? customTask.trim() : taskCode;
 
@@ -267,66 +301,94 @@ function BindingDialog({
         model_id: Number(modelId),
         priority: Number(priority),
       });
-      setCustomTask("");
-      setModelId("");
-      setPriority("100");
+      setCustomTask(""); setModelId(""); setPriority("100");
       setOpen(false);
       onSaved();
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button disabled={models.length === 0}>+ Thêm binding</Button>
+        <Button
+          disabled={models.length === 0}
+          className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-5 shadow-sm active:scale-95 transition-all duration-200 disabled:opacity-50"
+        >
+          <Plus className="h-4 w-4" /> Thêm binding
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Thêm task binding</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">Thêm task binding</DialogTitle>
+          <DialogDescription className="text-slate-500 dark:text-slate-400">
+            Chọn task code và model. Priority thấp hơn được thử trước.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Task code</Label>
+        <div className="space-y-4 py-1">
+          {/* Task code */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Task code <span className="text-rose-500">*</span>
+            </Label>
             <Select value={taskCode} onValueChange={setTaskCode}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {(catalogue?.task_codes ?? []).map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                  <SelectItem key={t} value={t}><code className="font-mono text-xs">{t}</code></SelectItem>
                 ))}
-                <SelectItem value="__custom">— Tự định nghĩa —</SelectItem>
+                <SelectItem value="__custom" className="text-slate-500 italic">— Tự định nghĩa —</SelectItem>
               </SelectContent>
             </Select>
             {taskCode === "__custom" && (
               <Input
-                className="mt-2"
+                className="mt-2 rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20 font-mono"
                 value={customTask}
                 onChange={(e) => setCustomTask(e.target.value)}
                 placeholder="my_custom_task"
               />
             )}
           </div>
-          <div>
-            <Label>Model</Label>
+
+          {/* Model */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Model <span className="text-rose-500">*</span>
+            </Label>
             <Select value={modelId} onValueChange={setModelId}>
-              <SelectTrigger><SelectValue placeholder="Chọn model" /></SelectTrigger>
+              <SelectTrigger className="rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20">
+                <SelectValue placeholder="Chọn model" />
+              </SelectTrigger>
               <SelectContent>
                 {models.map((m) => (
                   <SelectItem key={m.id} value={String(m.id)}>
-                    {m.provider_code} / {m.model_name}
+                    <code className="font-mono text-xs">{m.provider_code}</code>
+                    <span className="text-slate-400 mx-1">/</span>
+                    {m.model_name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Priority</Label>
-            <Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
+
+          {/* Priority */}
+          <div className="space-y-1.5">
+            <Label htmlFor="bind-priority" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Priority <span className="text-slate-400 font-normal text-xs">(thấp hơn = thử trước)</span>
+            </Label>
+            <Input
+              id="bind-priority" type="number" value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="rounded-xl border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-blue-500/20"
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={save} disabled={saving || !modelId || !effectiveTask}>
+          <Button
+            onClick={save} disabled={saving || !modelId || !effectiveTask}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 shadow-sm active:scale-95 transition-all duration-200 disabled:opacity-50"
+          >
             {saving ? "Đang lưu…" : "Lưu"}
           </Button>
         </DialogFooter>
