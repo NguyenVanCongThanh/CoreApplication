@@ -29,13 +29,18 @@ const WIDGET_MAP: Record<string, React.ComponentType<any>> = {
   MiniChallengeWidget: dynamic(() =>
     import("./widgets/MiniChallengeWidget").then((m) => m.MiniChallengeWidget),
   ),
+  // Backend sends "StudyPlanWidget", keep "StudyPlan" as legacy alias
   StudyPlan: dynamic(() =>
+    import("./widgets/StudyPlanWidget").then((m) => m.StudyPlanWidget),
+  ),
+  StudyPlanWidget: dynamic(() =>
     import("./widgets/StudyPlanWidget").then((m) => m.StudyPlanWidget),
   ),
   FlashcardPreview: dynamic(() =>
     import("./widgets/FlashcardWidget").then((m) => m.FlashcardWidget),
   ),
 };
+
 
 interface WidgetRendererProps {
   data: UIComponentData;
