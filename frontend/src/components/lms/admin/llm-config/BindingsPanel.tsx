@@ -110,8 +110,11 @@ export function BindingsPanel({ bindings, models, catalogue, onChanged }: Props)
 }
 
 function BindingRow({ binding, onChanged }: { binding: LlmBinding; onChanged: () => void }) {
-  const [busy,     setBusy]     = useState(false);
-  const [priority, setPriority] = useState(String(binding.priority));
+  const [busy,      setBusy]      = useState(false);
+  const [priority,  setPriority]  = useState(String(binding.priority));
+  const [jsonMode,  setJsonMode]  = useState(binding.json_mode);
+  const [isPinned,  setIsPinned]  = useState(binding.pinned);
+  const [isEnabled, setIsEnabled] = useState(binding.enabled);
 
   const patch = async (data: Parameters<typeof llmConfigService.updateBinding>[1]) => {
     setBusy(true);
@@ -123,6 +126,10 @@ function BindingRow({ binding, onChanged }: { binding: LlmBinding; onChanged: ()
     const n = Number(priority);
     if (!isNaN(n) && n !== binding.priority) patch({ priority: n });
   };
+
+  const toggleJson = (v: boolean) => { setJsonMode(v); patch({ json_mode: v }); };
+  const togglePin  = (v: boolean) => { setIsPinned(v); patch({ pinned: v }); };
+  const toggleEnabled = (v: boolean) => { setIsEnabled(v); patch({ enabled: v }); };
 
   const remove = async () => {
     if (!confirm(`Xoá binding ${binding.task_code} → ${binding.model.model_name}?`)) return;
@@ -152,29 +159,17 @@ function BindingRow({ binding, onChanged }: { binding: LlmBinding; onChanged: ()
         </div>
       </td>
       <td className="px-4 py-3 text-center">
-        <Switch
-          checked={binding.json_mode}
-          onCheckedChange={(v) => patch({ json_mode: v })}
-          disabled={busy}
-        />
+        <Switch checked={jsonMode}  onCheckedChange={toggleJson}    disabled={busy} />
       </td>
       <td className="px-4 py-3 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
         {binding.temperature ?? binding.model.default_temperature} / {binding.max_tokens ?? binding.model.default_max_tokens}
       </td>
       <td className="px-4 py-3 text-center">
-        <Switch
-          checked={binding.pinned}
-          onCheckedChange={(v) => patch({ pinned: v })}
-          disabled={busy}
-          className="data-[state=checked]:bg-amber-500"
-        />
+        <Switch checked={isPinned}  onCheckedChange={togglePin}     disabled={busy}
+          className="data-[state=checked]:bg-amber-500" />
       </td>
       <td className="px-4 py-3 text-center">
-        <Switch
-          checked={binding.enabled}
-          onCheckedChange={(v) => patch({ enabled: v })}
-          disabled={busy}
-        />
+        <Switch checked={isEnabled} onCheckedChange={toggleEnabled} disabled={busy} />
       </td>
       <td className="px-4 py-3 text-right">
         <Button
@@ -189,6 +184,7 @@ function BindingRow({ binding, onChanged }: { binding: LlmBinding; onChanged: ()
     </tr>
   );
 }
+
 
 function BindingAddInline({
   task, models, onSaved,

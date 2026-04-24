@@ -72,12 +72,16 @@ function ModelRow({
   providers: LlmProvider[];
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [busy,      setBusy]      = useState(false);
+  const [open,      setOpen]      = useState(false);
+  const [isEnabled, setIsEnabled] = useState(model.enabled);
 
   const toggle = async () => {
+    const next = !isEnabled;
+    setIsEnabled(next);
     setBusy(true);
-    try { await llmConfigService.updateModel(model.id, { enabled: !model.enabled }); onChanged(); }
+    try { await llmConfigService.updateModel(model.id, { enabled: next }); onChanged(); }
+    catch { setIsEnabled(!next); }
     finally { setBusy(false); }
   };
 
@@ -126,7 +130,7 @@ function ModelRow({
         ${model.input_cost_per_1k.toFixed(5)} / ${model.output_cost_per_1k.toFixed(5)}
       </td>
       <td className="px-4 py-3 text-center">
-        <Switch checked={model.enabled} onCheckedChange={toggle} disabled={busy} />
+        <Switch checked={isEnabled} onCheckedChange={toggle} disabled={busy} />
       </td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">

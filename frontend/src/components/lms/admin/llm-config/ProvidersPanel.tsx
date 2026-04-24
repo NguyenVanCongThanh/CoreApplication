@@ -72,14 +72,19 @@ function ProviderRow({
   catalogue: LlmCatalogue | null;
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [busy,      setBusy]      = useState(false);
+  const [open,      setOpen]      = useState(false);
+  const [isEnabled, setIsEnabled] = useState(provider.enabled);
 
   const toggle = async () => {
+    const next = !isEnabled;
+    setIsEnabled(next);             // optimistic — instant visual
     setBusy(true);
     try {
-      await llmConfigService.updateProvider(provider.id, { enabled: !provider.enabled });
+      await llmConfigService.updateProvider(provider.id, { enabled: next });
       onChanged();
+    } catch {
+      setIsEnabled(!next);          // revert on error
     } finally { setBusy(false); }
   };
 
@@ -110,7 +115,7 @@ function ProviderRow({
       </td>
       <td className="px-4 py-3 text-center">
         <Switch
-          checked={provider.enabled}
+          checked={isEnabled}
           onCheckedChange={toggle}
           disabled={busy}
           aria-label="Toggle provider"

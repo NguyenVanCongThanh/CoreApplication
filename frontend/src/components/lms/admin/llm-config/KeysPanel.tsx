@@ -80,11 +80,14 @@ function KeyRow({
   provider?: LlmProvider;
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy,     setBusy]     = useState(false);
+  const [isActive, setIsActive] = useState(k.status === "active");
 
   const toggle = async (next: LlmApiKey["status"]) => {
+    setIsActive(next === "active");   // optimistic
     setBusy(true);
     try { await llmConfigService.updateApiKey(k.id, { status: next }); onChanged(); }
+    catch { setIsActive(k.status === "active"); }  // revert on error
     finally { setBusy(false); }
   };
 
@@ -118,7 +121,7 @@ function KeyRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
-          {k.status === "active" ? (
+          {isActive ? (
             <Button variant="outline" size="sm"
               className="gap-1.5 active:scale-95 transition-all duration-200"
               onClick={() => toggle("disabled")} disabled={busy}
