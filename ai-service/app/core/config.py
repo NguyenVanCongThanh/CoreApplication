@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     chat_model: str = "llama-3.1-8b-instant"
     quiz_model: str = "llama-3.3-70b-versatile"
 
+    # Google Gemini
+    gemini_api_key: str = ""
+
     # Embedding
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024

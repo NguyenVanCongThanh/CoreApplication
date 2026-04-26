@@ -36,9 +36,11 @@ from app.core.llm_gateway.types import (
 logger = logging.getLogger(__name__)
  
  
-# These metadata defaults are based on Groq's published specs (Nov 2024).
-# They're safe defaults; admins can edit them live from the UI.
+# Model catalog based on GroqCloud production models (April 2026).
+# All entries are upserted on every startup — safe to add/update freely.
+# Admins assign task bindings via the Admin UI; bootstrap only seeds the catalog.
 _DEFAULT_GROQ_MODELS = [
+    # ── Llama family ─────────────────────────────────────────────────────────
     {
         "model_name": "llama-3.1-8b-instant",
         "display_name": "Llama 3.1 8B Instant",
@@ -46,7 +48,7 @@ _DEFAULT_GROQ_MODELS = [
         "context_window": 131072,
         "supports_tools": True,
         "default_temperature": 0.3,
-        "default_max_tokens": 1024,
+        "default_max_tokens": 8192,
         "input_cost_per_1k": 0.00005,
         "output_cost_per_1k": 0.00008,
     },
@@ -57,13 +59,164 @@ _DEFAULT_GROQ_MODELS = [
         "context_window": 131072,
         "supports_tools": True,
         "default_temperature": 0.3,
-        "default_max_tokens": 2048,
+        "default_max_tokens": 32768,
         "input_cost_per_1k": 0.00059,
         "output_cost_per_1k": 0.00079,
     },
+    # ── OpenAI GPT-OSS (hosted on Groq) ──────────────────────────────────────
+    {
+        "model_name": "openai/gpt-oss-120b",
+        "display_name": "OpenAI GPT-OSS 120B",
+        "family": "gpt-oss",
+        "context_window": 131072,
+        "supports_tools": True,
+        "supports_json": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.00015,
+        "output_cost_per_1k": 0.00060,
+    },
+    {
+        "model_name": "openai/gpt-oss-20b",
+        "display_name": "OpenAI GPT-OSS 20B",
+        "family": "gpt-oss",
+        "context_window": 131072,
+        "supports_tools": True,
+        "supports_json": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.000075,
+        "output_cost_per_1k": 0.00030,
+    },
+    # ── Groq Compound Systems ─────────────────────────────────────────────────
+    {
+        "model_name": "groq/compound",
+        "display_name": "Groq Compound",
+        "family": "compound",
+        "context_window": 131072,
+        "supports_tools": True,   # has built-in web search + code execution
+        "supports_json": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 8192,
+        "input_cost_per_1k": 0.0,   # billed differently — no per-token price
+        "output_cost_per_1k": 0.0,
+    },
+    {
+        "model_name": "groq/compound-mini",
+        "display_name": "Groq Compound Mini",
+        "family": "compound",
+        "context_window": 131072,
+        "supports_tools": True,
+        "supports_json": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 8192,
+        "input_cost_per_1k": 0.0,
+        "output_cost_per_1k": 0.0,
+    },
 ]
- 
- 
+
+
+# ── Google Gemini text-generation models (April 2026) ────────────────────────
+# Only models useful for LMS text tasks are included.
+# TTS, image-gen, video, audio-only, embedding, and robotics models are excluded.
+_DEFAULT_GEMINI_MODELS = [
+    # ── Gemini 3.x family ─────────────────────────────────────────────────────
+    {
+        "model_name": "gemini-3.1-pro-preview",
+        "display_name": "Gemini 3.1 Pro Preview",
+        "family": "gemini-3",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.002,
+        "output_cost_per_1k": 0.012,
+    },
+    {
+        "model_name": "gemini-3.1-flash-lite-preview",
+        "display_name": "Gemini 3.1 Flash-Lite Preview",
+        "family": "gemini-3",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.00025,
+        "output_cost_per_1k": 0.0015,
+    },
+    {
+        "model_name": "gemini-3-flash-preview",
+        "display_name": "Gemini 3 Flash Preview",
+        "family": "gemini-3",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.0005,
+        "output_cost_per_1k": 0.003,
+    },
+    # ── Gemini 2.5 family ─────────────────────────────────────────────────────
+    {
+        "model_name": "gemini-2.5-pro",
+        "display_name": "Gemini 2.5 Pro",
+        "family": "gemini-2.5",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.00125,
+        "output_cost_per_1k": 0.010,
+    },
+    {
+        "model_name": "gemini-2.5-flash",
+        "display_name": "Gemini 2.5 Flash",
+        "family": "gemini-2.5",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.0003,
+        "output_cost_per_1k": 0.0025,
+    },
+    {
+        "model_name": "gemini-2.5-flash-lite",
+        "display_name": "Gemini 2.5 Flash-Lite",
+        "family": "gemini-2.5",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 65536,
+        "input_cost_per_1k": 0.0001,
+        "output_cost_per_1k": 0.0004,
+    },
+    # ── Gemini 2.0 (deprecated June 2026 — kept for existing bindings) ────────
+    {
+        "model_name": "gemini-2.0-flash",
+        "display_name": "Gemini 2.0 Flash (deprecated)",
+        "family": "gemini-2.0",
+        "context_window": 1048576,
+        "supports_tools": True,
+        "supports_json": True,
+        "supports_vision": True,
+        "default_temperature": 0.3,
+        "default_max_tokens": 8192,
+        "input_cost_per_1k": 0.0001,
+        "output_cost_per_1k": 0.0004,
+    },
+]
+
+
 async def bootstrap_llm_registry() -> None:
     settings = get_settings()
     registry = get_registry()
@@ -108,7 +261,7 @@ async def bootstrap_llm_registry() -> None:
     chat_model_id = models_by_name.get(chat_env) or next(iter(models_by_name.values()))
     quiz_model_id = models_by_name.get(quiz_env) or chat_model_id
  
-    # 3. Seed API key from env if pool is empty
+    # 3. Seed Groq API key from env if pool is empty
     existing_keys = await registry.list_api_keys(provider_id=provider.id)
     if not existing_keys and settings.groq_api_key:
         try:
@@ -120,8 +273,40 @@ async def bootstrap_llm_registry() -> None:
             logger.info("Migrated GROQ_API_KEY from env into llm_api_keys (alias=groq-env)")
         except Exception as exc:
             logger.warning("Could not seed Groq env key: %s", exc)
- 
-    # 4. Default task bindings. Priority 10 = primary; admins can add more.
+
+    total_models = len(models_by_name)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Google Gemini provider + models
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    gemini_provider = await registry.upsert_provider(
+        code="gemini",
+        display_name="Google Gemini",
+        adapter_type="gemini",
+        base_url=None,
+        enabled=True,
+    )
+
+    for spec in _DEFAULT_GEMINI_MODELS:
+        await registry.upsert_model(provider_id=gemini_provider.id, **spec)
+        total_models += 1
+
+    # Seed Gemini API key from env
+    gemini_keys = await registry.list_api_keys(provider_id=gemini_provider.id)
+    if not gemini_keys and settings.gemini_api_key:
+        try:
+            await registry.create_api_key(
+                provider_id=gemini_provider.id,
+                alias="gemini-env",
+                plaintext_key=settings.gemini_api_key,
+            )
+            logger.info("Migrated GEMINI_API_KEY from env into llm_api_keys (alias=gemini-env)")
+        except Exception as exc:
+            logger.warning("Could not seed Gemini env key: %s", exc)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Default task bindings (Groq only — admins bind Gemini via the Admin UI)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     default_bindings: list[tuple[str, int]] = [
         (TASK_CHAT,             chat_model_id),
         (TASK_CLARIFICATION,    chat_model_id),
@@ -135,7 +320,7 @@ async def bootstrap_llm_registry() -> None:
         (TASK_QUIZ_GEN,         quiz_model_id),
         (TASK_AGENT_REACT,      quiz_model_id),
     ]
- 
+
     existing = {(b.task_code, b.model.id) for b in await registry.list_bindings()}
     for task_code, model_id in default_bindings:
         if (task_code, model_id) in existing:
@@ -152,7 +337,8 @@ async def bootstrap_llm_registry() -> None:
             enabled=True,
             notes="seeded-default",
         )
- 
+
+    # Warm binding cache for every known task code
     registry.invalidate()
     warmed: list[str] = []
     for task_code in ALL_TASK_CODES:
@@ -164,8 +350,6 @@ async def bootstrap_llm_registry() -> None:
             logger.warning("Could not warm binding cache for task=%s: %s", task_code, exc)
 
     logger.info(
-        "LLM registry bootstrapped: provider=%s models=%d keys=%d warmed=%s",
-        provider.code, len(models_by_name),
-        len(existing_keys) + (1 if settings.groq_api_key and not existing_keys else 0),
-        warmed,
+        "LLM registry bootstrapped: providers=[groq, gemini] models=%d warmed=%s",
+        total_models, warmed,
     )
