@@ -27,8 +27,8 @@ class GroqAdapter(LLMAdapter):
         json_mode: bool,
         extra: dict[str, Any],
     ) -> tuple[str, Usage, Any]:
-        client = AsyncGroq(api_key=self.api_key, base_url=self.base_url) if self.base_url \
-            else AsyncGroq(api_key=self.api_key)
+        client = AsyncGroq(api_key=self.api_key, base_url=self.base_url, max_retries=0) if self.base_url \
+            else AsyncGroq(api_key=self.api_key, max_retries=0)
  
         kwargs: dict[str, Any] = {
             "model": model.model_name,

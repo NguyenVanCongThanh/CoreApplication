@@ -86,6 +86,9 @@ export interface AgentChatRequest {
   user_id: number;
   course_id?: number;
   session_id?: string;
+
+  /** Structured in-page context fed by the ChatSidebar. */
+  page_context?: Record<string, any>;
 }
 
 export interface AgentSession {

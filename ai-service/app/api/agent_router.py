@@ -43,6 +43,21 @@ class UserContext(BaseModel):
     role: Optional[str] = None
 
 
+class ActiveCourseHint(BaseModel):
+    """
+    Hint from the frontend about a course the user has access to.
+
+    Optional — the agent loads its own authoritative list, but supplying
+    this seeds the cache and avoids a cold LMS round-trip on the first
+    turn. Pass the full list of courses currently visible in the sidebar
+    (teacher: created courses; student: ACCEPTED enrolments).
+    """
+    id: int
+    title: Optional[str] = None
+    status: Optional[str] = None
+    role: Optional[str] = None  # "owner" | "student"
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000)
     agent_type: str = Field(
@@ -53,6 +68,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     user_id: int = Field(..., gt=0)
     user_context: Optional[UserContext] = None
+    active_courses: Optional[list[ActiveCourseHint]] = None
 
 
 class SessionListResponse(BaseModel):
@@ -104,6 +120,10 @@ async def chat_endpoint(
 
     async def event_stream():
         try:
+            active_hint = (
+                [c.model_dump() for c in body.active_courses]
+                if body.active_courses else None
+            )
             async for event in handle_chat_message(
                 user_id=body.user_id,
                 agent_type=body.agent_type,
@@ -111,6 +131,7 @@ async def chat_endpoint(
                 course_id=body.course_id,
                 session_id=body.session_id,
                 user_context=body.user_context.model_dump() if body.user_context else None,
+                active_courses_hint=active_hint,
             ):
                 yield event.to_sse()
         except Exception as exc:

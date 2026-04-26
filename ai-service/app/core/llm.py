@@ -69,7 +69,7 @@ _instructor_client = None
 def get_groq_client() -> AsyncGroq:
     global _groq
     if _groq is None:
-        _groq = AsyncGroq(api_key=settings.groq_api_key)
+        _groq = AsyncGroq(api_key=settings.groq_api_key, max_retries=0)
     return _groq
 
 

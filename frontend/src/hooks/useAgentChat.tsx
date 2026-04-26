@@ -26,6 +26,8 @@ interface UseAgentChatOptions {
   courseId?: number;
   initialSessionId?: string;
   userId?: number;
+  /** Structured in-page context fed by the ChatSidebar. */
+  pageContext?: Record<string, any> | null;
   onSessionUpdated?: (update: {
     sessionId: string;
     title?: string;
@@ -33,7 +35,7 @@ interface UseAgentChatOptions {
   }) => void;
 }
  
-export function useAgentChat({ agentType, courseId, initialSessionId, userId, onSessionUpdated }: UseAgentChatOptions) {
+export function useAgentChat({ agentType, courseId, initialSessionId, userId, pageContext, onSessionUpdated }: UseAgentChatOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -160,6 +162,7 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId, on
             agent_type: agentType,
             course_id: courseId,
             session_id: sessionId,
+            ...(pageContext ? { page_context: pageContext } : {}),
           }),
           signal: abortRef.current.signal,
         });
@@ -229,7 +232,7 @@ export function useAgentChat({ agentType, courseId, initialSessionId, userId, on
         }));
       }
     },
-    [agentType, courseId, sessionId, isStreaming],
+    [agentType, courseId, sessionId, isStreaming, pageContext],
   );
 
   /**
