@@ -69,6 +69,7 @@ class ChatRequest(BaseModel):
     user_id: int = Field(..., gt=0)
     user_context: Optional[UserContext] = None
     active_courses: Optional[list[ActiveCourseHint]] = None
+    page_context: Optional[dict] = None
 
 
 class SessionListResponse(BaseModel):
@@ -132,6 +133,7 @@ async def chat_endpoint(
                 session_id=body.session_id,
                 user_context=body.user_context.model_dump() if body.user_context else None,
                 active_courses_hint=active_hint,
+                page_context=body.page_context,
             ):
                 yield event.to_sse()
         except Exception as exc:

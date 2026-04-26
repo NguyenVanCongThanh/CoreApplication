@@ -95,6 +95,9 @@ anchor is already set.
 # Current User
 {user_context}
 
+# In-Page Context
+{page_context}
+
 # Context Awareness
 {memory_context}
 
@@ -198,6 +201,9 @@ Instead of just giving answers:
 # Current User
 {user_context}
 
+# In-Page Context
+{page_context}
+
 # Context Awareness
 {memory_context}
 
@@ -234,6 +240,7 @@ def build_system_prompt(
     active_courses_section: str = "",
     # Backward-compatibility alias for the old parameter name.
     teacher_anchor_section: str | None = None,
+    page_context: dict | None = None,
 ) -> str:
     """
     Build the final system prompt with memory and user context injected.
@@ -272,11 +279,13 @@ def build_system_prompt(
             )
 
     user_section = _format_user_context(user_context, agent_type)
+    page_section = _format_page_context(page_context)
 
     return template.format(
         active_courses_block=block,
         memory_context=memory_context,
         user_context=user_section,
+        page_context=page_section,
     )
 
 
@@ -321,3 +330,24 @@ def _format_user_context(ctx: dict | None, agent_type: str) -> str:
         return "(User identity unknown)"
 
     return "\n".join(parts)
+
+
+def _format_page_context(ctx: dict | None) -> str:
+    """Format page context for system prompt injection."""
+    if not ctx:
+        return "(User is not viewing any specific course page right now)"
+    
+    parts = []
+    if ctx.get("type"):
+        parts.append(f"Page Type: {ctx.get('type')}")
+    if ctx.get("courseId") or ctx.get("course_id"):
+        parts.append(f"Course ID: {ctx.get('courseId') or ctx.get('course_id')}")
+    if ctx.get("nodeId") or ctx.get("node_id"):
+        parts.append(f"Node ID: {ctx.get('nodeId') or ctx.get('node_id')}")
+    if ctx.get("title"):
+        parts.append(f"Title: {ctx.get('title')}")
+        
+    if not parts:
+        return "(User is not viewing any specific course page right now)"
+        
+    return "The user is currently viewing the following page:\n" + "\n".join(parts)

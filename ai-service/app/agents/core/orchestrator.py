@@ -35,6 +35,7 @@ async def handle_chat_message(
     session_id: str | None = None,
     user_context: dict | None = None,
     active_courses_hint: list[dict] | None = None,
+    page_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """
     Top-level entry point for processing a chat message.
@@ -117,5 +118,6 @@ async def handle_chat_message(
         user_message=message,
         course_id=course_id,
         user_context=user_context,
+        page_context=page_context,
     ):
         yield event
