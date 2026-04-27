@@ -620,6 +620,52 @@ class AutoIndexService:
             chunks  = await chunker.chunk_async(file_bytes, mime_type=mime, language="vi")
             return (chunks[0].text if chunks else ""), chunks
 
+        # ── Unified Markdown pipeline ──────────────────────────────────
+        # Office documents (PDF/DOCX/PPTX/XLSX) are now normalised to
+        # Markdown first, then run through MarkdownChunker — the same
+        # chunker used for native Markdown input. Benefits:
+        #   * heading-aware breadcrumbs in chunks
+        #   * VLM descriptions for embedded images (via image_describer)
+        #   * VLM-OCR fallback for scanned PDFs
+        #   * tables get the natural-language column header prefix
+        if file_type in ("pdf", "docx", "pptx", "xlsx"):
+            from app.services.file_to_markdown import convert_to_markdown
+            from app.core.vlm import describe_image_url
+
+            language_guess = "vi"
+            try:
+                converted = await convert_to_markdown(
+                    file_bytes=file_bytes,
+                    file_type=file_type,
+                    storage_prefix=f"document-images/{content_id}",
+                    language=language_guess,
+                )
+            except Exception as exc:
+                logger.error("Unified Markdown convert failed (%s): %s — falling back",
+                             file_type, exc, exc_info=True)
+                converted = None
+
+            if converted and converted.markdown.strip():
+                language = detect_language(converted.markdown[:3000])
+                chunker = MarkdownChunker(
+                    chunk_size=settings.chunk_size, overlap=settings.chunk_overlap,
+                )
+
+                async def image_describer(image_url: str, alt_text: str) -> str:
+                    url_to_use = await self._get_vlm_ready_url(image_url)
+                    return await describe_image_url(url_to_use, language=language, alt_text=alt_text)
+
+                chunks = await chunker.chunk_async(
+                    markdown_text=converted.markdown,
+                    image_describer=image_describer,
+                )
+                if chunks:
+                    raw_text = "\n\n".join(c.text for c in chunks)
+                    return raw_text, chunks
+
+        # ── Fallback: legacy synchronous chunkers ──────────────────────
+        # Triggered when the unified Markdown path produces nothing
+        # (e.g. PyMuPDF missing, all pages empty, mammoth crash).
         loop = asyncio.get_event_loop()
 
         def _sync_extract() -> list[DocumentChunk]:
@@ -1030,7 +1076,116 @@ class AutoIndexService:
             assigned_node_ids=assigned_node_ids,
         )
         logger.info("Stored %d chunks for content_id=%d", stored, content_id)
+
+        # ── Build parent chunks for retrieval-time hydration ──────────
+        # Parent rows live in PG only — they're never embedded or indexed
+        # in Qdrant. After ANN search returns child hits, RAGService
+        # `hydrate_parents` swaps the child text for the wider parent
+        # passage so the LLM gets coherent context.
+        if settings.use_hierarchical_chunks and stored:
+            try:
+                await self._build_and_link_parents(
+                    content_id=content_id, course_id=course_id,
+                    chunks=structured_chunks,
+                )
+            except Exception as exc:
+                logger.warning("Parent linking failed content=%d: %s", content_id, exc)
+        
         return stored
+
+    async def _build_and_link_parents(
+        self,
+        content_id: int,
+        course_id: int,
+        chunks: list[DocumentChunk],
+    ) -> None:
+        """
+        Group the just-stored children into parent windows, INSERT each
+        parent row, then UPDATE every child's `parent_chunk_id` to point
+        at its parent. We only need to look up child IDs by chunk_hash
+        (same hash function as `_batch_insert_chunks_qdrant`).
+        """
+        from app.services.chunker import build_hierarchical_chunks
+        from app.services.rag_service import _sanitize
+
+        pairs = build_hierarchical_chunks(
+            chunks, parent_max_chars=settings.parent_chunk_max_chars,
+        )
+        if not pairs:
+            return
+
+        # Compute child hashes once
+        def _child_hash(chunk: DocumentChunk) -> str:
+            text = _sanitize(chunk.text)
+            return hashlib.sha256(f"{content_id}:{chunk.index}:{text}".encode()).hexdigest()
+
+        async with get_ai_conn() as conn:
+            # Resolve child IDs
+            child_hashes = [_child_hash(c) for pair in pairs for c in pair.children]
+            rows = await conn.fetch(
+                "SELECT id, chunk_hash FROM document_chunks "
+                "WHERE chunk_hash = ANY($1) AND chunk_level = 'child'",
+                child_hashes,
+            )
+            hash_to_id = {r["chunk_hash"]: r["id"] for r in rows}
+
+            parents_made = 0
+            updates: list[tuple[int, int]] = []
+
+            for parent_idx, pair in enumerate(pairs):
+                # Skip when the parent would just duplicate the only child.
+                child_dicts = [(c, _child_hash(c)) for c in pair.children]
+                child_dicts = [(c, h) for c, h in child_dicts if h in hash_to_id]
+                if not child_dicts:
+                    continue
+
+                parent_text = _sanitize(pair.parent_text)
+                if len(child_dicts) == 1 and child_dicts[0][0].text.strip() == parent_text.strip():
+                    continue
+
+                parent_hash = hashlib.sha256(
+                    f"parent:{content_id}:{parent_idx}:{len(parent_text)}:{parent_text[:200]}".encode()
+                ).hexdigest()
+
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO document_chunks
+                        (content_id, course_id, chunk_text, chunk_index,
+                         chunk_hash, source_type, page_number,
+                         start_time_sec, end_time_sec, language, status,
+                         embedding_model, chunk_level, parent_chunk_id)
+                    VALUES ($1,$2,$3,$4,$5,'document',$6,$7,$8,$9,'ready',
+                            $10,'parent',NULL)
+                    ON CONFLICT (chunk_hash) DO UPDATE
+                        SET chunk_text = EXCLUDED.chunk_text,
+                            status     = 'ready'
+                    RETURNING id
+                    """,
+                    content_id, course_id, parent_text,
+                    -(parent_idx + 1),  # negative index to avoid colliding with child indices
+                    parent_hash,
+                    pair.parent_page_number,
+                    pair.parent_start_time_sec, pair.parent_end_time_sec,
+                    pair.parent_language,
+                    settings.embedding_model,
+                )
+                parent_id = row["id"]
+                parents_made += 1
+                for _, child_hash in child_dicts:
+                    cid = hash_to_id.get(child_hash)
+                    if cid is not None:
+                        updates.append((parent_id, cid))
+
+            if updates:
+                async with conn.transaction():
+                    await conn.executemany(
+                        "UPDATE document_chunks SET parent_chunk_id = $1 WHERE id = $2",
+                        updates,
+                    )
+            logger.info(
+                "Hierarchical parents: content=%d parents=%d links=%d",
+                content_id, parents_made, len(updates),
+            )
 
     async def _batch_insert_chunks(
         self,

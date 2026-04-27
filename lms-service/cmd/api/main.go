@@ -105,6 +105,7 @@ func main() {
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 
 	flashcardRepo := repository.NewFlashcardRepository(db)
+	microLessonRepo := repository.NewMicroLessonRepository(db)
 
 	kafka.InitProducer()
 	defer kafka.CloseProducer()
@@ -152,6 +153,7 @@ func main() {
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
 	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo, redisClient)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
+	microLessonHandler := handler.NewMicroLessonHandler(microLessonRepo, courseRepo, aiClient)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -484,6 +486,35 @@ func main() {
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.RejectQuestion)
 			}
+
+			// ── Micro-Lessons (Teacher / Admin) ───────────────────────────
+			// Per-course generation triggers + job listing.
+			microPerCourse := auth.Group("/courses/:courseId/micro-lessons")
+			microPerCourse.Use(middleware.RequireRoles("ADMIN", "TEACHER"))
+			{
+				microPerCourse.POST("/generate", microLessonHandler.GenerateMicroLessons)
+				microPerCourse.GET("/jobs", microLessonHandler.ListJobs)
+			}
+
+			// Single-job + per-lesson actions (course is implied by the lesson row).
+			microGroup := auth.Group("/micro-lessons")
+			microGroup.Use(middleware.RequireRoles("ADMIN", "TEACHER"))
+			{
+				microGroup.GET("/jobs/:jobId", microLessonHandler.GetJob)
+				microGroup.PUT("/:lessonId", microLessonHandler.UpdateLesson)
+				microGroup.POST("/:lessonId/publish", microLessonHandler.PublishLesson)
+				microGroup.DELETE("/:lessonId", microLessonHandler.DeleteLesson)
+			}
+		}
+
+		// ── Internal callbacks (AI service → LMS) ─────────────────────────
+		// Authenticated via shared service secret only — never reachable
+		// with user JWTs because the path lives outside the auth group.
+		internal := v1.Group("/internal/micro-lessons")
+		internal.Use(middleware.ServiceOrAuthMiddleware(cfg.JWT.Secret, cfg.AIConf.Secret))
+		{
+			internal.POST("/status", microLessonHandler.CallbackStatus)
+			internal.POST("/lessons", microLessonHandler.CallbackLessons)
 		}
 	}
 

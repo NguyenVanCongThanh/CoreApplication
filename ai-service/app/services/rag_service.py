@@ -555,6 +555,168 @@ class RAGService:
 
         return result[:top_k]
 
+    # ── Hierarchical (parent + child) storage ─────────────────────────────────
+
+    async def store_hierarchical_pairs(
+        self,
+        content_id: int,
+        course_id: int,
+        pairs: list,            # list[HierarchicalChunkPair] from chunker
+        node_id: int | None = None,
+    ) -> dict:
+        """
+        Insert parent + child rows for a hierarchical chunking run.
+
+        Storage rules:
+          * Parent rows (`chunk_level='parent'`) live in PG only — no
+            embedding, never indexed in Qdrant. They exist purely so the
+            search path can hydrate matched children with their full
+            surrounding section.
+          * Child rows (`chunk_level='child'`) embed and index as before;
+            they carry `parent_chunk_id` pointing at the corresponding
+            parent.
+          * If a "parent" only has one child whose text equals the parent
+            (i.e. single-chunk section), we skip the parent insert and
+            store the child as a flat row with parent_chunk_id NULL.
+
+        Returns {"parents_created": int, "children_created": int}.
+        """
+        if not pairs:
+            return {"parents_created": 0, "children_created": 0}
+
+        parents_created = 0
+        children_created = 0
+        flat_children_only: list[dict] = []
+        per_parent_children: list[tuple[int, list[dict]]] = []
+
+        # First pass: create parent rows (no embedding) and collect the
+        # children that should reference them.
+        async with get_ai_conn() as conn:
+            for pair in pairs:
+                parent_text = _sanitize(pair.parent_text)
+                child_dicts = [self._chunk_to_dict(c) for c in pair.children]
+                if not child_dicts:
+                    continue
+
+                # Skip parent insert if it would just duplicate the only child.
+                if len(child_dicts) == 1 and child_dicts[0]["text"].strip() == parent_text.strip():
+                    flat_children_only.append(child_dicts[0])
+                    continue
+
+                parent_hash = hashlib.sha256(
+                    f"parent:{content_id}:{parent_text[:200]}:{len(parent_text)}".encode()
+                ).hexdigest()
+
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO document_chunks
+                        (content_id, course_id, node_id, chunk_text, chunk_index,
+                         chunk_hash, source_type, page_number,
+                         start_time_sec, end_time_sec, language, status,
+                         embedding_model, chunk_level, parent_chunk_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'ready',$12,'parent',NULL)
+                    ON CONFLICT (chunk_hash) DO UPDATE
+                        SET status = 'ready'
+                    RETURNING id
+                    """,
+                    content_id, course_id, node_id, parent_text,
+                    parents_created, parent_hash,
+                    "document",
+                    pair.parent_page_number,
+                    pair.parent_start_time_sec, pair.parent_end_time_sec,
+                    pair.parent_language,
+                    settings.embedding_model,
+                )
+                parent_id = row["id"]
+                parents_created += 1
+                per_parent_children.append((parent_id, child_dicts))
+
+        # Second pass: insert children + embed + push to Qdrant. Reuse
+        # the existing batch path then patch the parent_chunk_id column.
+        all_children: list[dict] = list(flat_children_only)
+        parent_id_per_index: list[int | None] = [None] * len(all_children)
+        for parent_id, kids in per_parent_children:
+            for k in kids:
+                all_children.append(k)
+                parent_id_per_index.append(parent_id)
+
+        if all_children:
+            child_ids = await self.store_chunks_batch(
+                content_id=content_id, course_id=course_id,
+                chunks=all_children, node_id=node_id,
+            )
+            children_created = len(child_ids)
+
+            # Apply parent links.
+            updates = [
+                (parent_id_per_index[i], child_id)
+                for i, child_id in enumerate(child_ids)
+                if i < len(parent_id_per_index) and parent_id_per_index[i] is not None
+            ]
+            if updates:
+                async with get_ai_conn() as conn:
+                    await conn.executemany(
+                        "UPDATE document_chunks SET parent_chunk_id = $1 WHERE id = $2",
+                        updates,
+                    )
+
+        logger.info(
+            "Hierarchical store: content=%d parents=%d children=%d (flat=%d)",
+            content_id, parents_created, children_created, len(flat_children_only),
+        )
+        return {"parents_created": parents_created, "children_created": children_created}
+
+    @staticmethod
+    def _chunk_to_dict(chunk) -> dict:
+        return {
+            "text":            chunk.text,
+            "index":           chunk.index,
+            "source_type":     chunk.source_type,
+            "page_number":     chunk.page_number,
+            "start_time_sec":  chunk.start_time_sec,
+            "end_time_sec":    chunk.end_time_sec,
+            "language":        chunk.language,
+        }
+
+    # ── Parent hydration helper for retrieval consumers ───────────────────────
+
+    async def hydrate_parents(
+        self,
+        chunks: list[RetrievedChunk],
+    ) -> list[RetrievedChunk]:
+        """
+        For each retrieved child chunk that has a parent, replace its
+        chunk_text with the parent's chunk_text. Useful for LLM context
+        windows where you want a wider, more coherent passage than the
+        embedding-sized child.
+
+        Pure metadata (page_number, etc.) is preserved from the child so
+        deep-link / citation behaviour is unchanged.
+        """
+        if not chunks:
+            return chunks
+
+        async with get_ai_conn() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT child.id        AS child_id,
+                       parent.chunk_text AS parent_text
+                FROM document_chunks child
+                JOIN document_chunks parent ON parent.id = child.parent_chunk_id
+                WHERE child.id = ANY($1)
+                """,
+                [c.chunk_id for c in chunks],
+            )
+        parent_text_by_child = {r["child_id"]: r["parent_text"] for r in rows}
+        if not parent_text_by_child:
+            return chunks
+
+        for c in chunks:
+            pt = parent_text_by_child.get(c.chunk_id)
+            if pt:
+                c.chunk_text = pt
+        return chunks
+
     # ── Deletion ──────────────────────────────────────────────────────────────
 
     async def delete_chunks_for_content(self, content_id: int) -> int:
