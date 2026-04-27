@@ -528,6 +528,7 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-service
     restart: unless-stopped
+    shm_size: '1gb'
     environment:
       <<: *ai-env
       APP_PORT: 8000
@@ -579,6 +580,7 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-worker
     restart: unless-stopped
+    shm_size: '1gb'
     # concurrency=1: one model set (~900 MB) per process.
     # Scale horizontally by adding replicas, not concurrency.
     command: python -m app.worker.kafka_worker

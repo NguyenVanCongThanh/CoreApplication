@@ -320,6 +320,7 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-service
     restart: unless-stopped
+    shm_size: '1gb'
     environment:
       <<: *ai-env
       APP_PORT: 8000
@@ -363,6 +364,7 @@ services:
     image: ${DOCKER_USERNAME}/bdc-ai:${IMAGE_TAG:-latest}
     container_name: ai-worker
     restart: unless-stopped
+    shm_size: '1gb'
     command: python -m app.worker.kafka_worker
     environment:
       <<: *ai-env
