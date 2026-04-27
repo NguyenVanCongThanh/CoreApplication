@@ -197,6 +197,75 @@ class MTMemory:
             session_id, turn_count, list(compressed_ctx.keys()),
         )
 
+    async def push_recent_course(
+        self,
+        session_id: str,
+        course_id: int,
+        course_title: Optional[str] = None,
+        max_keep: int = 5,
+    ) -> None:
+        """
+        Maintain a rolling MRU list of courses the user has touched in this
+        session under `compressed_ctx.key_facts.recent_courses`.
+
+        Most recent course is pushed to the front; duplicates are de-duped
+        by id; the list is capped at `max_keep`. Also pins
+        `current_course_id` / `current_course_title` so the system prompt
+        sees an up-to-date anchor without waiting for the compressor.
+        """
+        if not session_id or course_id is None:
+            return
+
+        async with get_ai_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT compressed_ctx FROM agent_sessions WHERE id = $1",
+                session_id,
+            )
+            if not row:
+                return
+            ctx = row["compressed_ctx"]
+            if isinstance(ctx, str):
+                ctx = json.loads(ctx)
+            ctx = ctx or {}
+
+            facts = ctx.get("key_facts") or {}
+            if not isinstance(facts, dict):
+                facts = {}
+
+            recent = facts.get("recent_courses") or []
+            if not isinstance(recent, list):
+                recent = []
+
+            # De-dupe by id, push to front.
+            recent = [
+                rc for rc in recent
+                if isinstance(rc, dict) and rc.get("id") != course_id
+            ]
+            entry = {"id": course_id}
+            if course_title:
+                entry["title"] = course_title
+            recent.insert(0, entry)
+            recent = recent[:max_keep]
+
+            facts["recent_courses"] = recent
+            facts["current_course_id"] = course_id
+            if course_title:
+                facts["current_course_title"] = course_title
+
+            await conn.execute(
+                """UPDATE agent_sessions
+                   SET compressed_ctx = jsonb_set(
+                           COALESCE(compressed_ctx, '{}'::jsonb),
+                           '{key_facts}',
+                           $1::jsonb,
+                           true
+                       ),
+                       last_active_at = NOW()
+                   WHERE id = $2""",
+                json.dumps(facts, ensure_ascii=False),
+                session_id,
+            )
+
     async def update_key_facts(
         self,
         session_id: str,

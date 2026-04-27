@@ -3,28 +3,68 @@ ai-service/app/agents/core/clarification.py
 
 Clarification Gate — prevents hallucination on ambiguous requests.
 
-When a user asks for an action (e.g., "create quiz") but critical
-parameters are missing or ambiguous, the Clarification Gate intercepts
-BEFORE the ReAct loop enters tool execution.
+Two distinct clarification flows live here:
 
-The gate uses a fast LLM call to:
-  1. Check if the request has enough information to execute
-  2. If not, generate a targeted clarification question
-  3. Suggest options when possible (e.g., list of topics)
+  1. SCOPE clarification (cheap, deterministic)
+     The scope resolver has already decided the user's message is
+     genuinely ambiguous about WHICH course it applies to. We turn that
+     decision into a CLARIFICATION event with grounded options drawn
+     from the user's active courses. No LLM call.
 
-At most 2 clarifications per session to prevent annoying loops.
+  2. PARAMETER clarification (LLM-assisted)
+     For everything else — when an action tool needs a parameter only
+     the user can supply (difficulty, count, preference) and the agent
+     can't discover it via tools — we ask the fast model to propose a
+     question. Options are verified against MTM context and dropped if
+     the model fabricated them.
+
+The ReAct loop runs (1) first; it's cheap and unambiguous. (2) only
+runs when (1) didn't trigger.
 """
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from app.core.config import get_settings
+from app.agents.core.scope_resolver import CourseScope
 from app.core.llm import chat_complete_json
 from app.core.llm_gateway import TASK_CLARIFICATION
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Scope clarification (deterministic)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def build_scope_clarification(scope: CourseScope) -> Optional[dict]:
+    """
+    Translate a CourseScope into a clarification payload, if needed.
+
+    Returns the same shape as `should_clarify` so the ReAct loop can
+    treat both flows uniformly. Returns None if no scope clarification
+    is required.
+    """
+    if not scope.needs_clarification:
+        return None
+    if not scope.clarification_question:
+        return None
+
+    return {
+        "needs_clarification": True,
+        "kind": "scope",
+        "confidence": scope.confidence,
+        "clarification_question": scope.clarification_question,
+        "clarification_options": scope.clarification_options or [],
+        "missing_fields": ["course_id"],
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Parameter clarification (LLM-assisted)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CLARIFICATION_PROMPT = """\
 You are an intent validator for an AI agent system. Your job is to decide \
@@ -51,7 +91,8 @@ RULES:
    preference) AND you cannot infer it from context.
 4. Do NOT ask for clarification on optional parameters.
 5. Do NOT ask for clarification on greetings, thank-yous, or general chat.
-6. Respond in the SAME LANGUAGE as the user's message.
+6. Do NOT ask "which course?" — a separate scope resolver handles that.
+7. Respond in the SAME LANGUAGE as the user's message.
  
 HARD RULES FOR `clarification_options`:
 - NEVER invent, guess, or fabricate options. Do NOT list generic subjects \
@@ -82,22 +123,15 @@ async def should_clarify(
     session_context: dict,
 ) -> dict:
     """
-    Check if the user's message needs clarification before tool execution.
+    Check if the user's message needs PARAMETER clarification.
 
     Args:
         user_message: The user's raw message.
-        tool_schemas: Available tool schemas (for the LLM to understand capabilities).
+        tool_schemas: Available tool schemas.
         session_context: Current MTM compressed context.
 
     Returns:
-        Dict with clarification decision:
-        {
-            "needs_clarification": bool,
-            "confidence": float,
-            "clarification_question": str,
-            "clarification_options": list[str],
-            "missing_fields": list[str],
-        }
+        Dict with clarification decision (see CLARIFICATION_PROMPT schema).
     """
     # Don't clarify simple messages
     stripped = user_message.strip()
@@ -180,6 +214,7 @@ async def should_clarify(
             )
             return {
                 "needs_clarification": True,
+                "kind": "parameter",
                 "confidence": confidence,
                 "clarification_question": result.get(
                     "clarification_question", "Bạn có thể nói rõ hơn không?"
@@ -196,9 +231,9 @@ async def should_clarify(
         return {"needs_clarification": False, "confidence": 0.5}
 
 def _verify_options(
-    options: list[str],
+    options: list,
     session_context: dict,
-) -> list[str]:
+) -> list:
     """
     Drop clarification options that aren't grounded in the session context.
  
@@ -208,26 +243,35 @@ def _verify_options(
     when there are no grounded options, the frontend shows the question
     without fake choices and the agent is free to fetch real ones via a
     tool call on the next turn.
+
+    Accepts both legacy string options and {label, value} dicts; the
+    dict form is normalised so the frontend always renders a button.
     """
     if not options:
         return []
- 
-    # Flatten session context into a searchable blob
+
     import json as _json
     try:
         blob = _json.dumps(session_context or {}, ensure_ascii=False).lower()
     except Exception:
         blob = str(session_context or "").lower()
  
-    kept: list[str] = []
+    kept: list = []
     for opt in options:
+        if isinstance(opt, dict):
+            label = (opt.get("label") or "").strip()
+            value = opt.get("value")
+            if not label:
+                continue
+            needle = label.lower()
+            if len(needle) >= 3 and needle in blob:
+                kept.append({"label": label, "value": value})
+            continue
         if not isinstance(opt, str):
             continue
         opt_clean = opt.strip()
         if not opt_clean:
             continue
-        # Require the option text (or a long enough prefix) to appear in
-        # the context. Short tokens are too easy to accidentally match.
         needle = opt_clean.lower()
         if len(needle) >= 3 and needle in blob:
             kept.append(opt_clean)

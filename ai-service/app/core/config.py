@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     chat_model: str = "llama-3.1-8b-instant"
     quiz_model: str = "llama-3.3-70b-versatile"
 
+    # Google Gemini
+    gemini_api_key: str = ""
+
     # Embedding
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
@@ -69,6 +72,12 @@ class Settings(BaseSettings):
     chunk_overlap: int = 50
     top_k_chunks: int = 3
     use_native_multilingual: bool = True
+
+    # Hierarchical chunking (parent-child). Children are embedded and indexed
+    # in Qdrant; parents are stored in PG only and used to hydrate retrieved
+    # children with wider context for the LLM.
+    use_hierarchical_chunks: bool = True
+    parent_chunk_max_chars: int = 6000
 
     # Kafka worker tuning
     reindex_batch_size: int = 5

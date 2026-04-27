@@ -69,14 +69,21 @@ from app.agents.memory.mtm import mtm
 from app.agents.memory.message_store import message_store
 from app.agents.memory.compressor import compress_conversation
 from app.agents.memory.context_builder import context_builder
-from app.agents.memory.teacher_anchor import (
-    load_teacher_anchor,
-    format_teacher_anchor_for_prompt,
-    invalidate_teacher_anchor,
+from app.agents.memory.active_courses import (
+    format_active_courses_for_prompt,
+    invalidate_active_courses,
+    load_active_courses,
 )
 from app.agents.core.router import classify_intent
-from app.agents.core.clarification import should_clarify
+from app.agents.core.clarification import (
+    build_scope_clarification,
+    should_clarify,
+)
 from app.agents.core.prompts import build_system_prompt
+from app.agents.core.scope_resolver import (
+    apply_scope_to_course_id,
+    resolve_course_scope,
+)
 from app.agents.tools.registry import (
     get_tool_schemas, get_tool_by_name, execute_tool,
 )
@@ -99,6 +106,7 @@ async def run_react_loop(
     user_message: str,
     course_id: int | None = None,
     user_context: dict | None = None,
+    page_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """
     Execute the full ReAct loop for a single user turn.
@@ -141,6 +149,65 @@ async def run_react_loop(
                  intent_type, (time.monotonic() - start_time) * 1000)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 1.5: Load active courses + resolve course scope
+    #
+    # The agent is GLOBAL (manages many courses). Before we touch memory or
+    # tools, we figure out which course(s) this turn applies to. The scope
+    # is propagated everywhere downstream: prompt anchor, retrieval slot,
+    # tool injection, clarification options.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    active_courses = await load_active_courses(
+        user_id=user_id,
+        agent_type=agent_type,
+    )
+
+    # Read the prior MTM anchor (current_course_id, etc.) so the scope
+    # resolver can recognise deictic references.
+    prior_mtm_ctx = await mtm.get_context(session_id)
+
+    scope = await resolve_course_scope(
+        user_message=user_message,
+        active_courses=active_courses,
+        mtm_ctx=prior_mtm_ctx,
+        explicit_course_id=course_id,
+    )
+    effective_course_id = apply_scope_to_course_id(scope, fallback_course_id=None)
+
+    yield AgentEvent(
+        type=AgentEventType.SCOPE,
+        data=scope.as_dict(),
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+
+    logger.debug(
+        "Scope resolved: mode=%s focus=%s reason=%s",
+        scope.mode, scope.focus_course_id, scope.reason,
+    )
+
+    # If the scope resolver locked onto a single course, pin it into MTM
+    # so the next turn benefits from the anchor too. We update the recent
+    # courses MRU list as well — useful when the user bounces between
+    # courses without re-naming them.
+    if scope.mode == "single" and scope.focus_course_id is not None:
+        focus_title = next(
+            (
+                c.get("title")
+                for c in (active_courses.get("courses") or [])
+                if c.get("id") == scope.focus_course_id
+            ),
+            None,
+        )
+        try:
+            await mtm.push_recent_course(
+                session_id=session_id,
+                course_id=scope.focus_course_id,
+                course_title=focus_title,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("push_recent_course failed: %s", exc)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 2: Assemble weighted context from all memory tiers
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     memory_ctx = await context_builder.build(
@@ -148,8 +215,9 @@ async def run_react_loop(
         session_id=session_id,
         agent_type=agent_type,
         query=user_message,
-        course_id=course_id,
+        course_id=effective_course_id,
         intent_type=intent_type,
+        scope_course_ids=scope.candidate_course_ids or None,
     )
 
     yield AgentEvent(
@@ -171,40 +239,59 @@ async def run_react_loop(
     )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # Step 3: Clarification Gate
+    # Step 3: Clarification Gate (scope first, then parameter)
+    #
+    # Two distinct flows:
+    #   (a) SCOPE — the scope resolver flagged genuine ambiguity about
+    #       which course this applies to. Cheap, deterministic.
+    #   (b) PARAMETER — an action-tool needs user-only input
+    #       (difficulty, count, …). LLM-assisted, low-confidence only.
+    #
+    # We dropped the old intent-based skip-list (content_creation,
+    # interactive_exercise, progress_advice). Those intents are exactly
+    # where the wrong-course problem hurts most — silent guessing led to
+    # quizzes for the wrong course / wrong topic. Now we trust the scope
+    # resolver to keep the parameter clarifier from firing on already-
+    # answered questions, and we cap total clarifications per session.
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # Count how many clarifications have already happened this session
     stm_history = memory_ctx["stm_messages"]
     clarify_count = sum(
         1 for m in stm_history if m.get("role") == "clarification"
     )
 
-    skip_clarify_for_intent = intent_type in (
-        "content_creation",
-        "interactive_exercise",
-        "progress_advice",
-    )
- 
-    if (clarify_count < MAX_CLARIFICATIONS_PER_SESSION
-            and not skip_clarify_for_intent):
-        tool_schemas = get_tool_schemas(agent_type)
-        mtm_ctx = memory_ctx["raw"].get("mtm", {})
+    if clarify_count < MAX_CLARIFICATIONS_PER_SESSION:
+        # (a) Scope clarification — runs first, no LLM call.
+        scope_clarify = build_scope_clarification(scope)
 
-        clarify_result = await should_clarify(
-            user_message=user_message,
-            tool_schemas=tool_schemas,
-            session_context=mtm_ctx,
-        )
+        # (b) Parameter clarification — only if scope was clean enough.
+        param_clarify: dict | None = None
+        if scope_clarify is None and scope.mode != "ambiguous":
+            tool_schemas = get_tool_schemas(agent_type)
+            mtm_ctx = memory_ctx["raw"].get("mtm", {})
+            try:
+                result = await should_clarify(
+                    user_message=user_message,
+                    tool_schemas=tool_schemas,
+                    session_context=mtm_ctx,
+                )
+                if (result.get("needs_clarification")
+                        and result.get("confidence", 1.0) < 0.6):
+                    param_clarify = result
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("parameter clarification failed: %s", exc)
 
-        if (clarify_result.get("needs_clarification")
-                and clarify_result.get("confidence", 1.0) < 0.6):
+        clarify_result = scope_clarify or param_clarify
+        if clarify_result:
             question = clarify_result.get(
                 "clarification_question",
                 "Bạn có thể nói rõ hơn không?",
             )
             options = clarify_result.get("clarification_options", [])
 
-            logger.info("Clarification triggered: '%s'", question[:60])
+            logger.info(
+                "Clarification triggered (kind=%s): '%s'",
+                clarify_result.get("kind", "parameter"), question[:60],
+            )
 
             # Save to STM
             await stm.append(session_id, "user", user_message)
@@ -213,6 +300,7 @@ async def run_react_loop(
             yield AgentEvent(
                 type=AgentEventType.CLARIFICATION,
                 data={
+                    "kind": clarify_result.get("kind", "parameter"),
                     "question": question,
                     "options": options,
                     "missing": clarify_result.get("missing_fields", []),
@@ -231,18 +319,17 @@ async def run_react_loop(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 4: Build messages array for the LLM
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # Ground-truth anchor for teacher sessions: inject the real list of
-    # (course_id, node_id) so the LLM has nothing to fabricate.
-    teacher_anchor_section = ""
-    if agent_type == "teacher":
-        anchor = await load_teacher_anchor(user_id)
-        teacher_anchor_section = format_teacher_anchor_for_prompt(anchor)
- 
+    # Ground-truth anchor: real list of (course_id, [node_id]) the user
+    # actually has access to. Same shape for teacher and mentor; the LLM
+    # has nothing to fabricate.
+    active_courses_section = format_active_courses_for_prompt(active_courses)
+
     system_prompt = build_system_prompt(
         agent_type=agent_type,
         memory_context=memory_ctx["prompt_section"],
         user_context=user_context,
-        teacher_anchor_section=teacher_anchor_section,
+        active_courses_section=active_courses_section,
+        page_context=page_context,
     )
 
     # Start with system prompt
@@ -506,11 +593,14 @@ async def run_react_loop(
             logger.info("Executing tool: %s(%s)", tool_name, list(args.keys()))
 
             # ── Execute the tool ─────────────────────────────────────────
+            # `effective_course_id` reflects the scope resolver's decision:
+            # the focused course for "single", None for "multi"/"all"/
+            # "none"/"ambiguous" (so cross-course tools run unscoped).
             tool_result = await execute_tool(
                 name=tool_name,
                 arguments=args,
                 user_id=user_id,
-                course_id=course_id,
+                course_id=effective_course_id,
             )
 
             # ── Yield UI component if present ────────────────────────────
@@ -561,14 +651,17 @@ async def run_react_loop(
             )
 
             # ── Pin working-memory anchor from this tool result ──────
-            if agent_type == "teacher":
-                await _update_anchor_from_tool(
-                    session_id=session_id,
-                    user_id=user_id,
-                    tool_name=tool_name,
-                    args=args,
-                    tool_result=tool_result,
-                )
+            # Both agents benefit from anchor pinning — mentor uses it to
+            # remember which course the student last asked about, teacher
+            # uses it for "this quiz / this node" deictic resolution.
+            await _update_anchor_from_tool(
+                session_id=session_id,
+                user_id=user_id,
+                agent_type=agent_type,
+                tool_name=tool_name,
+                args=args,
+                tool_result=tool_result,
+            )
 
             # ── HITL early exit: stop the loop and let the widget
             #    be the primary response. No further LLM iteration
@@ -683,6 +776,7 @@ _ANCHOR_INVALIDATING_TOOLS = {
 async def _update_anchor_from_tool(
     session_id: str,
     user_id: int,
+    agent_type: str,
     tool_name: str,
     args: dict,
     tool_result: "ToolResult",  # noqa: F821 — runtime type
@@ -692,8 +786,8 @@ async def _update_anchor_from_tool(
     into MTM key_facts so the NEXT turn's system prompt shows a
     CURRENT ANCHOR. This is what lets "cái này / vấn đề này" resolve
     without the LLM having to guess.
- 
-    Also invalidates the teacher_anchor cache when a tool mutates the
+
+    Also invalidates the active_courses cache when a tool mutates the
     course structure so the fresh data appears on the next turn.
     """
     status = getattr(tool_result, "status", None)
@@ -738,7 +832,7 @@ async def _update_anchor_from_tool(
             updates["current_topic"] = topic
  
     if tool_name in _ANCHOR_INVALIDATING_TOOLS:
-        invalidate_teacher_anchor(user_id)
+        invalidate_active_courses(user_id)
  
     if not updates:
         return

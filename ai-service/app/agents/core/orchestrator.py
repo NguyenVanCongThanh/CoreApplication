@@ -34,6 +34,8 @@ async def handle_chat_message(
     course_id: int | None = None,
     session_id: str | None = None,
     user_context: dict | None = None,
+    active_courses_hint: list[dict] | None = None,
+    page_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """
     Top-level entry point for processing a chat message.
@@ -44,13 +46,30 @@ async def handle_chat_message(
         user_id: Authenticated user ID (from JWT via lms-service proxy).
         agent_type: "teacher" or "mentor".
         message: The user's message text.
-        course_id: Optional course context for scoped sessions.
+        course_id: Optional EXPLICIT course context — when the FE opens a
+            course-scoped chat panel ("Quiz for course X"), it pins the
+            scope. Omit (None) for a global session where the user can
+            roam across all their courses.
         session_id: Optional existing session ID. If None, creates/finds one.
         user_context: Optional user identity (name, email, role) from JWT.
+        active_courses_hint: Optional list of {id, title, status} from the
+            FE. When supplied we warm the active-courses cache so the very
+            first turn doesn't pay a cold LMS round-trip. Authoritative
+            data is still loaded from LMS.
 
     Yields:
         AgentEvent objects for SSE streaming.
     """
+    # If the FE supplied an active-courses hint, warm the cache up front
+    # so the ReAct loop's `load_active_courses()` returns immediately.
+    if active_courses_hint:
+        from app.agents.memory.active_courses import seed_active_courses_cache
+        seed_active_courses_cache(
+            user_id=user_id,
+            agent_type=agent_type,
+            courses=active_courses_hint,
+        )
+
     # ── 1. Resolve session ────────────────────────────────────────────────────
     if session_id:
         # Use existing session — just verify it exists
@@ -99,5 +118,6 @@ async def handle_chat_message(
         user_message=message,
         course_id=course_id,
         user_context=user_context,
+        page_context=page_context,
     ):
         yield event

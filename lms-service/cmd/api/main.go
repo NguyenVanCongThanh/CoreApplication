@@ -105,6 +105,7 @@ func main() {
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 
 	flashcardRepo := repository.NewFlashcardRepository(db)
+	microLessonRepo := repository.NewMicroLessonRepository(db)
 
 	kafka.InitProducer()
 	defer kafka.CloseProducer()
@@ -125,15 +126,18 @@ func main() {
 		return redisClient.Set(ctx, redisKey, data, 24*time.Hour) // Keep for 24 hours
 	})
 
-	// Initialize services
-	userService := service.NewUserService(userRepo)
+	// Initialize services. Services that benefit from caching (read-heavy CRUD
+	// paths) receive the shared *cache.RedisCache; each service builds its own
+	// singleflight-backed Loader internally so cache stampedes on hot keys
+	// only ever produce one DB query per process.
+	userService := service.NewUserService(userRepo, redisClient)
 	courseService := service.NewCourseService(courseRepo, userRepo, enrollmentRepo, redisClient)
-	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo, progressRepo)
+	enrollmentService := service.NewEnrollmentService(enrollmentRepo, courseRepo, userRepo, progressRepo, redisClient)
 	quizService := service.NewQuizService(quizRepo, courseRepo, userRepo, progressRepo, aiClient)
-	userSyncService := service.NewUserSyncService(userRepo)
+	userSyncService := service.NewUserSyncService(userRepo, redisClient)
 	forumService := service.NewForumService(forumRepo, courseRepo)
 	syncSecret := os.Getenv("LMS_SYNC_SECRET")
-	progressService := service.NewProgressService(progressRepo, enrollmentRepo)
+	progressService := service.NewProgressService(progressRepo, enrollmentRepo, redisClient)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, courseRepo, enrollmentRepo, aiClient)
 	flashcardService := service.NewFlashcardService(flashcardRepo, aiClient, redisClient)
 
@@ -149,6 +153,7 @@ func main() {
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, aiClient)
 	aiHandler := handler.NewAIHandler(aiClient, courseRepo, quizRepo, redisClient)
 	flashcardHandler := handler.NewFlashcardHandler(flashcardService, enrollmentService)
+	microLessonHandler := handler.NewMicroLessonHandler(microLessonRepo, courseRepo, aiClient)
 
 	// Setup Gin router
 	if cfg.App.Env == "production" {
@@ -481,6 +486,35 @@ func main() {
 					middleware.RequireRoles("ADMIN", "TEACHER"),
 					aiHandler.RejectQuestion)
 			}
+
+			// ── Micro-Lessons (Teacher / Admin) ───────────────────────────
+			// Per-course generation triggers + job listing.
+			microPerCourse := auth.Group("/courses/:courseId/micro-lessons")
+			microPerCourse.Use(middleware.RequireRoles("ADMIN", "TEACHER"))
+			{
+				microPerCourse.POST("/generate", microLessonHandler.GenerateMicroLessons)
+				microPerCourse.GET("/jobs", microLessonHandler.ListJobs)
+			}
+
+			// Single-job + per-lesson actions (course is implied by the lesson row).
+			microGroup := auth.Group("/micro-lessons")
+			microGroup.Use(middleware.RequireRoles("ADMIN", "TEACHER"))
+			{
+				microGroup.GET("/jobs/:jobId", microLessonHandler.GetJob)
+				microGroup.PUT("/:lessonId", microLessonHandler.UpdateLesson)
+				microGroup.POST("/:lessonId/publish", microLessonHandler.PublishLesson)
+				microGroup.DELETE("/:lessonId", microLessonHandler.DeleteLesson)
+			}
+		}
+
+		// ── Internal callbacks (AI service → LMS) ─────────────────────────
+		// Authenticated via shared service secret only — never reachable
+		// with user JWTs because the path lives outside the auth group.
+		internal := v1.Group("/internal/micro-lessons")
+		internal.Use(middleware.ServiceOrAuthMiddleware(cfg.JWT.Secret, cfg.AIConf.Secret))
+		{
+			internal.POST("/status", microLessonHandler.CallbackStatus)
+			internal.POST("/lessons", microLessonHandler.CallbackLessons)
 		}
 	}
 

@@ -117,9 +117,17 @@ class ContextBuilder:
         query: str,
         course_id: Optional[int] = None,
         intent_type: str = "general_chat",
+        scope_course_ids: Optional[list[int]] = None,
     ) -> dict[str, Any]:
         """
         Build a context dict from all 5 memory tiers.
+
+        Args:
+            scope_course_ids: When the scope resolver picks "multi" or "all",
+                pass the candidate course_ids so cross-course tiers (LTM,
+                Personalize summary) can union across them rather than
+                being forced to a single course. Ignored for single-course
+                turns (use `course_id` instead).
 
         Returns:
             {
@@ -169,11 +177,21 @@ class ContextBuilder:
 
         # ── 3. LTM: Past session episodes ────────────────────────────────────
         if weights["ltm"] >= 0.3 and query:
+            # When the scope resolver locked onto a single course, restrict
+            # episode recall to that course (plus untagged/cross-course
+            # episodes). Otherwise let the recall span all courses.
+            recall_course_ids: Optional[list[int]] = None
+            if course_id is not None:
+                recall_course_ids = [course_id]
+            elif scope_course_ids:
+                recall_course_ids = list(scope_course_ids)
+
             episodes = await ltm.recall(
                 user_id=user_id,
                 agent_type=agent_type,
                 query=query,
                 top_k=2 if weights["ltm"] >= 0.7 else 1,
+                course_ids=recall_course_ids,
             )
             raw["ltm"] = {"episodes": episodes}
             if episodes:
@@ -210,7 +228,7 @@ class ContextBuilder:
         # ── 5. Personalize Memory: User learning profile ─────────────────────
         if weights["personalize"] >= 0.3:
             if agent_type == "teacher" and course_id:
-                # Teacher gets class overview
+                # Teacher gets class overview for the focused course.
                 profile = await personalize_memory.get_class_overview(course_id)
                 raw["personalize"] = profile
                 if profile.get("weakest_topics"):
@@ -219,9 +237,14 @@ class ContextBuilder:
                         sections.append(pers_section)
                         total_tokens += len(pers_section) // 4
             else:
-                # Student gets personal profile
+                # Mentor (and unscoped teacher): pull the per-user profile.
+                # When the scope is multi-course, we leave course_id empty so
+                # the profile reflects the student's full learning surface.
+                effective_course = course_id
+                if scope_course_ids and len(scope_course_ids) > 1:
+                    effective_course = None
                 profile = await personalize_memory.get_user_profile(
-                    user_id=user_id, course_id=course_id,
+                    user_id=user_id, course_id=effective_course,
                 )
                 raw["personalize"] = profile
                 if profile.get("summary"):
@@ -289,9 +312,27 @@ class ContextBuilder:
                 "RECENTLY CREATED: " + ", ".join(str(c) for c in created[:5])
             )
 
+        recent_courses = key_facts.get("recent_courses") if key_facts else None
+        if isinstance(recent_courses, list) and recent_courses:
+            # Each entry is {"id": int, "title": str}; we render compactly.
+            tags = []
+            for rc in recent_courses[:5]:
+                if not isinstance(rc, dict):
+                    continue
+                cid = rc.get("id")
+                title = (rc.get("title") or "").strip()
+                if cid is None:
+                    continue
+                tags.append(
+                    f"#{cid}" + (f" \"{title}\"" if title else "")
+                )
+            if tags:
+                parts.append("RECENT COURSES: " + ", ".join(tags))
+
         if key_facts:
             remaining = {
-                k: v for k, v in key_facts.items() if k != "current_topic"
+                k: v for k, v in key_facts.items()
+                if k not in ("current_topic", "recent_courses")
             }
             if remaining:
                 fact_str = ", ".join(f"{k}={v}" for k, v in remaining.items())

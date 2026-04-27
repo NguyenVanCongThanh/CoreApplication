@@ -18,7 +18,7 @@ import {
   Plus, Edit3, Upload, Eye, Trash2,
   Play, FileText, HelpCircle, MessageSquare,
   Megaphone, Image as ImageIcon, File,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Sparkles,
 } from "lucide-react";
 import lmsService from "@/services/lmsService";
 import ContentViewer from "@/components/lms/student/ContentViewer";
@@ -27,6 +27,8 @@ import EditContentModal from "@/components/lms/teacher/EditContentModal";
 import BulkUploadModal from "@/components/lms/teacher/upload/BulkUploadModal";
 import { SectionModal } from "@/components/lms/teacher/SectionModal";
 import { AIIndexButton } from "@/components/lms/teacher/ai/AIIndexButton";
+import { GenerateMicroLessonsModal } from "@/components/lms/teacher/micro/GenerateMicroLessonsModal";
+import { MicroLessonsDrawer } from "@/components/lms/teacher/micro/MicroLessonsDrawer";
 import {
   Badge, ContentTypeBadge, EmptyState, PrimaryBtn, Spinner,
 } from "@/components/lms/shared";
@@ -73,6 +75,12 @@ export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabP
   // Deletion in-progress
   const [deletingSection, setDeletingSection] = useState<number | null>(null);
   const [deletingContent, setDeletingContent] = useState<number | null>(null);
+
+  // Micro-lesson modal / drawer state
+  const [showMicroModal, setShowMicroModal]       = useState(false);
+  const [microPresetContentId, setMicroPresetContentId] = useState<number | undefined>();
+  const [microPresetSectionId, setMicroPresetSectionId] = useState<number | undefined>();
+  const [activeMicroJobId, setActiveMicroJobId]   = useState<number | null>(null);
 
   // ── Content loading ─────────────────────────────────────────────────────────
 
@@ -142,17 +150,31 @@ export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabP
   return (
     <div className="space-y-4">
       {/* Top action bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-sm text-slate-500 dark:text-slate-500">
           {sections.length} chương
         </p>
-        <PrimaryBtn
-          size="sm"
-          icon={<Plus className="w-4 h-4" />}
-          onClick={() => { setEditingSection(null); setShowSectionModal(true); }}
-        >
-          Thêm chương
-        </PrimaryBtn>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setMicroPresetContentId(undefined);
+              setMicroPresetSectionId(undefined);
+              setShowMicroModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white transition-colors"
+            title="AI sẽ phân tích tài liệu và chia thành các bài học ngắn ~5 phút"
+          >
+            <Sparkles className="w-4 h-4" />
+            Tạo bài học micro
+          </button>
+          <PrimaryBtn
+            size="sm"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => { setEditingSection(null); setShowSectionModal(true); }}
+          >
+            Thêm chương
+          </PrimaryBtn>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -308,6 +330,19 @@ export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabP
 
                             {/* Hover actions */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {(c.type === "DOCUMENT" || c.type === "VIDEO" || c.type === "IMAGE") && (
+                                <button
+                                  title="Tạo bài học micro từ file này"
+                                  className="p-1.5 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-950/30 text-violet-600 dark:text-violet-400"
+                                  onClick={() => {
+                                    setMicroPresetContentId(c.id);
+                                    setMicroPresetSectionId(sec.id);
+                                    setShowMicroModal(true);
+                                  }}
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 title="Xem nội dung"
                                 className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500"
@@ -391,6 +426,29 @@ export function ContentTab({ courseId, sections, onSectionsChange }: ContentTabP
             reloadSectionContent(editingContent.section_id);
             setEditingContent(null);
           }}
+        />
+      )}
+
+      {showMicroModal && (
+        <GenerateMicroLessonsModal
+          courseId={courseId}
+          sections={sections}
+          presetContentId={microPresetContentId}
+          presetSectionId={microPresetSectionId}
+          onClose={() => setShowMicroModal(false)}
+          onJobCreated={(jobId) => {
+            setShowMicroModal(false);
+            setActiveMicroJobId(jobId);
+          }}
+        />
+      )}
+
+      {activeMicroJobId !== null && (
+        <MicroLessonsDrawer
+          jobId={activeMicroJobId}
+          sections={sections}
+          onClose={() => setActiveMicroJobId(null)}
+          onPublished={(sectionId) => reloadSectionContent(sectionId)}
         />
       )}
 

@@ -49,7 +49,7 @@ export function CourseCard({
       {/* Thumbnail */}
       <div className="h-36 bg-gradient-to-br from-blue-100 to-slate-100 dark:from-blue-900/30 dark:to-slate-800 overflow-hidden relative">
         {thumbnailUrl ? (
-          <Image src={thumbnailUrl} alt={title} className="w-full h-full object-cover" />
+          <Image src={thumbnailUrl} alt={title} fill className="object-cover" />
         ) : (
           <div className="flex items-center justify-center h-full">
             <BookOpen className="w-12 h-12 text-blue-300 dark:text-blue-700" />

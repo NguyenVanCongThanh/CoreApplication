@@ -74,8 +74,20 @@ class LTMemory:
             await client.create_payload_index(
                 EPISODE_COLLECTION, "agent_type", PayloadSchemaType.KEYWORD,
             )
+            await client.create_payload_index(
+                EPISODE_COLLECTION, "course_id", PayloadSchemaType.INTEGER,
+            )
             logger.info("Created Qdrant collection: %s", EPISODE_COLLECTION)
         else:
+            # Best-effort: ensure the course_id payload index exists for
+            # collections created before V006. Idempotent on most servers.
+            try:
+                from qdrant_client.http.models import PayloadSchemaType
+                await client.create_payload_index(
+                    EPISODE_COLLECTION, "course_id", PayloadSchemaType.INTEGER,
+                )
+            except Exception:  # noqa: BLE001 — index may already exist
+                pass
             logger.debug("Qdrant collection already exists: %s", EPISODE_COLLECTION)
 
     # ── Store episode ─────────────────────────────────────────────────────────
@@ -86,13 +98,19 @@ class LTMemory:
         user_id: int,
         agent_type: str,
         summary_text: str,
+        course_id: Optional[int] = None,
     ) -> Optional[str]:
         """
         Create a new episodic memory entry.
 
         1. Embed the summary text
-        2. Upsert to Qdrant
+        2. Upsert to Qdrant (payload includes optional course_id)
         3. Save metadata to PostgreSQL
+
+        `course_id` is the dominant course of the session (e.g. the most
+        recent CURRENT ANCHOR at compression time). It is OPTIONAL — pass
+        None for cross-course episodes. Stored both in the Qdrant payload
+        and the PG row so recall can filter or union by course.
 
         Returns the episode UUID, or None if storage failed.
         """
@@ -114,18 +132,21 @@ class LTMemory:
                 from qdrant_client.http.models import PointStruct
 
                 client = qdrant_service._get_client()
+                payload: dict = {
+                    "user_id": user_id,
+                    "agent_type": agent_type,
+                    "session_id": session_id,
+                    "summary": summary_text,
+                    "created_at": int(time.time()),
+                }
+                if course_id is not None:
+                    payload["course_id"] = course_id
                 await client.upsert(
                     collection_name=EPISODE_COLLECTION,
                     points=[PointStruct(
                         id=point_id,
                         vector=embedding,
-                        payload={
-                            "user_id": user_id,
-                            "agent_type": agent_type,
-                            "session_id": session_id,
-                            "summary": summary_text,
-                            "created_at": int(time.time()),
-                        },
+                        payload=payload,
                     )],
                     wait=True,
                 )
@@ -134,16 +155,18 @@ class LTMemory:
             async with get_ai_conn() as conn:
                 row = await conn.fetchrow(
                     """INSERT INTO agent_episodes
-                           (session_id, user_id, agent_type, summary, qdrant_point_id)
-                       VALUES ($1, $2, $3, $4, $5)
+                           (session_id, user_id, agent_type, summary,
+                            course_id, qdrant_point_id)
+                       VALUES ($1, $2, $3, $4, $5, $6)
                        RETURNING id""",
-                    session_id, user_id, agent_type, summary_text, point_id,
+                    session_id, user_id, agent_type, summary_text,
+                    course_id, point_id,
                 )
 
             episode_id = str(row["id"]) if row else None
             logger.info(
-                "LTM episode stored: user=%d, agent=%s, episode=%s, point=%d",
-                user_id, agent_type, episode_id, point_id,
+                "LTM episode stored: user=%d agent=%s course=%s episode=%s point=%d",
+                user_id, agent_type, course_id, episode_id, point_id,
             )
             return episode_id
 
@@ -160,39 +183,69 @@ class LTMemory:
         query: str,
         top_k: int = 3,
         min_score: float = 0.40,
+        course_ids: Optional[list[int]] = None,
     ) -> list[dict]:
         """
         Semantically search past episodes for this user.
+
+        Args:
+            course_ids: Optional course filter. When supplied, recall is
+                restricted to episodes tagged with one of these course_ids
+                PLUS episodes with no course tag (cross-course episodes
+                are always relevant). When None, all episodes are eligible.
 
         Returns a list of episode summaries sorted by relevance.
         """
         if not settings.use_qdrant:
             # Fallback: return recent episodes from PostgreSQL
-            return await self._recall_from_pg(user_id, agent_type, top_k)
+            return await self._recall_from_pg(
+                user_id, agent_type, top_k, course_ids=course_ids,
+            )
 
         try:
             from app.core.embeddings import create_embedding
             from app.services.qdrant_service import qdrant_service
             from qdrant_client.http.models import (
-                Filter, FieldCondition, MatchValue,
+                Filter, FieldCondition, MatchValue, MatchAny, IsNullCondition,
+                PayloadField,
             )
 
             query_vector = await create_embedding(query)
             client = qdrant_service._get_client()
 
+            must = [
+                FieldCondition(
+                    key="user_id",
+                    match=MatchValue(value=user_id),
+                ),
+                FieldCondition(
+                    key="agent_type",
+                    match=MatchValue(value=agent_type),
+                ),
+            ]
+
+            qfilter: Filter
+            if course_ids:
+                # Match (course_id IN [...] OR course_id is missing).
+                qfilter = Filter(
+                    must=must,
+                    should=[
+                        FieldCondition(
+                            key="course_id",
+                            match=MatchAny(any=list(course_ids)),
+                        ),
+                        IsNullCondition(
+                            is_null=PayloadField(key="course_id"),
+                        ),
+                    ],
+                )
+            else:
+                qfilter = Filter(must=must)
+
             results = await client.search(
                 collection_name=EPISODE_COLLECTION,
                 query_vector=query_vector,
-                query_filter=Filter(must=[
-                    FieldCondition(
-                        key="user_id",
-                        match=MatchValue(value=user_id),
-                    ),
-                    FieldCondition(
-                        key="agent_type",
-                        match=MatchValue(value=agent_type),
-                    ),
-                ]),
+                query_filter=qfilter,
                 limit=top_k,
                 score_threshold=min_score,
                 with_payload=True,
@@ -203,37 +256,53 @@ class LTMemory:
                 {
                     "summary": r.payload.get("summary", ""),
                     "session_id": r.payload.get("session_id", ""),
-                    "score": round(r.score, 3),
+                    "course_id": r.payload.get("course_id"),
                     "created_at": r.payload.get("created_at", 0),
                 }
                 for r in results
             ]
 
+
         except Exception as exc:
             logger.error("LTM recall failed: %s", exc)
-            return await self._recall_from_pg(user_id, agent_type, top_k)
+            return await self._recall_from_pg(
+                user_id, agent_type, top_k, course_ids=course_ids,
+            )
 
     async def _recall_from_pg(
         self,
         user_id: int,
         agent_type: str,
         limit: int = 3,
+        course_ids: Optional[list[int]] = None,
     ) -> list[dict]:
         """Fallback: return the most recent episodes from PostgreSQL."""
         try:
             async with get_ai_conn() as conn:
-                rows = await conn.fetch(
-                    """SELECT summary, session_id::TEXT, created_at
-                       FROM agent_episodes
-                       WHERE user_id = $1 AND agent_type = $2
-                       ORDER BY created_at DESC
-                       LIMIT $3""",
-                    user_id, agent_type, limit,
-                )
+                if course_ids:
+                    rows = await conn.fetch(
+                        """SELECT summary, session_id::TEXT, course_id, created_at
+                           FROM agent_episodes
+                           WHERE user_id = $1 AND agent_type = $2
+                             AND (course_id IS NULL OR course_id = ANY($3::BIGINT[]))
+                           ORDER BY created_at DESC
+                           LIMIT $4""",
+                        user_id, agent_type, list(course_ids), limit,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """SELECT summary, session_id::TEXT, course_id, created_at
+                           FROM agent_episodes
+                           WHERE user_id = $1 AND agent_type = $2
+                           ORDER BY created_at DESC
+                           LIMIT $3""",
+                        user_id, agent_type, limit,
+                    )
             return [
                 {
                     "summary": r["summary"],
                     "session_id": r["session_id"],
+                    "course_id": r["course_id"],
                     "score": 1.0,  # no relevance score from PG
                     "created_at": r["created_at"].isoformat()
                         if r["created_at"] else "",

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS agent_episodes (
                         CHECK (agent_type IN ('teacher', 'mentor')),
     summary         TEXT NOT NULL,
     qdrant_point_id BIGINT,
+    course_id       BIGINT,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -62,3 +63,6 @@ CREATE INDEX IF NOT EXISTS idx_ae_user
     ON agent_episodes(user_id, agent_type);
 CREATE INDEX IF NOT EXISTS idx_ae_session
     ON agent_episodes(session_id);
+CREATE INDEX IF NOT EXISTS idx_ae_user_course
+    ON agent_episodes(user_id, agent_type, course_id)
+    WHERE course_id IS NOT NULL;

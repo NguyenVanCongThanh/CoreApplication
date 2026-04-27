@@ -10,6 +10,7 @@ from typing import Any, Literal, Optional
 # Keep this list in sync with the default bindings created on startup.
 TASK_CHAT             = "chat"              # short explanations, casual tutor
 TASK_QUIZ_GEN         = "quiz_gen"          # high-stakes quiz generation
+TASK_MICRO_LESSON_GEN = "micro_lesson_gen"  # generating micro-lessons from nodes
 TASK_DIAGNOSIS        = "diagnosis"         # error diagnosis for wrong answers
 TASK_FLASHCARD_GEN    = "flashcard_gen"
 TASK_AGENT_REACT      = "agent_react"       # teacher/mentor tool-calling loop
@@ -21,7 +22,7 @@ TASK_LANGUAGE_DETECT  = "language_detect"
 TASK_NODE_EXTRACT     = "node_extract"
  
 ALL_TASK_CODES: tuple[str, ...] = (
-    TASK_CHAT, TASK_QUIZ_GEN, TASK_DIAGNOSIS, TASK_FLASHCARD_GEN,
+    TASK_CHAT, TASK_QUIZ_GEN, TASK_MICRO_LESSON_GEN, TASK_DIAGNOSIS, TASK_FLASHCARD_GEN,
     TASK_AGENT_REACT, TASK_AGENT_ROUTER, TASK_CLARIFICATION,
     TASK_GRAPH_LINK, TASK_MEMORY_COMPRESS, TASK_LANGUAGE_DETECT,
     TASK_NODE_EXTRACT,

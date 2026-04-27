@@ -477,6 +477,54 @@ func (c *Client) GetGlobalKnowledgeGraph(ctx context.Context, minStrength float6
 	return &resp, nil
 }
 
+// ── Micro-Lessons ─────────────────────────────────────────────────────────────
+
+// GenerateMicroLessonsRequest tells the AI service to start generating
+// bite-sized lessons for an already-uploaded source file.
+type GenerateMicroLessonsRequest struct {
+	JobID           int64  `json:"job_id"`
+	CourseID        int64  `json:"course_id"`
+	SectionID       *int64 `json:"section_id,omitempty"`
+	SourceContentID *int64 `json:"source_content_id,omitempty"`
+	SourceFilePath  string `json:"source_file_path"`
+	SourceFileType  string `json:"source_file_type,omitempty"`
+	TargetMinutes   int    `json:"target_minutes"`
+	Language        string `json:"language"`
+}
+
+type GenerateMicroLessonsFromYouTubeRequest struct {
+	JobID           int64  `json:"job_id"`
+	CourseID        int64  `json:"course_id"`
+	SectionID       *int64 `json:"section_id,omitempty"`
+	SourceContentID *int64 `json:"source_content_id,omitempty"`
+	YouTubeURL      string `json:"youtube_url"`
+	TargetMinutes   int    `json:"target_minutes"`
+	Language        string `json:"language"`
+}
+
+type GenerateMicroLessonsResponse struct {
+	JobID  int64  `json:"job_id"`
+	Status string `json:"status"`
+}
+
+// GenerateMicroLessons fires the file-based micro-lesson pipeline.
+func (c *Client) GenerateMicroLessons(ctx context.Context, req GenerateMicroLessonsRequest) (*GenerateMicroLessonsResponse, error) {
+	var resp GenerateMicroLessonsResponse
+	if err := c.post(ctx, "/ai/micro-lessons/generate", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GenerateMicroLessons: %w", err)
+	}
+	return &resp, nil
+}
+
+// GenerateMicroLessonsFromYouTube fires the YouTube transcript micro-lesson pipeline.
+func (c *Client) GenerateMicroLessonsFromYouTube(ctx context.Context, req GenerateMicroLessonsFromYouTubeRequest) (*GenerateMicroLessonsResponse, error) {
+	var resp GenerateMicroLessonsResponse
+	if err := c.post(ctx, "/ai/micro-lessons/generate-youtube", req, &resp); err != nil {
+		return nil, fmt.Errorf("ai.GenerateMicroLessonsFromYouTube: %w", err)
+	}
+	return &resp, nil
+}
+
 // LinkGlobalGraph triggers a system-wide knowledge graph maintenance task via Kafka command.
 func (c *Client) LinkGlobalGraph(ctx context.Context) (map[string]interface{}, error) {
 	var resp map[string]interface{}

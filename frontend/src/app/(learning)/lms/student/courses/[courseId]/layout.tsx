@@ -21,7 +21,7 @@ import {
   BarChart3, CheckCircle2,
 } from "lucide-react";
 
-import lmsService      from "@/services/lmsService";
+import lmsService from "@/services/lmsService";
 import progressService, { CourseProgress, ProgressDetailItem } from "@/services/progressService";
 
 import { GhostBtn, ProgressBar, PageLoader } from "@/components/lms/shared";
@@ -29,17 +29,18 @@ import { BreadcrumbNav, type BreadcrumbItem } from "@/components/lms/BreadcrumbN
 import { StudentCourseContext } from "@/components/lms/student/StudentCourseContext";
 import { Content, Course, Section } from "@/types";
 import { cn } from "@/lib/utils";
+import { useSetPageContext } from "@/hooks/usePageContext";
 
 // ─── Content type icon map ────────────────────────────────────────────────────
 
 const CONTENT_ICON: Record<string, React.ReactNode> = {
-  VIDEO:        <Play          className="w-3.5 h-3.5" />,
-  DOCUMENT:     <FileText      className="w-3.5 h-3.5" />,
-  IMAGE:        <ImageIcon     className="w-3.5 h-3.5" />,
-  TEXT:         <FileText      className="w-3.5 h-3.5" />,
-  QUIZ:         <HelpCircle    className="w-3.5 h-3.5" />,
-  FORUM:        <MessageSquare className="w-3.5 h-3.5" />,
-  ANNOUNCEMENT: <Megaphone     className="w-3.5 h-3.5" />,
+  VIDEO: <Play className="w-3.5 h-3.5" />,
+  DOCUMENT: <FileText className="w-3.5 h-3.5" />,
+  IMAGE: <ImageIcon className="w-3.5 h-3.5" />,
+  TEXT: <FileText className="w-3.5 h-3.5" />,
+  QUIZ: <HelpCircle className="w-3.5 h-3.5" />,
+  FORUM: <MessageSquare className="w-3.5 h-3.5" />,
+  ANNOUNCEMENT: <Megaphone className="w-3.5 h-3.5" />,
 };
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ function SidebarSection({
   isExpanded, onToggle, activeContentId, onSelect,
   completedIds,
 }: SidebarSectionProps) {
-  const mandatoryCount     = contents.filter(c => c.is_mandatory).length;
+  const mandatoryCount = contents.filter(c => c.is_mandatory).length;
   const completedMandatory = contents.filter(c => c.is_mandatory && completedIds.has(c.id)).length;
 
   return (
@@ -94,7 +95,7 @@ function SidebarSection({
           )}
         </div>
         {isExpanded
-          ? <ChevronDown  className="w-4 h-4 text-slate-400 flex-shrink-0" />
+          ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
           : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
       </button>
 
@@ -112,7 +113,7 @@ function SidebarSection({
           ) : (
             contents.map((c, i) => {
               const isActive = c.id === activeContentId;
-              const isDone   = completedIds.has(c.id);
+              const isDone = completedIds.has(c.id);
               return (
                 <button
                   key={c.id}
@@ -166,25 +167,25 @@ function SidebarSection({
 
 export default function StudentCourseDetailLayout({ children }: { children: React.ReactNode }) {
   const { courseId } = useParams<{ courseId: string }>();
-  const router       = useRouter();
-  const pathname     = usePathname();
-  const id           = Number(courseId);
-  const basePath     = `/lms/student/courses/${id}`;
+  const router = useRouter();
+  const pathname = usePathname();
+  const id = Number(courseId);
+  const basePath = `/lms/student/courses/${id}`;
 
   // ── Core state ──
-  const [course,          setCourse]          = useState<Course | null>(null);
-  const [sections,        setSections]        = useState<Section[]>([]);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [sections, setSections] = useState<Section[]>([]);
   const [sectionContents, setSectionContents] = useState<Record<number, Content[]>>({});
-  const [loadingSection,  setLoadingSection]  = useState<Record<number, boolean>>({});
-  const [expanded,        setExpanded]        = useState<Set<number>>(new Set());
-  const [activeContent,   setActiveContent]   = useState<Content | null>(null);
-  const [loadingPage,     setLoadingPage]     = useState(true);
-  const [sidebarOpen,     setSidebarOpen]     = useState(false);
+  const [loadingSection, setLoadingSection] = useState<Record<number, boolean>>({});
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [activeContent, setActiveContent] = useState<Content | null>(null);
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Progress state ──
-  const [progress,        setProgress]        = useState<CourseProgress | null>(null);
-  const [completedIds,    setCompletedIds]    = useState<Set<number>>(new Set());
-  const [progressDetail,  setProgressDetail]  = useState<ProgressDetailItem[]>([]);
+  const [progress, setProgress] = useState<CourseProgress | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
+  const [progressDetail, setProgressDetail] = useState<ProgressDetailItem[]>([]);
   const [markingComplete, setMarkingComplete] = useState(false);
 
   // ─── Load progress ────────────────────────────────────────────────────────
@@ -223,7 +224,7 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
           setExpanded(new Set(allIds));
           // Prefetch all contents (parallel, will be cached by loadSectionContentsInner)
           allIds.forEach(sid => loadSectionContentsInner(sid));
-          
+
           // Auto-select the first content of the first section
           loadSectionContentsInner(secs[0].id, true);
         }
@@ -248,7 +249,7 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
     }
     setLoadingSection(prev => ({ ...prev, [sectionId]: true }));
     try {
-      const res   = await lmsService.listContent(sectionId);
+      const res = await lmsService.listContent(sectionId);
       const items: Content[] = res?.data ?? [];
       setSectionContents(prev => ({ ...prev, [sectionId]: items }));
       if (autoSelect && !activeContent && items.length > 0) {
@@ -308,10 +309,10 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
   const totalMandatory = progress?.total_mandatory
     ?? Object.values(sectionContents).flat().filter(c => c.is_mandatory).length;
   const completedCount = progress?.completed_count ?? completedIds.size;
-  const progressPct    = totalMandatory > 0 ? Math.round((completedCount / totalMandatory) * 100) : 0;
+  const progressPct = totalMandatory > 0 ? Math.round((completedCount / totalMandatory) * 100) : 0;
 
   // ─── Active tab ───────────────────────────────────────────────────────────
-  const activeTab   = TABS.find(tab => pathname.includes(tab.path)) || TABS[0];
+  const activeTab = TABS.find(tab => pathname.includes(tab.path)) || TABS[0];
   const activeTabId = activeTab.id;
 
   // ─── Breadcrumb items ─────────────────────────────────────────────────────
@@ -354,6 +355,22 @@ export default function StudentCourseDetailLayout({ children }: { children: Reac
     completedIds, handleMarkComplete, markingComplete,
     progress, progressDetail, loadProgress,
   ]);
+
+  // ── Push page context for AI sidebar ───────────────────────────────────────
+
+  const { setPageContext, clearPageContext } = useSetPageContext();
+
+  useEffect(() => {
+    if (!course) return;
+    setPageContext({
+      pageType: activeContent ? "lesson" : "course_detail",
+      courseId: id,
+      courseName: course.title,
+      contentId: activeContent?.id,
+      contentTitle: activeContent?.title,
+    });
+    return () => clearPageContext();
+  }, [course, activeContent, id, setPageContext, clearPageContext]);
 
   if (loadingPage) return <PageLoader message="Đang tải khóa học..." />;
 

@@ -10,15 +10,16 @@ import { EditCourseModal } from "@/components/lms/teacher/EditCourseModal";
 import { Badge, Spinner } from "@/components/lms/shared";
 import { Course } from "@/types";
 import { cn } from "@/lib/utils";
+import { useSetPageContext } from "@/hooks/usePageContext";
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
 
 const COURSE_TABS = [
-  { id: "overview",  label: "Tổng quan",       path: "/overview"  },
-  { id: "content",   label: "Nội dung",         path: "/content"   },
-  { id: "learners",  label: "Học viên",         path: "/learners"  },
-  { id: "students",  label: "Tiến độ học tập",  path: "/students"  },
-  { id: "ai",        label: "🤖 AI",             path: "/ai"        },
+  { id: "overview", label: "Tổng quan", path: "/overview" },
+  { id: "content", label: "Nội dung", path: "/content" },
+  { id: "learners", label: "Học viên", path: "/learners" },
+  { id: "students", label: "Tiến độ học tập", path: "/students" },
+  { id: "ai", label: "🤖 AI", path: "/ai" },
 ];
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export default function CourseDetailLayout({ children }: { children: React.React
     try {
       const res = await lmsService.getCourse(id);
       setCourse(res?.data ?? null);
-    } catch {}
+    } catch { }
     finally { setLoading(false); }
   }, [id]);
 
@@ -64,6 +65,20 @@ export default function CourseDetailLayout({ children }: { children: React.React
     ...(activeTab.id !== "overview" ? [{ label: activeTab.label }] : []),
   ];
 
+  // ── Push page context for AI sidebar ─────────────────────────────────────
+
+  const { setPageContext, clearPageContext } = useSetPageContext();
+
+  useEffect(() => {
+    if (!course) return;
+    setPageContext({
+      pageType: "course_detail",
+      courseId: id,
+      courseName: course.title,
+    });
+    return () => clearPageContext();
+  }, [course, id, setPageContext, clearPageContext]);
+
   return (
     <div className="space-y-4">
       {/* ── Breadcrumb ───────────────────────────────────────────────────── */}
@@ -87,7 +102,7 @@ export default function CourseDetailLayout({ children }: { children: React.React
                   {course.status === "PUBLISHED" ? "Đã xuất bản" : "Nháp"}
                 </Badge>
                 {course.category && <Badge variant="gray">{course.category}</Badge>}
-                {course.level   && <Badge variant="blue">{course.level}</Badge>}
+                {course.level && <Badge variant="blue">{course.level}</Badge>}
               </div>
 
               <h1 className="text-xl font-extrabold text-slate-900 dark:text-slate-50 leading-tight truncate">

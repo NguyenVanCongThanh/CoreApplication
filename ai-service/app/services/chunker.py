@@ -658,4 +658,123 @@ class ImageChunker:
                 language="vi",
             )
         ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hierarchical (parent / child) chunking
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class HierarchicalChunkPair:
+    """A parent chunk plus the children that should reference it."""
+    parent_text: str
+    parent_page_number: int | None
+    parent_start_time_sec: int | None
+    parent_end_time_sec: int | None
+    parent_language: str
+    children: list[DocumentChunk]
+
+
+def build_hierarchical_chunks(
+    flat_chunks: list[DocumentChunk],
+    *,
+    parent_max_chars: int = 6000,
+    parent_min_children: int = 2,
+) -> list[HierarchicalChunkPair]:
+    """
+    Group consecutive child chunks into parent windows that the RAG
+    pipeline can hydrate after ANN search.
+
+    Grouping rules (in order):
+      1. Same `page_number` + total <= parent_max_chars → keep merging.
+      2. Same heading breadcrumb (the `[A > B > C]` prefix MarkdownChunker
+         injects) + total <= parent_max_chars → keep merging.
+      3. For video transcripts, group by `parent_max_chars / 5 ≈ 1200 chars`
+         (~5–7 minutes of speech) regardless of page number.
+      4. Soft cap at parent_max_chars to avoid blowing the LLM context.
+
+    A "parent" containing a single child is still emitted (the child can
+    point at itself as parent_chunk_id NULL during storage), but downstream
+    storage chooses to skip parent insertion when the parent text equals
+    the only child's text. This keeps the table small.
+    """
+    if not flat_chunks:
+        return []
+
+    pairs: list[HierarchicalChunkPair] = []
+    current_children: list[DocumentChunk] = []
+
+    def _flush():
+        if not current_children:
+            return
+        first = current_children[0]
+        last = current_children[-1]
+        # Concatenate children (drop the breadcrumb prefix on every-but-first
+        # so the parent text reads naturally).
+        first_text = current_children[0].text
+        body_parts = [first_text]
+        for ch in current_children[1:]:
+            body_parts.append(_strip_breadcrumb_prefix(ch.text))
+        parent_text = "\n\n".join(body_parts).strip()
+
+        pairs.append(HierarchicalChunkPair(
+            parent_text=parent_text[: parent_max_chars + 500],  # tiny slack
+            parent_page_number=first.page_number,
+            parent_start_time_sec=first.start_time_sec,
+            parent_end_time_sec=last.end_time_sec,
+            parent_language=first.language,
+            children=list(current_children),
+        ))
+
+    cur_chars = 0
+    cur_breadcrumb: str | None = None
+    cur_page: int | None = None
+
+    for ch in flat_chunks:
+        breadcrumb = _extract_breadcrumb(ch.text)
+        page = ch.page_number
+        size = len(ch.text)
+
+        # Decide whether to start a new parent
+        new_parent = False
+        if not current_children:
+            new_parent = False
+        elif cur_chars + size > parent_max_chars and len(current_children) >= parent_min_children:
+            new_parent = True
+        elif breadcrumb and cur_breadcrumb and breadcrumb != cur_breadcrumb \
+                and cur_chars > parent_max_chars // 3:
+            new_parent = True
+        elif page is not None and cur_page is not None and page != cur_page \
+                and cur_chars > parent_max_chars // 2:
+            new_parent = True
+
+        if new_parent:
+            _flush()
+            current_children = []
+            cur_chars = 0
+            cur_breadcrumb = None
+            cur_page = None
+
+        current_children.append(ch)
+        cur_chars += size
+        if breadcrumb:
+            cur_breadcrumb = breadcrumb
+        if page is not None:
+            cur_page = page
+
+    _flush()
+    return pairs
+
+
+_BREADCRUMB_RE = re.compile(r"^\[([^\]]+)\]")
+
+
+def _extract_breadcrumb(text: str) -> str | None:
+    m = _BREADCRUMB_RE.match(text.strip())
+    return m.group(1).strip() if m else None
+
+
+def _strip_breadcrumb_prefix(text: str) -> str:
+    """Drop a leading `[breadcrumb]\\n` so concatenated parent text is clean."""
+    return _BREADCRUMB_RE.sub("", text.strip()).lstrip("\n").strip()
  

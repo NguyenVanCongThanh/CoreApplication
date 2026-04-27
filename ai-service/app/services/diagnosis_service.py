@@ -78,6 +78,15 @@ class DiagnosisService:
                 top_k=settings.top_k_chunks,
             )
 
+        # Hydrate child chunks with their parent passages so the LLM
+        # gets coherent surrounding context (no-op when hierarchical
+        # storage is disabled or chunks have no parent).
+        if chunks and settings.use_hierarchical_chunks:
+            try:
+                chunks = await rag_service.hydrate_parents(chunks)
+            except Exception as exc:
+                logger.warning("Parent hydration failed: %s", exc)
+
         # ── 4. LLM diagnosis ─────────────────────────────────────────────────
         context_texts = [c.chunk_text for c in chunks] if chunks else []
         if not context_texts and correct_answer:
