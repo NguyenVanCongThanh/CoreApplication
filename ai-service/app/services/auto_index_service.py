@@ -45,8 +45,8 @@ settings = get_settings()
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
 RELATION_SIMILARITY_THRESHOLD = 0.62
-MAX_NODES_PER_DOCUMENT = 8
-MIN_NODES_PER_DOCUMENT = 2
+MAX_NODES_PER_BATCH = 8
+MIN_NODES_PER_BATCH = 2
 EMBED_BATCH_SIZE = 16
 MAX_EXCERPT_CHARS = 9000
 MAX_EXISTING_NODES_FOR_GRAPH = 200
@@ -83,6 +83,7 @@ Bạn là chuyên gia phân tích giáo trình và thiết kế chương trình 
 Nhiệm vụ: xác định các khái niệm kiến thức (nodes) cốt lõi xuất hiện TRỰC TIẾP trong tài liệu.
 Nguyên tắc quan trọng:
 - CHỈ trích xuất các chủ đề có nội dung cụ thể, không trích xuất các phần chung chung (ví dụ: "Giới thiệu", "Kết luận", "Tài liệu tham khảo").
+- TUYỆT ĐỐI KHÔNG tạo Node cho toàn bộ cuốn sách hoặc tiêu đề chương chung chung. Chỉ tạo Node cho các khái niệm học thuật, định nghĩa, thực thể hoặc kỹ năng cụ thể.
 - Một node phải đủ quan trọng để có thể đặt được ít nhất 3-5 câu hỏi kiểm tra dựa trên nội dung tệp.
 - Ưu tiên chất lượng hơn số lượng: Nếu tài liệu ngắn, chỉ cần trích xuất 2-3 node chất lượng thay vì cố lấy cho đủ số lượng.
 - Nếu một phần văn bản không chứa kiến thức học thuật rõ ràng, ĐỪNG tạo node cho nó.
@@ -327,8 +328,8 @@ class AutoIndexService:
 
             _progress("llm_analysis", 20)
             language = detect_language(raw_text[:3000])
-            nodes, relations = await self._extract_nodes_and_relations(
-                raw_text, file_type, language, file_url
+            nodes, relations = await self._batch_extract_nodes(
+                structured_chunks, raw_text, file_type, language, file_url
             )
 
             if not nodes:
@@ -437,9 +438,22 @@ class AutoIndexService:
 
             language = detect_language(text_content[:3000])
 
+            _progress("chunk", 15)
+            from app.core.vlm import describe_image_url
+
+            chunker = MarkdownChunker()
+
+            async def image_describer(image_url: str, alt_text: str) -> str:
+                url_to_use = await self._get_vlm_ready_url(image_url)
+                return await describe_image_url(url_to_use, language=language, alt_text=alt_text)
+
+            structured_chunks = await chunker.chunk_async(
+                markdown_text=text_content, image_describer=image_describer
+            )
+
             _progress("llm_analysis", 25)
-            nodes, relations = await self._extract_nodes_and_relations(
-                text_content, "text", language, doc_title=title
+            nodes, relations = await self._batch_extract_nodes(
+                structured_chunks, text_content, "text", language, doc_title=title
             )
 
             if not nodes:
@@ -470,18 +484,6 @@ class AutoIndexService:
             await self._create_llm_relations(relations, all_node_ids, course_id)
 
             _progress("chunk_embed", 60)
-            from app.core.vlm import describe_image_url
-
-            chunker = MarkdownChunker()
-
-            async def image_describer(image_url: str, alt_text: str) -> str:
-                url_to_use = await self._get_vlm_ready_url(image_url)
-                return await describe_image_url(url_to_use, language=language, alt_text=alt_text)
-
-            structured_chunks = await chunker.chunk_async(
-                markdown_text=text_content, image_describer=image_describer
-            )
-
             n_chunks = await self._chunk_and_store(
                 file_bytes=text_content.encode("utf-8"),
                 file_type="text",
@@ -700,6 +702,43 @@ class AutoIndexService:
 
     # ─ Step 3: LLM node + relation extraction ─────────────────────────────────
 
+    async def _batch_extract_nodes(
+        self,
+        structured_chunks: list[DocumentChunk],
+        raw_text: str,
+        file_type: str,
+        language: str,
+        file_url: str = "",
+        doc_title: Optional[str] = None,
+    ) -> tuple[list[ExtractedNode], list[ExtractedRelation]]:
+        if not structured_chunks:
+            return await self._extract_nodes_and_relations(raw_text, file_type, language, file_url, doc_title)
+            
+        BATCH_SIZE = 15
+        all_nodes = []
+        all_relations = []
+        node_offset = 0
+        
+        for i in range(0, len(structured_chunks), BATCH_SIZE):
+            batch_chunks = structured_chunks[i:i+BATCH_SIZE]
+            batch_text = "\n\n".join(c.text for c in batch_chunks)
+            if not batch_text.strip():
+                continue
+                
+            nodes, relations = await self._extract_nodes_and_relations(
+                batch_text, file_type, language, file_url, doc_title
+            )
+            
+            for r in relations:
+                r.source_index += node_offset
+                r.target_index += node_offset
+                all_relations.append(r)
+                
+            all_nodes.extend(nodes)
+            node_offset += len(nodes)
+            
+        return all_nodes, all_relations
+
     async def _extract_nodes_and_relations(
         self,
         raw_text: str,
@@ -708,7 +747,7 @@ class AutoIndexService:
         file_url: str = "",
         doc_title: Optional[str] = None,
     ) -> tuple[list[ExtractedNode], list[ExtractedRelation]]:
-        n_nodes = min(MAX_NODES_PER_DOCUMENT, max(MIN_NODES_PER_DOCUMENT, len(raw_text) // 1500))
+        n_nodes = min(MAX_NODES_PER_BATCH, max(MIN_NODES_PER_BATCH, len(raw_text) // 1500))
         if doc_title is None:
             doc_title = _extract_doc_title(raw_text)
         headings = _extract_headings(raw_text)
@@ -739,7 +778,7 @@ class AutoIndexService:
 
         raw_nodes = result.get("nodes", [])
         nodes: list[ExtractedNode] = []
-        for i, n in enumerate(raw_nodes[:MAX_NODES_PER_DOCUMENT]):
+        for i, n in enumerate(raw_nodes[:MAX_NODES_PER_BATCH]):
             name_vi = n.get("name_vi") or n.get("name", "")
             name_en = n.get("name_en") or n.get("name", "")
             if not (name_vi or name_en):
