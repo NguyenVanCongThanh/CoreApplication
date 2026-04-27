@@ -42,6 +42,7 @@ class GenerateFromYouTubeRequest(BaseModel):
     job_id: int
     course_id: int
     section_id: Optional[int] = None
+    source_content_id: Optional[int] = None
     youtube_url: str
     target_minutes: int = 5
     language: str = "vi"
@@ -101,6 +102,7 @@ async def generate_from_youtube(
                 job_id=body.job_id,
                 course_id=body.course_id,
                 section_id=body.section_id,
+                source_content_id=body.source_content_id,
                 youtube_url=body.youtube_url,
                 target_minutes=body.target_minutes,
                 language=body.language,

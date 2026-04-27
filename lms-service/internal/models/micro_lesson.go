@@ -57,6 +57,7 @@ type MicroLesson struct {
 	OrderIndex          int            `json:"order_index" db:"order_index"`
 	Status              string         `json:"status" db:"status"`
 	PublishedContentID  sql.NullInt64  `json:"published_content_id" db:"published_content_id"`
+	NodeID              sql.NullInt64  `json:"node_id" db:"node_id"`
 	ImageURLs           []byte         `json:"image_urls" db:"image_urls"`
 	Language            string         `json:"language" db:"language"`
 	CreatedBy           int64          `json:"created_by" db:"created_by"`

@@ -43,6 +43,7 @@ type MicroLessonGeneratedItem struct {
 	EstimatedMinutes int      `json:"estimated_minutes"`
 	ImageURLs        []string `json:"image_urls"`
 	OrderIndex       int      `json:"order_index"`
+	NodeID           *int64   `json:"node_id"`
 }
 
 type MicroLessonsCallback struct {

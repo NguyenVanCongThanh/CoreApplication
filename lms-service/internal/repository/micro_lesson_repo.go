@@ -126,10 +126,10 @@ func (r *MicroLessonRepository) CreateLesson(ctx context.Context, lesson *models
 		INSERT INTO micro_lessons (
 			job_id, course_id, section_id, source_content_id,
 			title, summary, objectives, markdown_content,
-			estimated_minutes, order_index, status, image_urls,
+			estimated_minutes, order_index, status, node_id, image_urls,
 			language, created_by
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at, updated_at
 	`
 	if lesson.Objectives == nil {
@@ -144,7 +144,7 @@ func (r *MicroLessonRepository) CreateLesson(ctx context.Context, lesson *models
 	err := r.db.QueryRowContext(ctx, query,
 		lesson.JobID, lesson.CourseID, lesson.SectionID, lesson.SourceContentID,
 		lesson.Title, lesson.Summary, lesson.Objectives, lesson.MarkdownContent,
-		lesson.EstimatedMinutes, lesson.OrderIndex, lesson.Status, lesson.ImageURLs,
+		lesson.EstimatedMinutes, lesson.OrderIndex, lesson.Status, lesson.NodeID, lesson.ImageURLs,
 		lesson.Language, lesson.CreatedBy,
 	).Scan(&lesson.ID, &lesson.CreatedAt, &lesson.UpdatedAt)
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *MicroLessonRepository) GetLesson(ctx context.Context, id int64) (*model
 		SELECT id, job_id, course_id, section_id, source_content_id,
 		       title, summary, objectives, markdown_content,
 		       estimated_minutes, order_index, status, published_content_id,
-		       image_urls, language, created_by, created_at, updated_at, published_at
+		       node_id, image_urls, language, created_by, created_at, updated_at, published_at
 		FROM micro_lessons
 		WHERE id = $1
 	`
@@ -167,7 +167,7 @@ func (r *MicroLessonRepository) GetLesson(ctx context.Context, id int64) (*model
 		&l.ID, &l.JobID, &l.CourseID, &l.SectionID, &l.SourceContentID,
 		&l.Title, &l.Summary, &l.Objectives, &l.MarkdownContent,
 		&l.EstimatedMinutes, &l.OrderIndex, &l.Status, &l.PublishedContentID,
-		&l.ImageURLs, &l.Language, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt, &l.PublishedAt,
+		&l.NodeID, &l.ImageURLs, &l.Language, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt, &l.PublishedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -191,7 +191,7 @@ func (r *MicroLessonRepository) listLessonsBy(ctx context.Context, where string,
 		SELECT id, job_id, course_id, section_id, source_content_id,
 		       title, summary, objectives, markdown_content,
 		       estimated_minutes, order_index, status, published_content_id,
-		       image_urls, language, created_by, created_at, updated_at, published_at
+		       node_id, image_urls, language, created_by, created_at, updated_at, published_at
 		FROM micro_lessons
 		WHERE ` + where
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -207,7 +207,7 @@ func (r *MicroLessonRepository) listLessonsBy(ctx context.Context, where string,
 			&l.ID, &l.JobID, &l.CourseID, &l.SectionID, &l.SourceContentID,
 			&l.Title, &l.Summary, &l.Objectives, &l.MarkdownContent,
 			&l.EstimatedMinutes, &l.OrderIndex, &l.Status, &l.PublishedContentID,
-			&l.ImageURLs, &l.Language, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt, &l.PublishedAt,
+			&l.NodeID, &l.ImageURLs, &l.Language, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt, &l.PublishedAt,
 		); err != nil {
 			return nil, err
 		}

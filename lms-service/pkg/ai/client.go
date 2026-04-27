@@ -493,12 +493,13 @@ type GenerateMicroLessonsRequest struct {
 }
 
 type GenerateMicroLessonsFromYouTubeRequest struct {
-	JobID         int64  `json:"job_id"`
-	CourseID      int64  `json:"course_id"`
-	SectionID     *int64 `json:"section_id,omitempty"`
-	YouTubeURL    string `json:"youtube_url"`
-	TargetMinutes int    `json:"target_minutes"`
-	Language      string `json:"language"`
+	JobID           int64  `json:"job_id"`
+	CourseID        int64  `json:"course_id"`
+	SectionID       *int64 `json:"section_id,omitempty"`
+	SourceContentID *int64 `json:"source_content_id,omitempty"`
+	YouTubeURL      string `json:"youtube_url"`
+	TargetMinutes   int    `json:"target_minutes"`
+	Language        string `json:"language"`
 }
 
 type GenerateMicroLessonsResponse struct {

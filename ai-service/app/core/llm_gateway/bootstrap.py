@@ -31,6 +31,7 @@ from app.core.llm_gateway.types import (
     TASK_MEMORY_COMPRESS,
     TASK_NODE_EXTRACT,
     TASK_QUIZ_GEN,
+    TASK_MICRO_LESSON_GEN,
 )
  
 logger = logging.getLogger(__name__)
@@ -318,6 +319,7 @@ async def bootstrap_llm_registry() -> None:
         (TASK_GRAPH_LINK,       chat_model_id),
         (TASK_DIAGNOSIS,        chat_model_id),
         (TASK_QUIZ_GEN,         quiz_model_id),
+        (TASK_MICRO_LESSON_GEN, quiz_model_id),
         (TASK_AGENT_REACT,      quiz_model_id),
     ]
 

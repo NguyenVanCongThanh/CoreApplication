@@ -31,7 +31,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.llm import chat_complete_json
-from app.core.llm_gateway import TASK_QUIZ_GEN
+from app.core.llm_gateway import TASK_MICRO_LESSON_GEN
 from app.services.chunker import detect_language
 
 logger = logging.getLogger(__name__)
@@ -42,8 +42,6 @@ settings = get_settings()
 # Average Vietnamese reader: ~200 wpm; "5 minutes" ≈ 1000 words.
 # We aim for 700–1100 words per lesson (LLM has wiggle room).
 WORDS_PER_MINUTE = 200
-MAX_LESSONS_PER_DOC = 25
-MIN_LESSONS_PER_DOC = 1
 
 
 # ── Prompt builders ──────────────────────────────────────────────────────────
@@ -66,93 +64,6 @@ _SPLITTER_SYSTEM_EN = (
 )
 
 
-def _build_splitter_prompt(
-    *,
-    markdown_doc: str,
-    target_minutes: int,
-    target_lessons: int,
-    available_images: list[dict],
-    language: str,
-) -> str:
-    target_words = target_minutes * WORDS_PER_MINUTE
-    image_lines = ""
-    if available_images:
-        image_lines = "\n".join(
-            f"- ({img['url']}) trang {img.get('page_number') or '?'}, gợi ý: {img.get('caption_hint') or 'không có'}"
-            for img in available_images[:40]
-        )
-
-    if language == "vi":
-        return (
-            f"Tài liệu sau đây cần được chia thành {target_lessons} bài học micro, "
-            f"mỗi bài tương đương khoảng {target_minutes} phút đọc (~{target_words} từ).\n\n"
-            "## YÊU CẦU\n"
-            "1. Cắt theo ranh giới khái niệm — không cắt giữa câu/đoạn quan trọng.\n"
-            "2. Mỗi bài học có:\n"
-            "   - title: tiêu đề ngắn gọn (≤ 80 ký tự).\n"
-            "   - summary: tóm tắt 1–2 câu (~30 từ).\n"
-            "   - objectives: 2–4 mục tiêu học cụ thể, đo được.\n"
-            "   - markdown_content: thân bài viết bằng Markdown, có heading ##/###, "
-            "danh sách, bảng, công thức nếu cần. KHÔNG lặp lại title.\n"
-            "   - estimated_minutes: số phút đọc ước tính (3–7).\n"
-            "   - image_urls: mảng URL ảnh từ danh sách bên dưới mà bài này có dùng.\n"
-            "3. Khi muốn minh họa, hãy chèn ảnh bằng cú pháp Markdown ![mô tả](URL) "
-            "DÙNG ĐÚNG URL trong danh sách 'AVAILABLE IMAGES' bên dưới — không bịa URL.\n"
-            "4. Bài học phải đứng độc lập: định nghĩa lại ký hiệu/biến số nếu cần.\n"
-            "5. Văn phong tiếng Việt rõ ràng, học thuật nhưng dễ tiếp cận.\n\n"
-            f"## AVAILABLE IMAGES\n{image_lines or '(không có ảnh)'}\n\n"
-            "## SCHEMA JSON BẮT BUỘC\n"
-            "{\n"
-            '  "lessons": [\n'
-            "    {\n"
-            '      "title": "string",\n'
-            '      "summary": "string",\n'
-            '      "objectives": ["string", ...],\n'
-            '      "markdown_content": "string",\n'
-            '      "estimated_minutes": 5,\n'
-            '      "image_urls": ["..."]\n'
-            "    }\n"
-            "  ]\n"
-            "}\n\n"
-            "## TÀI LIỆU NGUỒN (Markdown)\n"
-            f"{markdown_doc}\n"
-        )
-    return (
-        f"The following document must be split into {target_lessons} micro-lessons, "
-        f"each ~{target_minutes} minutes of reading (~{target_words} words).\n\n"
-        "## REQUIREMENTS\n"
-        "1. Split on conceptual boundaries — never mid-sentence.\n"
-        "2. Each lesson must include:\n"
-        "   - title: concise title (≤ 80 chars).\n"
-        "   - summary: 1–2 sentences (~30 words).\n"
-        "   - objectives: 2–4 specific, measurable learning objectives.\n"
-        "   - markdown_content: lesson body in Markdown with ##/### headings, "
-        "lists, tables, formulas as needed. Do NOT repeat the title.\n"
-        "   - estimated_minutes: 3–7.\n"
-        "   - image_urls: array of URLs (from list below) used in this lesson.\n"
-        "3. When illustrating, embed images as ![alt](URL) using EXACT URLs from "
-        "the AVAILABLE IMAGES list — do not invent URLs.\n"
-        "4. Lessons must be self-contained: redefine variables/symbols if needed.\n"
-        "5. Clear, academic but accessible English.\n\n"
-        f"## AVAILABLE IMAGES\n{image_lines or '(no images)'}\n\n"
-        "## REQUIRED JSON SCHEMA\n"
-        "{\n"
-        '  "lessons": [\n'
-        "    {\n"
-        '      "title": "string",\n'
-        '      "summary": "string",\n'
-        '      "objectives": ["string", ...],\n'
-        '      "markdown_content": "string",\n'
-        '      "estimated_minutes": 5,\n'
-        '      "image_urls": ["..."]\n'
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "## SOURCE DOCUMENT (Markdown)\n"
-        f"{markdown_doc}\n"
-    )
-
-
 # ── Result types ─────────────────────────────────────────────────────────────
 
 @dataclass
@@ -164,6 +75,7 @@ class GeneratedLesson:
     estimated_minutes: int
     image_urls: list[str]
     order_index: int
+    node_id: Optional[int] = None
 
 
 @dataclass
@@ -190,58 +102,73 @@ class MicroLessonService:
         target_minutes: int = 5,
         language: str = "vi",
     ) -> GenerationResult:
-        """Main entry: download → convert → split → callback."""
-        await self._post_status(job_id, "processing", 5, "downloading", 0, "")
+        if not source_content_id:
+            await self._post_status(job_id, "failed", 0, "missing_content_id", 0, "Yêu cầu phải có source_content_id")
+            return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        from app.services.auto_index_service import _detect_file_type
+        await self._post_status(job_id, "processing", 5, "checking_index", 0, "")
 
-        # ── 1) Download source bytes ─────────────────────────────────────
+        from app.core.database import get_ai_conn
         from app.services.auto_index_service import auto_index_service
-        file_bytes = await auto_index_service._download_bytes(source_file_path)
-        if not file_bytes:
-            await self._post_status(job_id, "failed", 0, "download_failed", 0,
-                                    "Không tải được file nguồn")
+
+        is_indexed = False
+        async with get_ai_conn() as conn:
+            row = await conn.fetchrow("SELECT id FROM knowledge_nodes WHERE source_content_id=$1 LIMIT 1", source_content_id)
+            is_indexed = row is not None
+
+        if not is_indexed:
+            await self._post_status(job_id, "processing", 10, "auto_indexing", 0, "")
+            file_bytes = await auto_index_service._download_bytes(source_file_path)
+            if not file_bytes:
+                await self._post_status(job_id, "failed", 0, "download_failed", 0, "Không tải được file nguồn")
+                return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
+
+            from app.services.auto_index_service import _detect_file_type
+            file_type = _detect_file_type(source_file_path, source_file_type)
+            try:
+                if file_type == "text":
+                    text_content = file_bytes.decode("utf-8", errors="replace")
+                    await auto_index_service.auto_index_text(
+                        content_id=source_content_id, course_id=course_id, title="", text_content=text_content
+                    )
+                else:
+                    await auto_index_service.auto_index(
+                        content_id=source_content_id, course_id=course_id, file_url=source_file_path,
+                        content_type=file_type, file_bytes=file_bytes
+                    )
+            except Exception as exc:
+                logger.error("Auto index failed: %s", exc)
+                await self._post_status(job_id, "failed", 0, "index_failed", 0, str(exc))
+                return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
+
+        await self._post_status(job_id, "processing", 50, "fetching_nodes", 0, "")
+        nodes_with_chunks = await self._fetch_nodes_and_chunks(source_content_id)
+        if not nodes_with_chunks:
+            await self._post_status(job_id, "failed", 0, "no_nodes", 0, "Không tìm thấy Node kiến thức nào từ tài liệu này")
             return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        await self._post_status(job_id, "processing", 25, "extracting", 0, "")
+        await self._post_status(job_id, "processing", 60, "generating_lessons", len(nodes_with_chunks), "")
 
-        # ── 2) Convert to Markdown ───────────────────────────────────────
-        from app.services.file_to_markdown import convert_to_markdown
-
-        file_type = _detect_file_type(source_file_path, source_file_type or "")
-        storage_prefix = f"micro-lesson/{course_id}/{job_id}"
-        converted = await convert_to_markdown(
-            file_bytes=file_bytes,
-            file_type=file_type,
-            storage_prefix=storage_prefix,
-            language=language,
-        )
-
-        if not converted.markdown.strip():
-            await self._post_status(job_id, "failed", 0, "empty_doc", 0,
-                                    "Tài liệu rỗng sau khi trích xuất")
-            return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
-
-        await self._post_status(job_id, "processing", 55, "splitting", 0, "")
-
-        # Auto-detect language if caller didn't specify
-        if not language:
-            language = detect_language(converted.markdown[:3000])
-
-        lessons = await self._split_into_lessons(
-            converted.markdown, converted.images, target_minutes, language,
-        )
+        lessons = []
+        for i, item in enumerate(nodes_with_chunks):
+            lesson = await self._generate_lesson_for_node(
+                node=item["node"],
+                chunks=item["chunks"],
+                target_minutes=target_minutes,
+                language=language,
+                order_index=i,
+            )
+            if lesson:
+                lessons.append(lesson)
+            progress = 60 + int(30 * (i + 1) / len(nodes_with_chunks))
+            await self._post_status(job_id, "processing", progress, "generating_lessons", len(nodes_with_chunks), "")
 
         if not lessons:
-            await self._post_status(job_id, "failed", 0, "split_failed", 0,
-                                    "LLM không tạo được bài học")
+            await self._post_status(job_id, "failed", 0, "split_failed", 0, "LLM không tạo được bài học nào")
             return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        await self._post_status(job_id, "processing", 85, "saving", len(lessons), "")
-
-        # ── 4) Push lessons back to LMS ──────────────────────────────────
+        await self._post_status(job_id, "processing", 95, "saving", len(lessons), "")
         await self._post_lessons(job_id, course_id, section_id, source_content_id, lessons, language)
-
         await self._post_status(job_id, "completed", 100, "done", len(lessons), "")
         return GenerationResult(job_id=job_id, course_id=course_id, lessons=lessons, language=language)
 
@@ -251,144 +178,181 @@ class MicroLessonService:
         job_id: int,
         course_id: int,
         section_id: Optional[int],
+        source_content_id: Optional[int],
         youtube_url: str,
         target_minutes: int = 5,
         language: str = "vi",
     ) -> GenerationResult:
-        """Alternative entry: pull YouTube transcript and treat it as the doc."""
-        await self._post_status(job_id, "processing", 10, "fetching_transcript", 0, "")
-
-        from app.services.youtube_service import youtube_fetcher
-
-        try:
-            transcript = await youtube_fetcher.fetch(youtube_url, preferred_language=language)
-        except Exception as exc:
-            logger.error("YouTube fetch failed: %s", exc, exc_info=True)
-            await self._post_status(job_id, "failed", 0, "youtube_failed", 0, str(exc)[:300])
+        if not source_content_id:
+            await self._post_status(job_id, "failed", 0, "missing_content_id", 0, "Yêu cầu phải có source_content_id")
             return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        segments = transcript.get("segments", [])
-        if not segments:
-            await self._post_status(job_id, "failed", 0, "empty_transcript", 0, "Transcript rỗng")
+        await self._post_status(job_id, "processing", 5, "checking_index", 0, "")
+        from app.core.database import get_ai_conn
+        from app.services.auto_index_service import auto_index_service
+
+        is_indexed = False
+        async with get_ai_conn() as conn:
+            row = await conn.fetchrow("SELECT id FROM knowledge_nodes WHERE source_content_id=$1 LIMIT 1", source_content_id)
+            is_indexed = row is not None
+
+        if not is_indexed:
+            await self._post_status(job_id, "processing", 10, "auto_indexing", 0, "")
+            try:
+                await auto_index_service.auto_index(
+                    content_id=source_content_id, course_id=course_id, file_url=youtube_url,
+                    content_type="video/youtube", file_bytes=b""
+                )
+            except Exception as exc:
+                logger.error("Auto index failed: %s", exc)
+                await self._post_status(job_id, "failed", 0, "index_failed", 0, str(exc))
+                return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
+
+        await self._post_status(job_id, "processing", 50, "fetching_nodes", 0, "")
+        nodes_with_chunks = await self._fetch_nodes_and_chunks(source_content_id)
+        if not nodes_with_chunks:
+            await self._post_status(job_id, "failed", 0, "no_nodes", 0, "Không tìm thấy Node kiến thức nào từ tài liệu này")
             return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        # Stitch transcript into Markdown with timestamp anchors so the
-        # splitter can refer back to time ranges.
-        md_parts: list[str] = ["# Bản ghi video YouTube\n"]
-        for seg in segments:
-            start = int(seg.get("start", 0))
-            text = seg.get("text", "").strip()
-            if text:
-                md_parts.append(f"- [{_fmt_ts(start)}] {text}")
-        markdown = "\n".join(md_parts)
-        language = transcript.get("language") or language
+        await self._post_status(job_id, "processing", 60, "generating_lessons", len(nodes_with_chunks), "")
 
-        await self._post_status(job_id, "processing", 55, "splitting", 0, "")
+        lessons = []
+        for i, item in enumerate(nodes_with_chunks):
+            lesson = await self._generate_lesson_for_node(
+                node=item["node"], chunks=item["chunks"], target_minutes=target_minutes, language=language, order_index=i,
+            )
+            if lesson:
+                lessons.append(lesson)
+            progress = 60 + int(30 * (i + 1) / len(nodes_with_chunks))
+            await self._post_status(job_id, "processing", progress, "generating_lessons", len(nodes_with_chunks), "")
 
-        lessons = await self._split_into_lessons(markdown, [], target_minutes, language)
         if not lessons:
-            await self._post_status(job_id, "failed", 0, "split_failed", 0, "Không tạo được bài học")
+            await self._post_status(job_id, "failed", 0, "split_failed", 0, "LLM không tạo được bài học nào")
             return GenerationResult(job_id=job_id, course_id=course_id, lessons=[], language=language)
 
-        await self._post_status(job_id, "processing", 85, "saving", len(lessons), "")
-        await self._post_lessons(job_id, course_id, section_id, None, lessons, language)
+        await self._post_status(job_id, "processing", 95, "saving", len(lessons), "")
+        await self._post_lessons(job_id, course_id, section_id, source_content_id, lessons, language)
         await self._post_status(job_id, "completed", 100, "done", len(lessons), "")
         return GenerationResult(job_id=job_id, course_id=course_id, lessons=lessons, language=language)
 
-    # ── Splitting via LLM ────────────────────────────────────────────────
+    async def _fetch_nodes_and_chunks(self, source_content_id: int) -> list[dict]:
+        from app.core.database import get_ai_conn
+        async with get_ai_conn() as conn:
+            nodes_rows = await conn.fetch(
+                "SELECT id, name, description FROM knowledge_nodes WHERE source_content_id=$1 ORDER BY id", 
+                source_content_id
+            )
+            if not nodes_rows:
+                return []
+            
+            chunks_rows = await conn.fetch(
+                "SELECT node_id, chunk_text FROM document_chunks WHERE content_id=$1 ORDER BY chunk_index",
+                source_content_id
+            )
+            
+            node_map = {}
+            for row in nodes_rows:
+                node_map[row["id"]] = {
+                    "node": {"id": row["id"], "name": row["name"], "description": row["description"]},
+                    "chunks": [],
+                }
+            
+            for row in chunks_rows:
+                nid = row["node_id"]
+                if nid in node_map:
+                    node_map[nid]["chunks"].append(row["chunk_text"])
+            
+            return [n for n in node_map.values() if n["chunks"]]
 
-    async def _split_into_lessons(
+    async def _generate_lesson_for_node(
         self,
-        markdown_doc: str,
-        images,
+        node: dict,
+        chunks: list[str],
         target_minutes: int,
         language: str,
-    ) -> list[GeneratedLesson]:
-        word_count = len(markdown_doc.split())
+        order_index: int,
+    ) -> Optional[GeneratedLesson]:
+        markdown_doc = "\n\n".join(chunks)
+        truncated = _truncate_markdown(markdown_doc, max_chars=15_000)
+
+        # Extract image URLs
+        valid_image_urls = sorted(list({u for u in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", truncated)}))
+        image_lines = "\n".join(f"- {url}" for url in valid_image_urls)
+
         target_words = target_minutes * WORDS_PER_MINUTE
-        target_lessons = max(
-            MIN_LESSONS_PER_DOC,
-            min(MAX_LESSONS_PER_DOC, round(word_count / max(1, target_words))),
-        )
-
-        # If the doc is gigantic we still need to fit into the model context.
-        # Keep ~25k chars of source — ~6k tokens — and let the LLM rely on
-        # the heading structure that file_to_markdown already produced.
-        truncated = _truncate_markdown(markdown_doc, max_chars=25_000)
-
-        image_specs = [
-            {
-                "url": img.url,
-                "page_number": img.page_number,
-                "caption_hint": img.caption_hint,
-            }
-            for img in (images or [])
-        ]
-
-        system = _SPLITTER_SYSTEM_VI if language == "vi" else _SPLITTER_SYSTEM_EN
-        user = _build_splitter_prompt(
-            markdown_doc=truncated,
-            target_minutes=target_minutes,
-            target_lessons=target_lessons,
-            available_images=image_specs,
-            language=language,
+        sys_msg = _SPLITTER_SYSTEM_VI if language == "vi" else _SPLITTER_SYSTEM_EN
+        
+        user_msg = (
+            f"Bạn cần viết một bài học Micro-lesson (thời lượng ~{target_minutes} phút, ~{target_words} từ) "
+            f"cho chủ đề sau:\n"
+            f"TÊN CHỦ ĐỀ: {node['name']}\n"
+            f"MÔ TẢ: {node['description']}\n\n"
+            "## YÊU CẦU\n"
+            "1. Dựa trên TÀI LIỆU NGUỒN bên dưới, hãy viết một bài học hoàn chỉnh.\n"
+            "2. Trả về JSON theo schema yêu cầu.\n"
+            "3. Khi minh họa, hãy chèn ảnh bằng Markdown (ví dụ: ![mô tả](URL)). Chỉ dùng các URL có trong TÀI LIỆU NGUỒN hoặc danh sách AVAILABLE IMAGES.\n"
+            "4. Văn phong học thuật, dễ hiểu.\n\n"
+            f"## AVAILABLE IMAGES\n{image_lines or '(không có ảnh)'}\n\n"
+            "## SCHEMA JSON BẮT BUỘC\n"
+            "{\n"
+            '  "title": "string",\n'
+            '  "summary": "string",\n'
+            '  "objectives": ["string", ...],\n'
+            '  "markdown_content": "string",\n'
+            '  "estimated_minutes": 5,\n'
+            '  "image_urls": ["..."]\n'
+            "}\n\n"
+            "## TÀI LIỆU NGUỒN (Markdown)\n"
+            f"{truncated}\n"
         )
 
         try:
             result = await chat_complete_json(
                 messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": user_msg},
                 ],
                 model=settings.quiz_model,
                 temperature=0.25,
-                max_tokens=8000,
-                task=TASK_QUIZ_GEN,
+                max_tokens=4000,
+                task=TASK_MICRO_LESSON_GEN,
             )
         except Exception as exc:
-            logger.error("Lesson splitter LLM failed: %s", exc, exc_info=True)
-            return []
+            logger.error("Lesson generation LLM failed: %s", exc)
+            return None
 
-        raw_lessons = result.get("lessons") if isinstance(result, dict) else result
-        if not isinstance(raw_lessons, list):
-            return []
+        if not isinstance(result, dict):
+            return None
 
-        valid_image_urls = {img.url for img in (images or [])}
-        lessons: list[GeneratedLesson] = []
-        for i, raw in enumerate(raw_lessons[:MAX_LESSONS_PER_DOC]):
-            if not isinstance(raw, dict):
-                continue
-            md = (raw.get("markdown_content") or "").strip()
-            title = (raw.get("title") or "").strip()
-            if not md or not title:
-                continue
+        md = (result.get("markdown_content") or "").strip()
+        title = (result.get("title") or "").strip()
+        if not md or not title:
+            return None
 
-            # Sanitize image URLs in markdown — the LLM occasionally invents URLs
-            md = _strip_unknown_image_urls(md, valid_image_urls)
-            referenced = sorted({u for u in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", md)
-                                 if u in valid_image_urls})
+        md = _strip_unknown_image_urls(md, set(valid_image_urls))
+        referenced = sorted({u for u in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", md) if u in valid_image_urls})
 
-            objectives = raw.get("objectives") or []
-            if not isinstance(objectives, list):
-                objectives = [str(objectives)]
-            objectives = [str(o).strip() for o in objectives if str(o).strip()][:6]
+        objectives = result.get("objectives") or []
+        if not isinstance(objectives, list):
+            objectives = [str(objectives)]
+        objectives = [str(o).strip() for o in objectives if str(o).strip()][:6]
 
-            est_min = raw.get("estimated_minutes") or target_minutes
-            try:
-                est_min = max(2, min(15, int(est_min)))
-            except Exception:
-                est_min = target_minutes
+        est_min = result.get("estimated_minutes") or target_minutes
+        try:
+            est_min = max(2, min(15, int(est_min)))
+        except:
+            est_min = target_minutes
 
-            lessons.append(GeneratedLesson(
-                title=title[:500],
-                summary=(raw.get("summary") or "").strip()[:500],
-                objectives=objectives,
-                markdown_content=md,
-                estimated_minutes=est_min,
-                image_urls=referenced,
-                order_index=i,
-            ))
-        return lessons
+        return GeneratedLesson(
+            title=title[:500],
+            summary=(result.get("summary") or "").strip()[:500],
+            objectives=objectives,
+            markdown_content=md,
+            estimated_minutes=est_min,
+            image_urls=referenced,
+            order_index=order_index,
+            node_id=node["id"],
+        )
 
     # ── HTTP callback into LMS ───────────────────────────────────────────
 
@@ -416,6 +380,7 @@ class MicroLessonService:
                     "estimated_minutes": l.estimated_minutes,
                     "image_urls": l.image_urls,
                     "order_index": l.order_index,
+                    "node_id": l.node_id,
                 }
                 for l in lessons
             ],

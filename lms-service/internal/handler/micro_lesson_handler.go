@@ -129,6 +129,9 @@ func (h *MicroLessonHandler) GenerateMicroLessons(c *gin.Context) {
 		job.SourceFileType = sql.NullString{String: fileType, Valid: true}
 	} else {
 		job.SourceURL = sql.NullString{String: body.YouTubeURL, Valid: true}
+		if body.ContentID != 0 {
+			job.SourceContentID = sql.NullInt64{Int64: body.ContentID, Valid: true}
+		}
 	}
 
 	created, err := h.microRepo.CreateJob(c.Request.Context(), job)
@@ -142,13 +145,18 @@ func (h *MicroLessonHandler) GenerateMicroLessons(c *gin.Context) {
 	// the generated lessons back via the internal callback endpoints below.
 	if useYouTube {
 		go func() {
+			var sourceContentID *int64
+			if body.ContentID != 0 {
+				sourceContentID = &body.ContentID
+			}
 			_, err := h.aiClient.GenerateMicroLessonsFromYouTube(c, ai.GenerateMicroLessonsFromYouTubeRequest{
-				JobID:         created.ID,
-				CourseID:      courseID,
-				SectionID:     body.SectionID,
-				YouTubeURL:    body.YouTubeURL,
-				TargetMinutes: body.TargetMinutes,
-				Language:      body.Language,
+				JobID:           created.ID,
+				CourseID:        courseID,
+				SectionID:       body.SectionID,
+				SourceContentID: sourceContentID,
+				YouTubeURL:      body.YouTubeURL,
+				TargetMinutes:   body.TargetMinutes,
+				Language:        body.Language,
 			})
 			if err != nil {
 				logger.Error(fmt.Sprintf("AI YT trigger failed for job %d", created.ID), err)
@@ -453,6 +461,9 @@ func (h *MicroLessonHandler) CallbackLessons(c *gin.Context) {
 		}
 		if body.SourceContentID != nil {
 			lesson.SourceContentID = sql.NullInt64{Int64: *body.SourceContentID, Valid: true}
+		}
+		if l.NodeID != nil {
+			lesson.NodeID = sql.NullInt64{Int64: *l.NodeID, Valid: true}
 		}
 		if _, err := h.microRepo.CreateLesson(c.Request.Context(), lesson); err != nil {
 			logger.Error(fmt.Sprintf("CreateLesson failed for job %d (idx %d)", body.JobID, i), err)
