@@ -20,9 +20,11 @@ COPY . .
 
 ARG BUILD_DATE
 ARG VERSION
+ARG NODE_OPTIONS=--max-old-space-size=4096
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
-    NODE_ENV=production
+    NODE_ENV=production \
+    NODE_OPTIONS=${NODE_OPTIONS}
 
 # Build Next.js application
 RUN npm run build
